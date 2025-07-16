@@ -41,12 +41,7 @@
             justify-content: center;
             overflow: hidden;
             background-color: #374151;
-        }
-        .directory-card .thumbnail-container {
-            aspect-ratio: 16 / 9; /* ディレクトリはアスペクト比を固定 */
-        }
-        .media-card .thumbnail-container {
-            flex-grow: 1; /* 画像・動画は高さを可変に */
+            flex-grow: 1; /* サムネイルコンテナが余ったスペースを吸収するようにする */
         }
         .media-card { /* 画像・動画カードのスタイル */
             background-color: transparent;
@@ -57,7 +52,14 @@
         .thumbnail-container video {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: cover; /* 画像・動画はコンテナを埋める */
+        }
+        /* ディレクトリのサムネイルは、コンテナ内でアスペクト比を維持 */
+        .directory-card .thumbnail-container > img,
+        .directory-card .thumbnail-container > svg {
+            object-fit: contain;
+            max-width: 100%;
+            max-height: 100%;
         }
         #item-list.original-aspect .media-card .thumbnail-container {
             aspect-ratio: auto;
@@ -432,10 +434,9 @@
             }
         }
 
-        // ★大幅改修: カード生成ロジック
         function createItemCard(item, parentHandle, imageIndex) {
             const card = document.createElement('div');
-            card.className = 'group item-card'; // 基本クラス
+            card.className = 'group item-card';
 
             const thumbnailContainer = document.createElement('div');
             thumbnailContainer.className = 'thumbnail-container cursor-pointer';
@@ -457,7 +458,7 @@
                 thumbnailContainer.addEventListener('click', () => enterDirectory(item.handle));
                 title.addEventListener('click', (e) => { if (e.target !== badge) enterDirectory(item.handle); });
             } else {
-                card.classList.add('media-card'); // 画像と動画の共通クラス
+                card.classList.add('media-card');
                 card.appendChild(thumbnailContainer);
                 if (item.type === 'image') {
                     card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
@@ -468,7 +469,6 @@
 
             itemList.appendChild(card);
 
-            // サムネイル生成
             (async () => {
                 if (item.type === 'image') {
                     try {
@@ -490,7 +490,7 @@
                         const videoUrl = URL.createObjectURL(file);
                         createdUrls.add(videoUrl);
                         const video = document.createElement('video');
-                        video.src = videoUrl + '#t=0.5'; // 0.5秒時点のフレームを取得
+                        video.src = videoUrl + '#t=0.5';
                         video.muted = true;
                         video.preload = 'metadata';
                         thumbnailContainer.insertBefore(video, playIconOverlay);
