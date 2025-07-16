@@ -161,7 +161,7 @@ fullscreenBtn.addEventListener('click', toggleFullscreen);
 document.addEventListener('keydown', (e) => {
     if (e.altKey && e.key === 'ArrowLeft') {
         e.preventDefault();
-        if (viewer.style.display !== 'none') {
+        if (viewer.classList.contains('show')) {
             closeViewer();
         } else if (directoryHistory.length > 1) {
             upDirBtn.click();
@@ -169,7 +169,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    if (viewer.style.display === 'none') return;
+    if (!viewer.classList.contains('show')) return;
     if (!viewerVideoContainer.classList.contains('hidden')) return;
 
     // 右から左へ読み進める操作は意図されたもの (右矢印: 前のページ, 左矢印: 次のページ)
@@ -474,6 +474,7 @@ async function openViewer(dirHandle, startIndex) {
         isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
         viewer.style.display = 'flex';
         viewerPages.style.display = 'flex';
+        requestAnimationFrame(() => viewer.classList.add('show'));
         viewerVideoContainer.classList.add('hidden');
         viewerToolbar.style.display = 'flex';
         listToolbar.style.display = 'none';
@@ -492,6 +493,7 @@ async function openVideoPlayer(videoHandle) {
     try {
         viewer.style.display = 'flex';
         viewerPages.style.display = 'none';
+        requestAnimationFrame(() => viewer.classList.add('show'));
         viewerVideoContainer.classList.remove('hidden');
         viewerToolbar.style.display = 'none';
         listToolbar.style.display = 'none';
@@ -509,7 +511,8 @@ async function openVideoPlayer(videoHandle) {
 }
 
 function closeViewer() {
-    viewer.style.display = 'none';
+    viewer.classList.remove('show');
+    setTimeout(() => { viewer.style.display = 'none'; }, 300);
     listToolbar.style.display = '';
     document.body.style.overflow = 'auto';
     if (leftPageImg.dataset.url) URL.revokeObjectURL(leftPageImg.dataset.url);
