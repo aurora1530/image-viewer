@@ -41,6 +41,8 @@
 - HTML5 + CSS3 + JavaScript（ES6+）
 - Tailwind CSS（CDN版）
 - File System Access API
+- スタイルシート(`style.css`)とスクリプト(`script.js`)を分割
+
 - レスポンシブデザイン対応
 
 ## ライセンス
