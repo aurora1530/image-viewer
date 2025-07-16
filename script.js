@@ -19,6 +19,7 @@ const currentDirName = document.getElementById('current-dir-name');
 const copyPathBtn = document.getElementById('copy-path-btn');
 const sizeSelect = document.getElementById('size-select');
 const filterSelect = document.getElementById('filter-select');
+const searchInput = document.getElementById('search-input');
 const listToolbar = document.getElementById('list-toolbar');
 const toggleSortBtn = document.getElementById('toggle-sort-btn');
 const recursiveBtn = document.getElementById('recursive-btn');
@@ -41,11 +42,19 @@ let createdUrls = new Set();
 let thumbnailSizeIndex = parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10);
 let sortOrder = 'asc';
 let filterType = 'all';
+let searchQuery = '';
 let isRecursiveMode = false;
 const lastVisitedChild = new WeakMap();
 let currentDirHandle = null;
 let cachedItems = [];
 let cachedImageCount = 0;
+
+function resetSearchQuery() {
+    if (searchQuery) {
+        searchQuery = '';
+        searchInput.value = '';
+    }
+}
 const sizeOptions = [
     { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10 gap-2', originalAspect: false },
     { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 md:gap-3', originalAspect: false },
@@ -75,6 +84,7 @@ selectDirBtn.addEventListener('click', async () => {
     try {
         const dirHandle = await window.showDirectoryPicker();
         directoryHistory = [dirHandle];
+        resetSearchQuery();
         await processDirectory(dirHandle);
         scrollToVisitedChild(dirHandle);
     } catch (err) {
@@ -87,6 +97,7 @@ upDirBtn.addEventListener('click', async () => {
         const current = directoryHistory.pop();
         const parentDirHandle = directoryHistory[directoryHistory.length - 1];
         rememberVisitedChild(parentDirHandle, current.name);
+        resetSearchQuery();
         await processDirectory(parentDirHandle);
         scrollToVisitedChild(parentDirHandle);
     }
@@ -132,6 +143,18 @@ sizeSelect.addEventListener('change', () => {
 
 filterSelect.addEventListener('change', async () => {
     filterType = filterSelect.value;
+    if (directoryHistory.length > 0) {
+        const currentDir = directoryHistory[directoryHistory.length - 1];
+        if (isRecursiveMode) {
+            await processDirectoryRecursive(currentDir);
+        } else {
+            await processDirectory(currentDir);
+        }
+    }
+});
+
+searchInput.addEventListener('input', async () => {
+    searchQuery = searchInput.value.toLowerCase();
     if (directoryHistory.length > 0) {
         const currentDir = directoryHistory[directoryHistory.length - 1];
         if (isRecursiveMode) {
@@ -293,6 +316,10 @@ async function processDirectory(dirHandle) {
             filteredItems = items.filter(i => i.type === 'video');
         }
 
+        if (searchQuery) {
+            filteredItems = filteredItems.filter(i => i.name.toLowerCase().includes(searchQuery));
+        }
+
         if (filteredItems.length === 0) {
             showStatus('表示できるアイテムがありません。', 'info');
             return;
@@ -426,6 +453,7 @@ async function enterDirectory(dirHandle) {
     const current = directoryHistory[directoryHistory.length - 1];
     rememberVisitedChild(current, dirHandle.name);
     directoryHistory.push(dirHandle);
+    resetSearchQuery();
     await processDirectory(dirHandle);
     scrollToVisitedChild(dirHandle);
 }
@@ -504,6 +532,10 @@ async function processDirectoryRecursive(dirHandle) {
         // no change, show all images
     } else if (filterType === 'directory' || filterType === 'video') {
         items = [];
+    }
+
+    if (searchQuery) {
+        items = items.filter(i => i.name.toLowerCase().includes(searchQuery));
     }
 
     if (items.length === 0) {
