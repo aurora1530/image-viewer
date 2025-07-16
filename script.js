@@ -18,6 +18,7 @@ const currentDirName = document.getElementById('current-dir-name');
 const copyPathBtn = document.getElementById('copy-path-btn');
 const sizeSelect = document.getElementById('size-select');
 const filterSelect = document.getElementById('filter-select');
+const searchInput = document.getElementById('search-input');
 const listToolbar = document.getElementById('list-toolbar');
 const toggleSortBtn = document.getElementById('toggle-sort-btn');
 const recursiveBtn = document.getElementById('recursive-btn');
@@ -40,6 +41,7 @@ let createdUrls = new Set();
 let thumbnailSizeIndex = parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10);
 let sortOrder = 'asc';
 let filterType = 'all';
+let searchQuery = '';
 let isRecursiveMode = false;
 const lastVisitedChild = new WeakMap();
 let currentDirHandle = null;
@@ -114,6 +116,18 @@ sizeSelect.addEventListener('change', () => {
 
 filterSelect.addEventListener('change', async () => {
     filterType = filterSelect.value;
+    if (directoryHistory.length > 0) {
+        const currentDir = directoryHistory[directoryHistory.length - 1];
+        if (isRecursiveMode) {
+            await processDirectoryRecursive(currentDir);
+        } else {
+            await processDirectory(currentDir);
+        }
+    }
+});
+
+searchInput.addEventListener('input', async () => {
+    searchQuery = searchInput.value.toLowerCase();
     if (directoryHistory.length > 0) {
         const currentDir = directoryHistory[directoryHistory.length - 1];
         if (isRecursiveMode) {
@@ -273,6 +287,10 @@ async function processDirectory(dirHandle) {
             filteredItems = items.filter(i => i.type === 'image' && i.name.toLowerCase().endsWith('.gif'));
         } else if (filterType === 'video') {
             filteredItems = items.filter(i => i.type === 'video');
+        }
+
+        if (searchQuery) {
+            filteredItems = filteredItems.filter(i => i.name.toLowerCase().includes(searchQuery));
         }
 
         if (filteredItems.length === 0) {
@@ -486,6 +504,10 @@ async function processDirectoryRecursive(dirHandle) {
         // no change, show all images
     } else if (filterType === 'directory' || filterType === 'video') {
         items = [];
+    }
+
+    if (searchQuery) {
+        items = items.filter(i => i.name.toLowerCase().includes(searchQuery));
     }
 
     if (items.length === 0) {
