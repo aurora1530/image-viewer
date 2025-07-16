@@ -1,0 +1,174 @@
+body {
+    font-family: 'Inter', sans-serif;
+}
+/* スクロールバーのスタイル */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #1f2937;
+}
+::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
+/* 一覧表示のレイアウトを調整 */
+#item-list {
+    align-items: stretch; /* グリッド内のアイテムの高さを揃える */
+}
+.item-card { /* 全カードの基本設定 */
+    display: flex;
+    flex-direction: column;
+}
+.thumbnail-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background-color: #374151;
+    flex-grow: 1; /* サムネイルコンテナが余ったスペースを吸収するようにする */
+}
+.media-card { /* 画像・動画カードのスタイル */
+    background-color: transparent;
+    box-shadow: none;
+    border-radius: 0;
+}
+.thumbnail-container img,
+.thumbnail-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* 画像・動画はコンテナを埋める */
+}
+/* ディレクトリのサムネイルは、コンテナ内でアスペクト比を維持 */
+.directory-card .thumbnail-container > img,
+.directory-card .thumbnail-container > svg {
+    object-fit: contain;
+    max-width: 100%;
+    max-height: 100%;
+}
+#item-list.original-aspect .media-card .thumbnail-container {
+    aspect-ratio: auto;
+    flex-grow: 0;
+}
+#item-list.original-aspect .media-card .thumbnail-container img,
+#item-list.original-aspect .media-card .thumbnail-container video {
+    object-fit: contain;
+    width: 100%;
+    height: auto;
+}
+
+/* ディレクトリカード内の「開く」ボタン */
+.read-button {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(30, 41, 59, 0.8);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    pointer-events: none;
+}
+.group:hover .read-button {
+    opacity: 1;
+    pointer-events: auto;
+}
+/* ビューワーのスタイル */
+#viewer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.95);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+#viewer-pages {
+    display: flex;
+    width: 100%;
+    height: calc(100% - 80px);
+    justify-content: center;
+    align-items: center;
+    gap: 0;
+}
+.page-container {
+    width: 50%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+#viewer-pages .page-container:first-child { justify-content: flex-end; }
+#viewer-pages .page-container:last-child  { justify-content: flex-start; }
+
+.page-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+/* 単一表示モードのスタイル */
+#viewer-pages.single-view .page-container:first-child {
+    display: none;
+}
+#viewer-pages.single-view .page-container:last-child {
+    width: 100%;
+    justify-content: center;
+}
+/* 全画面表示のスタイル */
+html:fullscreen #viewer {
+    background-color: #000;
+}
+html:fullscreen #viewer-pages {
+    height: 100%;
+}
+#viewer-toolbar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    background-color: rgba(17, 24, 39, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    z-index: 60;
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+html:fullscreen #viewer-toolbar.hidden {
+    opacity: 0;
+    transform: translateY(100%);
+    pointer-events: none;
+}
+/* スピナー */
+.loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
