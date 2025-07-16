@@ -613,5 +613,12 @@ function scrollToVisitedChild(handle) {
     if (!childName) return;
     const target = Array.from(itemList.querySelectorAll('.directory-card'))
         .find(card => card.dataset.dirName === childName);
-    if (target) target.scrollIntoView();
+    if (target) {
+      setTimeout(() => {
+        target.scrollIntoView();
+        setTimeout(() => {
+          target.scrollIntoView();
+        }, 500);
+      }, 1000);
+    }
 }
