@@ -10,7 +10,7 @@
 </head>
 <body class="bg-gray-900 text-gray-200">
 
-    <div id="main-content" class="container mx-auto p-4 md:p-8">
+    <div id="main-content" class="container mx-auto p-4 md:p-8 pb-24">
         <header class="text-center mb-8">
             <h1 class="text-4xl font-bold text-white mb-2">ローカル画像ビューワー</h1>
             <p class="text-gray-400">ローカルのフォルダから画像を高速で閲覧します。</p>
@@ -31,14 +31,7 @@
                 パスをコピー
             </button>
             <h2 id="current-dir-name" class="text-xl text-gray-400 font-semibold order-first sm:order-none w-full sm:w-auto mb-2 sm:mb-0">フォルダを選択してください</h2>
-            <button id="toggle-size-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
-                </svg>
-                サイズ: 中
-            </button>
-            <button id="toggle-sort-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden"></button>
-            <button id="recursive-btn" class="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-3 px-6 rounded-lg shadow-lg border border-yellow-300 transition-transform transform hover:scale-105 hidden">全画像一覧</button>
+            <!-- size and sort controls moved to bottom toolbar -->
             <button id="select-dir-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
                 ルートフォルダを選択
             </button>
@@ -48,6 +41,13 @@
 
         <div id="item-list" class="grid">
             <!-- ディレクトリや画像がここに表示されます -->
+        </div>
+
+        <!-- 一覧表示用ツールバー -->
+        <div id="list-toolbar" class="fixed bottom-0 left-0 w-full bg-gray-800 bg-opacity-90 p-4 flex justify-center items-center gap-4 hidden">
+            <select id="size-select" class="bg-gray-700 text-white rounded-lg px-3 py-2"></select>
+            <button id="toggle-sort-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"></button>
+            <button id="recursive-btn" class="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-2 px-4 rounded-lg border border-yellow-300">全画像一覧</button>
         </div>
     </div>
 
