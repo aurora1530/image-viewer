@@ -25,38 +25,49 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #6b7280;
         }
-        /* ★変更点: サムネイルのコンテナのアスペクト比を横長に変更 */
+
+        /* ★変更点: 一覧表示のレイアウトを調整 */
+        #item-list {
+            align-items: stretch; /* グリッド内のアイテムの高さを揃える */
+        }
+        .item-card { /* 全カードの基本設定 */
+            display: flex;
+            flex-direction: column;
+        }
         .thumbnail-container {
-            aspect-ratio: 16 / 9;
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
             background-color: #374151;
-            position: relative;
         }
-        .thumbnail-container img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+        .directory-card .thumbnail-container {
+            aspect-ratio: 16 / 9; /* ディレクトリはアスペクト比を固定 */
         }
-        /* 元サイズ表示モード用のスタイル */
-        #item-list.original-aspect .image-card .thumbnail-container {
-            aspect-ratio: auto;
+        .media-card .thumbnail-container {
+            flex-grow: 1; /* 画像・動画は高さを可変に */
         }
-        #item-list.original-aspect .image-card .thumbnail-container img {
-            object-fit: contain;
-            width: 100%;
-            height: auto;
-        }
-        /* ★変更点: 画像カードの角丸をなくす */
-        #item-list .image-card {
+        .media-card { /* 画像・動画カードのスタイル */
             background-color: transparent;
             box-shadow: none;
             border-radius: 0;
         }
-        #item-list .image-card .thumbnail-container {
-             border-radius: 0;
+        .thumbnail-container img,
+        .thumbnail-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #item-list.original-aspect .media-card .thumbnail-container {
+            aspect-ratio: auto;
+            flex-grow: 0;
+        }
+        #item-list.original-aspect .media-card .thumbnail-container img,
+        #item-list.original-aspect .media-card .thumbnail-container video {
+            object-fit: contain;
+            width: 100%;
+            height: auto;
         }
 
         /* ディレクトリカード内の「開く」ボタン */
@@ -219,7 +230,7 @@
                 <img id="right-page" src="" alt="Right Page">
             </div>
         </div>
-        <!-- ★追加: 動画プレーヤー -->
+        <!-- 動画プレーヤー -->
         <div id="viewer-video-container" class="w-full h-full flex items-center justify-center p-4 hidden">
             <video id="viewer-video" class="max-w-full max-h-full" controls></video>
         </div>
@@ -271,7 +282,7 @@
         let isSinglePageView = false;
         let toolbarHideTimer = null;
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-        const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg']; // ★追加
+        const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
         let createdUrls = new Set();
         let thumbnailSizeIndex = 1;
         const sizeOptions = [
@@ -351,9 +362,7 @@
             }
 
             if (viewer.style.display === 'none') return;
-            // ビデオ再生中はページめくりを無効化
             if (!viewerVideoContainer.classList.contains('hidden')) return;
-
             const step = isSinglePageView ? 1 : 2;
             switch (e.key) {
                 case 'ArrowLeft': navigatePages(step); break;
@@ -423,40 +432,36 @@
             }
         }
 
+        // ★大幅改修: カード生成ロジック
         function createItemCard(item, parentHandle, imageIndex) {
             const card = document.createElement('div');
+            card.className = 'group item-card'; // 基本クラス
+
             const thumbnailContainer = document.createElement('div');
             thumbnailContainer.className = 'thumbnail-container cursor-pointer';
 
-            if (item.type === 'image') {
-                // ★変更点: 画像はファイル名非表示、角丸なし
-                card.className = 'group image-card cursor-pointer';
-                card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
-                card.appendChild(thumbnailContainer);
-            } else {
-                // ディレクトリと動画は共通のスタイル
-                card.className = 'group bg-gray-800 rounded-lg shadow-md overflow-hidden';
+            if (item.type === 'directory') {
+                card.classList.add('directory-card', 'bg-gray-800', 'rounded-lg', 'shadow-md', 'overflow-hidden');
                 const title = document.createElement('h3');
                 title.className = 'p-3 text-sm font-semibold text-white flex items-start justify-between flex-wrap gap-y-1';
                 const titleText = document.createElement('span');
                 titleText.textContent = item.name;
                 titleText.className = "break-all";
                 title.appendChild(titleText);
+                const badge = document.createElement('span');
+                badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2 self-center';
+                badge.textContent = 'フォルダ';
+                title.appendChild(badge);
                 card.appendChild(thumbnailContainer);
                 card.appendChild(title);
-
-                if (item.type === 'directory') {
-                    const badge = document.createElement('span');
-                    badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2 self-center';
-                    badge.textContent = 'フォルダ';
-                    title.appendChild(badge);
-                    thumbnailContainer.addEventListener('click', () => enterDirectory(item.handle));
-                    title.addEventListener('click', (e) => { if (e.target !== badge) enterDirectory(item.handle); });
-                } else if (item.type === 'video') {
-                    const badge = document.createElement('span');
-                    badge.className = 'text-xs bg-blue-600 text-blue-100 px-2 py-1 rounded-full ml-2 self-center';
-                    badge.textContent = '動画';
-                    title.appendChild(badge);
+                thumbnailContainer.addEventListener('click', () => enterDirectory(item.handle));
+                title.addEventListener('click', (e) => { if (e.target !== badge) enterDirectory(item.handle); });
+            } else {
+                card.classList.add('media-card'); // 画像と動画の共通クラス
+                card.appendChild(thumbnailContainer);
+                if (item.type === 'image') {
+                    card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
+                } else { // video
                     card.addEventListener('click', () => openVideoPlayer(item.handle));
                 }
             }
@@ -472,12 +477,25 @@
                         createdUrls.add(thumbnailUrl);
                         const img = document.createElement('img');
                         img.src = thumbnailUrl;
-                        img.alt = `Thumbnail for ${item.name}`;
-                        thumbnailContainer.innerHTML = '';
+                        img.alt = item.name;
                         thumbnailContainer.appendChild(img);
                     } catch(e) { console.error(`サムネイル生成失敗: ${item.name}`, e); }
+                } else if (item.type === 'video') {
+                    const playIconOverlay = document.createElement('div');
+                    playIconOverlay.className = 'absolute inset-0 flex items-center justify-center pointer-events-none z-10';
+                    playIconOverlay.innerHTML = `<svg class="w-16 h-16 text-white opacity-70 group-hover:opacity-90 transition-opacity" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
+                    thumbnailContainer.appendChild(playIconOverlay);
+                    try {
+                        const file = await item.handle.getFile();
+                        const videoUrl = URL.createObjectURL(file);
+                        createdUrls.add(videoUrl);
+                        const video = document.createElement('video');
+                        video.src = videoUrl + '#t=0.5'; // 0.5秒時点のフレームを取得
+                        video.muted = true;
+                        video.preload = 'metadata';
+                        thumbnailContainer.insertBefore(video, playIconOverlay);
+                    } catch(e) { console.error(`ビデオサムネイル生成失敗: ${item.name}`, e); }
                 } else if (item.type === 'directory') {
-                    // ディレクトリのサムネイル探索
                     let imageForThumbnail = null;
                     const directImages = await getImageFilesFromDirectory(item.handle);
                     if (directImages.length > 0) {
@@ -511,8 +529,6 @@
                     } else {
                         thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
                     }
-                } else if (item.type === 'video') {
-                    thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
                 }
             })();
         }
@@ -539,9 +555,7 @@
             try {
                 showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
                 currentImageFiles = await getImageFilesFromDirectory(dirHandle);
-                if (currentImageFiles.length === 0) {
-                    showStatus('このフォルダには表示できる画像がありません。', 'info'); return;
-                }
+                if (currentImageFiles.length === 0) { showStatus('このフォルダには表示できる画像がありません。', 'info'); return; }
                 currentImageIndex = startIndex;
                 pageOffset = 0;
                 isSinglePageView = false;
@@ -571,6 +585,7 @@
                 const url = URL.createObjectURL(file);
                 createdUrls.add(url);
                 viewerVideo.src = url;
+                viewerVideo.play();
             } catch (err) {
                 console.error("動画再生エラー:", err);
                 showStatus('動画の再生に失敗しました。', 'error');
@@ -578,12 +593,9 @@
             }
         }
 
-        // --- UI更新 & ビューワー関連のヘルパー関数 ---
-
         function closeViewer() {
             viewer.style.display = 'none';
             document.body.style.overflow = 'auto';
-            // 画像ビューワーのクリーンアップ
             if (leftPageImg.dataset.url) URL.revokeObjectURL(leftPageImg.dataset.url);
             if (rightPageImg.dataset.url) URL.revokeObjectURL(rightPageImg.dataset.url);
             createdUrls.delete(leftPageImg.dataset.url);
@@ -591,7 +603,6 @@
             leftPageImg.src = ''; rightPageImg.src = '';
             leftPageImg.dataset.url = ''; rightPageImg.dataset.url = '';
             currentImageFiles = [];
-            // 動画プレーヤーのクリーンアップ
             if (viewerVideo.src) {
                 viewerVideo.pause();
                 URL.revokeObjectURL(viewerVideo.src);
