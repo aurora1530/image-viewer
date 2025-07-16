@@ -40,6 +40,16 @@
             height: 100%;
             object-fit: cover;
         }
+        /* ★追加: 元サイズ表示モード用のスタイル */
+        #item-list.original-aspect .image-card .thumbnail-container {
+            aspect-ratio: auto; /* アスペクト比を自動に */
+        }
+        #item-list.original-aspect .image-card .thumbnail-container img {
+            object-fit: contain; /* 画像全体が収まるように */
+            width: 100%;
+            height: auto;
+        }
+
         /* ディレクトリカード内の「開く」ボタン */
         .read-button {
             position: absolute;
@@ -171,7 +181,6 @@
                 パスをコピー
             </button>
             <h2 id="current-dir-name" class="text-xl text-gray-400 font-semibold order-first sm:order-none w-full sm:w-auto mb-2 sm:mb-0">フォルダを選択してください</h2>
-            <!-- ★変更点: サイズ切り替えボタンを追加 -->
             <button id="toggle-size-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
                   <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
@@ -234,7 +243,7 @@
         const upDirBtn = document.getElementById('up-dir-btn');
         const currentDirName = document.getElementById('current-dir-name');
         const copyPathBtn = document.getElementById('copy-path-btn');
-        const toggleSizeBtn = document.getElementById('toggle-size-btn'); // ★追加
+        const toggleSizeBtn = document.getElementById('toggle-size-btn');
 
         // グローバル変数
         let directoryHistory = [];
@@ -245,11 +254,13 @@
         let toolbarHideTimer = null;
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
         let createdUrls = new Set();
-        let thumbnailSizeIndex = 1; // 0:小, 1:中, 2:大 ★追加
-        const sizeOptions = [ // ★追加
-            { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4' },
-            { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6' },
-            { name: '大', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 md:gap-8' }
+        let thumbnailSizeIndex = 1; // 0:小, 1:中, 2:大, 3:元
+        // ★変更点: サイズオプションに「元サイズ」を追加
+        const sizeOptions = [
+            { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
+            { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
+            { name: '大', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 md:gap-8', originalAspect: false },
+            { name: '元サイズ', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8', originalAspect: true }
         ];
 
         // --- イベントリスナー ---
@@ -278,8 +289,6 @@
 
         copyPathBtn.addEventListener('click', () => {
             if (directoryHistory.length > 0) {
-                // セキュリティ上の理由から、ブラウザは絶対パスへのアクセスを許可しません。
-                // そのため、ルートとして選択したフォルダからの相対パスをコピーします。
                 const path = directoryHistory.map(handle => handle.name).join('/');
                 navigator.clipboard.writeText(path)
                     .then(() => {
@@ -293,7 +302,6 @@
             }
         });
 
-        // ★追加: サイズ切り替えボタンのイベント
         toggleSizeBtn.addEventListener('click', () => {
             thumbnailSizeIndex = (thumbnailSizeIndex + 1) % sizeOptions.length;
             updateThumbnailSize();
@@ -353,7 +361,7 @@
             createdUrls.clear();
 
             showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
-            updateThumbnailSize(); // ★追加: ディレクトリ移動時にサイズを再適用
+            updateThumbnailSize();
             itemList.innerHTML = '';
             updateNavigationUI();
 
@@ -396,13 +404,12 @@
             const thumbnailContainer = document.createElement('div');
             thumbnailContainer.className = 'thumbnail-container cursor-pointer';
 
-            // ★変更点: truncateを削除し、flex-wrapを追加
             const title = document.createElement('h3');
             title.className = 'p-3 text-sm font-semibold text-white flex items-start justify-between flex-wrap gap-y-1';
 
             const titleText = document.createElement('span');
             titleText.textContent = item.name;
-            titleText.className = "break-all"; // 単語の途中でも改行を許可
+            titleText.className = "break-all";
 
             title.appendChild(titleText);
             card.appendChild(thumbnailContainer);
@@ -474,7 +481,7 @@
                 })();
 
             } else if (item.type === 'image') {
-                card.classList.add('cursor-pointer');
+                card.classList.add('cursor-pointer', 'image-card'); // ★変更点: image-cardクラスを追加
                 card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
 
                 (async () => {
@@ -664,7 +671,7 @@
             upDirBtn.classList.toggle('hidden', !isNotRoot);
             const hasHistory = directoryHistory.length > 0;
             copyPathBtn.classList.toggle('hidden', !hasHistory);
-            toggleSizeBtn.classList.toggle('hidden', !hasHistory); // ★追加
+            toggleSizeBtn.classList.toggle('hidden', !hasHistory);
 
             if (hasHistory) {
                 currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
@@ -673,11 +680,12 @@
             }
         }
 
-        // ★追加: サムネイルサイズを更新する関数
+        // ★変更点: サムネイルサイズ更新ロジックを修正
         function updateThumbnailSize() {
             const size = sizeOptions[thumbnailSizeIndex];
-            // `grid`クラスは常に保持し、サイズ関連のクラスのみを置き換える
             itemList.className = 'grid ' + size.classes;
+            itemList.classList.toggle('original-aspect', size.originalAspect);
+
             const svgIcon = toggleSizeBtn.querySelector('svg').outerHTML;
             toggleSizeBtn.innerHTML = `${svgIcon} サイズ: ${size.name}`;
         }
