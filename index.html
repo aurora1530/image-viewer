@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ローカル漫画ビューワー</title>
+    <title>ローカル画像ビューワー</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -40,7 +40,7 @@
             height: 100%;
             object-fit: cover;
         }
-        /* ディレクトリカード内の「読む」ボタン */
+        /* ディレクトリカード内の「開く」ボタン */
         .read-button {
             position: absolute;
             bottom: 10px;
@@ -152,8 +152,8 @@
 
     <div id="main-content" class="container mx-auto p-4 md:p-8">
         <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-white mb-2">ローカル漫画ビューワー</h1>
-            <p class="text-gray-400">ローカルのフォルダから漫画を高速で閲覧します。</p>
+            <h1 class="text-4xl font-bold text-white mb-2">ローカル画像ビューワー</h1>
+            <p class="text-gray-400">ローカルのフォルダから画像を高速で閲覧します。</p>
         </header>
 
         <div class="text-center mb-8 flex justify-center items-center gap-4 flex-wrap">
@@ -228,7 +228,7 @@
         let isSinglePageView = false;
         let toolbarHideTimer = null;
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-        let createdUrls = new Set(); // ★変更点: 生成したObject URLを管理
+        let createdUrls = new Set();
 
         // --- イベントリスナー ---
 
@@ -291,12 +291,7 @@
 
         // --- メインロジック ---
 
-        /**
-         * ディレクトリを処理して、中のアイテム（ディレクトリと画像）を一覧表示する
-         * @param {FileSystemDirectoryHandle} dirHandle
-         */
         async function processDirectory(dirHandle) {
-            // ★変更点: 前のディレクトリで生成したURLをすべて解放
             for (const url of createdUrls) {
                 URL.revokeObjectURL(url);
             }
@@ -338,12 +333,6 @@
             }
         }
 
-        /**
-         * アイテム（ディレクトリ or 画像）のカードを作成して表示
-         * @param {object} item - {type, handle, name}
-         * @param {FileSystemDirectoryHandle} parentHandle - 親ディレクトリのハンドル
-         * @param {number} imageIndex - 画像の場合のインデックス
-         */
         function createItemCard(item, parentHandle, imageIndex) {
             const card = document.createElement('div');
             card.className = 'group bg-gray-800 rounded-lg shadow-md overflow-hidden';
@@ -352,7 +341,7 @@
             thumbnailContainer.className = 'thumbnail-container cursor-pointer';
 
             const title = document.createElement('h3');
-            title.className = 'p-3 text-sm font-semibold text-white truncate';
+            title.className = 'p-3 text-sm font-semibold text-white truncate flex items-center justify-between';
             title.textContent = item.name;
 
             card.appendChild(thumbnailContainer);
@@ -360,11 +349,19 @@
             itemList.appendChild(card);
 
             if (item.type === 'directory') {
+                // ★変更点: ディレクトリを示すバッジを追加
+                const badge = document.createElement('span');
+                badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2';
+                badge.textContent = 'フォルダ';
+                title.appendChild(badge);
+
                 thumbnailContainer.addEventListener('click', async () => {
                     directoryHistory.push(item.handle);
                     await processDirectory(item.handle);
                 });
-                title.addEventListener('click', async () => {
+                title.addEventListener('click', async (e) => {
+                    // バッジをクリックしたときは何もしない
+                    if (e.target === badge) return;
                     directoryHistory.push(item.handle);
                     await processDirectory(item.handle);
                 });
@@ -374,16 +371,17 @@
                     if (imageFilesInSubdir.length > 0) {
                         const file = await imageFilesInSubdir[0].getFile();
                         const thumbnailUrl = URL.createObjectURL(file);
-                        createdUrls.add(thumbnailUrl); // ★変更点: URLを管理セットに追加
+                        createdUrls.add(thumbnailUrl);
                         const img = document.createElement('img');
                         img.src = thumbnailUrl;
                         img.alt = `Thumbnail for ${item.name}`;
                         thumbnailContainer.innerHTML = '';
                         thumbnailContainer.appendChild(img);
 
+                        // ★変更点: ボタンのテキストを「開く」に変更
                         const readBtn = document.createElement('button');
                         readBtn.className = 'read-button';
-                        readBtn.textContent = '読む';
+                        readBtn.textContent = '開く';
                         readBtn.onclick = (e) => {
                             e.stopPropagation();
                             openViewer(item.handle, 0);
@@ -403,7 +401,7 @@
                     try {
                         const file = await item.handle.getFile();
                         const thumbnailUrl = URL.createObjectURL(file);
-                        createdUrls.add(thumbnailUrl); // ★変更点: URLを管理セットに追加
+                        createdUrls.add(thumbnailUrl);
                         const img = document.createElement('img');
                         img.src = thumbnailUrl;
                         img.alt = `Thumbnail for ${item.name}`;
@@ -466,7 +464,6 @@
         function closeViewer() {
             viewer.style.display = 'none';
             document.body.style.overflow = 'auto';
-            // ★変更点: ビューワーで使用したURLも解放
             if (leftPageImg.dataset.url) {
                 URL.revokeObjectURL(leftPageImg.dataset.url);
                 createdUrls.delete(leftPageImg.dataset.url);
@@ -523,7 +520,6 @@
         }
 
         async function displayImage(imgElement, index) {
-            // ★変更点: 古いURLの解放処理をより安全に
             if (imgElement.dataset.url) {
                 URL.revokeObjectURL(imgElement.dataset.url);
                 createdUrls.delete(imgElement.dataset.url);
@@ -533,7 +529,7 @@
                 try {
                     const file = await currentImageFiles[index].getFile();
                     const url = URL.createObjectURL(file);
-                    createdUrls.add(url); // ★変更点: URLを管理セットに追加
+                    createdUrls.add(url);
                     imgElement.src = url;
                     imgElement.dataset.url = url;
                     imgElement.style.visibility = 'visible';
