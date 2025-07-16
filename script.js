@@ -231,10 +231,9 @@ async function processDirectory(dirHandle) {
 
         showStatus('', 'clear');
 
-        const imageItems = items.filter(item => item.type === 'image');
-
+        let imgIdx = 0;
         items.forEach(item => {
-            const imageIndex = item.type === 'image' ? imageItems.findIndex(imgItem => imgItem.name === item.name) : -1;
+            const imageIndex = item.type === 'image' ? imgIdx++ : -1;
             createItemCard(item, dirHandle, imageIndex);
         });
 
@@ -365,15 +364,21 @@ async function getImageFilesFromDirectory(dirHandle) {
     return imageFiles;
 }
 
-async function collectImagesRecursively(dirHandle, list = []) {
+async function collectImagesRecursively(dirHandle, list = [], basePath = '') {
     const images = await getImageFilesFromDirectory(dirHandle);
     images.forEach((img, idx) => {
-        list.push({ handle: img, name: img.name, parentHandle: dirHandle, imageIndex: idx });
+        list.push({
+            handle: img,
+            name: img.name,
+            parentHandle: dirHandle,
+            imageIndex: idx,
+            path: `${basePath}/${img.name}`
+        });
     });
     try {
         for await (const entry of dirHandle.values()) {
             if (entry.kind === 'directory') {
-                await collectImagesRecursively(entry, list);
+                await collectImagesRecursively(entry, list, `${basePath}/${entry.name}`);
             }
         }
     } catch (e) { console.error('再帰的な画像取得に失敗', e); }
@@ -393,12 +398,12 @@ async function processDirectoryRecursive(dirHandle) {
 
     const items = await collectImagesRecursively(dirHandle);
     items.sort((a, b) => {
-        const nameA = a.name.toLowerCase();
-        const nameB = b.name.toLowerCase();
+        const pathA = a.path.toLowerCase();
+        const pathB = b.path.toLowerCase();
         if (sortOrder === 'asc') {
-            return nameA.localeCompare(nameB, undefined, { numeric: true });
+            return pathA.localeCompare(pathB, undefined, { numeric: true });
         } else {
-            return nameB.localeCompare(nameA, undefined, { numeric: true });
+            return pathB.localeCompare(pathA, undefined, { numeric: true });
         }
     });
 
