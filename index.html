@@ -172,11 +172,9 @@
         <div id="status-area" class="text-center my-8"></div>
 
         <div id="item-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-            <!-- ディレクトリや画像がここに表示されます -->
-        </div>
+            </div>
     </div>
 
-    <!-- 画像ビューワー -->
     <div id="viewer">
         <div id="viewer-pages">
             <div class="page-container">
@@ -333,6 +331,12 @@
             }
         }
 
+        /**
+         * アイテム（ディレクトリ or 画像）のカードを作成して表示
+         * @param {object} item - {type, handle, name}
+         * @param {FileSystemDirectoryHandle} parentHandle - 親ディレクトリのハンドル
+         * @param {number} imageIndex - 画像の場合のインデックス
+         */
         function createItemCard(item, parentHandle, imageIndex) {
             const card = document.createElement('div');
             card.className = 'group bg-gray-800 rounded-lg shadow-md overflow-hidden';
@@ -349,7 +353,6 @@
             itemList.appendChild(card);
 
             if (item.type === 'directory') {
-                // ★変更点: ディレクトリを示すバッジを追加
                 const badge = document.createElement('span');
                 badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2';
                 badge.textContent = 'フォルダ';
@@ -360,16 +363,40 @@
                     await processDirectory(item.handle);
                 });
                 title.addEventListener('click', async (e) => {
-                    // バッジをクリックしたときは何もしない
                     if (e.target === badge) return;
                     directoryHistory.push(item.handle);
                     await processDirectory(item.handle);
                 });
 
                 (async () => {
-                    const imageFilesInSubdir = await getImageFilesFromDirectory(item.handle);
-                    if (imageFilesInSubdir.length > 0) {
-                        const file = await imageFilesInSubdir[0].getFile();
+                    let imageForThumbnail = null;
+                    // ★変更点: サムネイル探索ロジック
+                    // 1. ディレクトリ直下を探索
+                    const directImages = await getImageFilesFromDirectory(item.handle);
+                    if (directImages.length > 0) {
+                        imageForThumbnail = directImages[0];
+                    } else {
+                        // 2. 直下にない場合、サブディレクトリの1階層下まで探索
+                        const subSubDirs = [];
+                        try {
+                             for await (const entry of item.handle.values()) {
+                                if (entry.kind === 'directory') subSubDirs.push(entry);
+                            }
+                        } catch (e) { console.error("サブディレクトリの読み込みに失敗", e); }
+
+                        subSubDirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+                        if (subSubDirs.length > 0) {
+                            const deepImages = await getImageFilesFromDirectory(subSubDirs[0]);
+                            if (deepImages.length > 0) {
+                                imageForThumbnail = deepImages[0];
+                            }
+                        }
+                    }
+
+                    // サムネイル画像の表示
+                    if (imageForThumbnail) {
+                        const file = await imageForThumbnail.getFile();
                         const thumbnailUrl = URL.createObjectURL(file);
                         createdUrls.add(thumbnailUrl);
                         const img = document.createElement('img');
@@ -377,8 +404,12 @@
                         img.alt = `Thumbnail for ${item.name}`;
                         thumbnailContainer.innerHTML = '';
                         thumbnailContainer.appendChild(img);
+                    } else {
+                        thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
+                    }
 
-                        // ★変更点: ボタンのテキストを「開く」に変更
+                    // 「開く」ボタンの表示（直下に画像がある場合のみ）
+                    if (directImages.length > 0) {
                         const readBtn = document.createElement('button');
                         readBtn.className = 'read-button';
                         readBtn.textContent = '開く';
@@ -387,9 +418,6 @@
                             openViewer(item.handle, 0);
                         };
                         thumbnailContainer.appendChild(readBtn);
-
-                    } else {
-                        thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
                     }
                 })();
 
