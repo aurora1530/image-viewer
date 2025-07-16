@@ -213,7 +213,7 @@
                 サイズ: 中
             </button>
             <button id="toggle-sort-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden"></button>
-            <button id="recursive-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">全画像一覧</button>
+            <button id="recursive-btn" class="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-3 px-6 rounded-lg shadow-lg border border-yellow-300 transition-transform transform hover:scale-105 hidden">全画像一覧</button>
             <button id="select-dir-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
                 ルートフォルダを選択
             </button>
@@ -362,6 +362,8 @@
                 recursiveBtn.textContent = '全画像一覧';
                 await processDirectory(currentDir);
             } else {
+                const confirmLoad = confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？');
+                if (!confirmLoad) return;
                 isRecursiveMode = true;
                 recursiveBtn.textContent = '戻る';
                 await processDirectoryRecursive(currentDir);
