@@ -22,6 +22,7 @@ const recursiveBtn = document.getElementById('recursive-btn');
 const viewerPages = document.getElementById('viewer-pages');
 const viewerVideoContainer = document.getElementById('viewer-video-container');
 const viewerVideo = document.getElementById('viewer-video');
+let initialPath = new URLSearchParams(window.location.search).get('path') || '';
 
 // グローバル変数
 let directoryHistory = [];
@@ -36,6 +37,22 @@ let createdUrls = new Set();
 let thumbnailSizeIndex = 1;
 let sortOrder = 'asc';
 let isRecursiveMode = false;
+
+function getCurrentRelativePath(extraName = '') {
+    const parts = directoryHistory.slice(1).map(h => h.name);
+    if (extraName) parts.push(extraName);
+    return parts.join('/');
+}
+
+function buildUrlForPath(path) {
+    return window.location.pathname + (path ? `?path=${encodeURIComponent(path)}` : '');
+}
+
+function updateUrlPath() {
+    const path = getCurrentRelativePath();
+    const newUrl = buildUrlForPath(path);
+    window.history.replaceState(null, '', newUrl);
+}
 const sizeOptions = [
     { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
     { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
@@ -53,7 +70,12 @@ selectDirBtn.addEventListener('click', async () => {
     try {
         const dirHandle = await window.showDirectoryPicker();
         directoryHistory = [dirHandle];
-        await processDirectory(dirHandle);
+        if (initialPath) {
+            await openPathFromRoot(dirHandle, initialPath);
+            initialPath = '';
+        } else {
+            await processDirectory(dirHandle);
+        }
     } catch (err) {
         if (err.name !== 'AbortError') console.error('ディレクトリ選択エラー:', err);
     }
@@ -179,6 +201,7 @@ async function processDirectory(dirHandle) {
     updateThumbnailSize();
     itemList.innerHTML = '';
     updateNavigationUI();
+    updateUrlPath();
 
     const items = [];
     try {
@@ -226,8 +249,11 @@ async function processDirectory(dirHandle) {
 }
 
 function createItemCard(item, parentHandle, imageIndex) {
-    const card = document.createElement('div');
+    const card = item.type === 'directory' ? document.createElement('a') : document.createElement('div');
     card.className = 'group item-card';
+    if (item.type === 'directory') {
+        card.href = buildUrlForPath(getCurrentRelativePath(item.name));
+    }
 
     const thumbnailContainer = document.createElement('div');
     thumbnailContainer.className = 'thumbnail-container cursor-pointer';
@@ -246,8 +272,14 @@ function createItemCard(item, parentHandle, imageIndex) {
         title.appendChild(badge);
         card.appendChild(thumbnailContainer);
         card.appendChild(title);
-        thumbnailContainer.addEventListener('click', () => enterDirectory(item.handle));
-        title.addEventListener('click', (e) => { if (e.target !== badge) enterDirectory(item.handle); });
+        const navigate = (e) => {
+            if (e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+                e.preventDefault();
+                enterDirectory(item.handle);
+            }
+        };
+        card.addEventListener('click', navigate);
+        title.addEventListener('click', (e) => { if (e.target !== badge) navigate(e); });
     } else {
         card.classList.add('media-card');
         card.appendChild(thumbnailContainer);
@@ -329,6 +361,21 @@ async function enterDirectory(dirHandle) {
     await processDirectory(dirHandle);
 }
 
+async function openPathFromRoot(rootHandle, path) {
+    const parts = path.split('/').filter(Boolean);
+    let currentHandle = rootHandle;
+    for (const part of parts) {
+        try {
+            currentHandle = await currentHandle.getDirectoryHandle(part);
+            directoryHistory.push(currentHandle);
+        } catch (e) {
+            console.warn('サブディレクトリが見つかりません:', part);
+            break;
+        }
+    }
+    await processDirectory(currentHandle);
+}
+
 async function getImageFilesFromDirectory(dirHandle) {
     const imageFiles = [];
     try {
@@ -367,6 +414,7 @@ async function processDirectoryRecursive(dirHandle) {
     updateThumbnailSize();
     itemList.innerHTML = '';
     updateNavigationUI();
+    updateUrlPath();
 
     const items = await collectImagesRecursively(dirHandle);
     items.sort((a, b) => {

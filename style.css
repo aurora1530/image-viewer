@@ -24,6 +24,8 @@ body {
 .item-card { /* 全カードの基本設定 */
     display: flex;
     flex-direction: column;
+    text-decoration: none;
+    color: inherit;
 }
 .thumbnail-container {
     position: relative;
