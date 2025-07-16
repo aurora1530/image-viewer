@@ -213,6 +213,7 @@
                 サイズ: 中
             </button>
             <button id="toggle-sort-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden"></button>
+            <button id="recursive-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">全画像一覧</button>
             <button id="select-dir-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
                 ルートフォルダを選択
             </button>
@@ -277,6 +278,7 @@
         const copyPathBtn = document.getElementById('copy-path-btn');
         const toggleSizeBtn = document.getElementById('toggle-size-btn');
         const toggleSortBtn = document.getElementById('toggle-sort-btn');
+        const recursiveBtn = document.getElementById('recursive-btn');
         const viewerPages = document.getElementById('viewer-pages');
         const viewerVideoContainer = document.getElementById('viewer-video-container');
         const viewerVideo = document.getElementById('viewer-video');
@@ -293,6 +295,7 @@
         let createdUrls = new Set();
         let thumbnailSizeIndex = 1;
         let sortOrder = 'asc';
+        let isRecursiveMode = false;
         const sizeOptions = [
             { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
             { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
@@ -348,6 +351,20 @@
             sortOrder = (sortOrder === 'asc') ? 'desc' : 'asc';
             if (directoryHistory.length > 0) {
                 await processDirectory(directoryHistory[directoryHistory.length - 1]);
+            }
+        });
+
+        recursiveBtn.addEventListener('click', async () => {
+            if (directoryHistory.length === 0) return;
+            const currentDir = directoryHistory[directoryHistory.length - 1];
+            if (isRecursiveMode) {
+                isRecursiveMode = false;
+                recursiveBtn.textContent = '全画像一覧';
+                await processDirectory(currentDir);
+            } else {
+                isRecursiveMode = true;
+                recursiveBtn.textContent = '戻る';
+                await processDirectoryRecursive(currentDir);
             }
         });
 
@@ -583,6 +600,54 @@
             return imageFiles;
         }
 
+        async function collectImagesRecursively(dirHandle, list = []) {
+            const images = await getImageFilesFromDirectory(dirHandle);
+            images.forEach((img, idx) => {
+                list.push({ handle: img, name: img.name, parentHandle: dirHandle, imageIndex: idx });
+            });
+            try {
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'directory') {
+                        await collectImagesRecursively(entry, list);
+                    }
+                }
+            } catch (e) { console.error('再帰的な画像取得に失敗', e); }
+            return list;
+        }
+
+        async function processDirectoryRecursive(dirHandle) {
+            for (const url of createdUrls) {
+                URL.revokeObjectURL(url);
+            }
+            createdUrls.clear();
+
+            showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
+            updateThumbnailSize();
+            itemList.innerHTML = '';
+            updateNavigationUI();
+
+            const items = await collectImagesRecursively(dirHandle);
+            items.sort((a, b) => {
+                const nameA = a.name.toLowerCase();
+                const nameB = b.name.toLowerCase();
+                if (sortOrder === 'asc') {
+                    return nameA.localeCompare(nameB, undefined, { numeric: true });
+                } else {
+                    return nameB.localeCompare(nameA, undefined, { numeric: true });
+                }
+            });
+
+            if (items.length === 0) {
+                showStatus('表示できる画像がありません。', 'info');
+                return;
+            }
+
+            showStatus('', 'clear');
+            items.forEach(item => {
+                createItemCard({ type: 'image', handle: item.handle, name: item.name }, item.parentHandle, item.imageIndex);
+            });
+        }
+
         async function openViewer(dirHandle, startIndex) {
             try {
                 showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
@@ -754,10 +819,14 @@
             copyPathBtn.classList.toggle('hidden', !hasHistory);
             toggleSizeBtn.classList.toggle('hidden', !hasHistory);
             toggleSortBtn.classList.toggle('hidden', !hasHistory);
+            recursiveBtn.classList.toggle('hidden', !hasHistory);
             if (hasHistory) {
                 currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
+                recursiveBtn.textContent = isRecursiveMode ? '戻る' : '全画像一覧';
             } else {
                 currentDirName.textContent = 'フォルダを選択してください';
+                isRecursiveMode = false;
+                recursiveBtn.textContent = '全画像一覧';
             }
             updateSortButtonUI();
         }
