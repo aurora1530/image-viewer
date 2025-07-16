@@ -93,7 +93,7 @@
             opacity: 1;
             pointer-events: auto;
         }
-        /* ★変更点: ビューワーのスタイルを再構築 */
+        /* ビューワーのスタイル */
         #viewer {
             position: fixed;
             top: 0;
@@ -121,7 +121,6 @@
             display: flex;
             align-items: center;
         }
-        /* 見開き表示: 左ページは右寄せ、右ページは左寄せ */
         #viewer-pages .page-container:first-child { justify-content: flex-end; }
         #viewer-pages .page-container:last-child  { justify-content: flex-start; }
 
@@ -147,7 +146,6 @@
         html:fullscreen #viewer-pages {
             height: 100%;
         }
-        /* --- 全画面スタイルここまで --- */
         #viewer-toolbar {
             position: absolute;
             bottom: 0;
@@ -363,8 +361,17 @@
             pageOffset = 1 - pageOffset;
             displayPages();
         });
-        nextBtn.addEventListener('click', () => navigatePages(isSinglePageView ? -1 : -2));
-        prevBtn.addEventListener('click', () => navigatePages(isSinglePageView ? 1 : 2));
+
+        // ★変更点: ページ送りボタンの方向をR-to-Lに戻す
+        nextBtn.addEventListener('click', () => {
+            const step = isSinglePageView ? 1 : 2;
+            navigatePages(-step);
+        });
+        prevBtn.addEventListener('click', () => {
+            const step = isSinglePageView ? 1 : 2;
+            navigatePages(step);
+        });
+
         fullscreenBtn.addEventListener('click', toggleFullscreen);
 
         document.addEventListener('keydown', (e) => {
@@ -380,10 +387,12 @@
 
             if (viewer.style.display === 'none') return;
             if (!viewerVideoContainer.classList.contains('hidden')) return;
+
+            // ★変更点: ユーザーの要望により、右から左へ読み進める操作に戻す (右矢印: 前のページ, 左矢印: 次のページ)
             const step = isSinglePageView ? 1 : 2;
             switch (e.key) {
-                case 'ArrowLeft': navigatePages(step); break;
-                case 'ArrowRight': navigatePages(-step); break;
+                case 'ArrowLeft': navigatePages(step); break; // 次へ
+                case 'ArrowRight': navigatePages(-step); break; // 前へ
                 case 'Escape': closeViewer(); break;
             }
         });
@@ -645,7 +654,6 @@
             }
         }
 
-        // ★変更点: JSでのスタイル操作を削除し、CSSクラスに一本化
         async function displayPages() {
             viewerPages.classList.toggle('single-view', isSinglePageView);
             const total = currentImageFiles.length;
@@ -692,9 +700,22 @@
         }
 
         function navigatePages(direction) {
+            const total = currentImageFiles.length;
+            if (total <= 1) return;
+
             let newIndex = currentImageIndex + direction;
-            if (newIndex >= currentImageFiles.length) newIndex = currentImageFiles.length - 1;
-            if (newIndex < 0) newIndex = 0;
+
+            if (newIndex >= total) {
+                newIndex = 0;
+            } else if (newIndex < 0) {
+                if (isSinglePageView) {
+                    newIndex = total - 1;
+                } else {
+                    let lastSpreadIndex = (total % 2 === 0) ? total - 2 : total - 1;
+                    newIndex = lastSpreadIndex < 0 ? 0 : lastSpreadIndex;
+                }
+            }
+
             if (newIndex !== currentImageIndex) {
                 currentImageIndex = newIndex;
                 displayPages();
