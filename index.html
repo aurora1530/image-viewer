@@ -40,7 +40,7 @@
             height: 100%;
             object-fit: cover;
         }
-        /* ★追加: ディレクトリカード内の「読む」ボタン */
+        /* ディレクトリカード内の「読む」ボタン */
         .read-button {
             position: absolute;
             bottom: 10px;
@@ -228,6 +228,7 @@
         let isSinglePageView = false;
         let toolbarHideTimer = null;
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+        let createdUrls = new Set(); // ★変更点: 生成したObject URLを管理
 
         // --- イベントリスナー ---
 
@@ -295,6 +296,12 @@
          * @param {FileSystemDirectoryHandle} dirHandle
          */
         async function processDirectory(dirHandle) {
+            // ★変更点: 前のディレクトリで生成したURLをすべて解放
+            for (const url of createdUrls) {
+                URL.revokeObjectURL(url);
+            }
+            createdUrls.clear();
+
             showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
             itemList.innerHTML = '';
             updateNavigationUI();
@@ -332,7 +339,7 @@
         }
 
         /**
-         * ★大幅改修: アイテム（ディレクトリ or 画像）のカードを作成して表示
+         * アイテム（ディレクトリ or 画像）のカードを作成して表示
          * @param {object} item - {type, handle, name}
          * @param {FileSystemDirectoryHandle} parentHandle - 親ディレクトリのハンドル
          * @param {number} imageIndex - 画像の場合のインデックス
@@ -353,7 +360,6 @@
             itemList.appendChild(card);
 
             if (item.type === 'directory') {
-                // ディレクトリをクリックしたら下の階層へ
                 thumbnailContainer.addEventListener('click', async () => {
                     directoryHistory.push(item.handle);
                     await processDirectory(item.handle);
@@ -363,51 +369,44 @@
                     await processDirectory(item.handle);
                 });
 
-                // ★このディレクトリ内に画像があるか非同期でチェック
                 (async () => {
                     const imageFilesInSubdir = await getImageFilesFromDirectory(item.handle);
                     if (imageFilesInSubdir.length > 0) {
-                        // あれば最初の画像をサムネイルに
                         const file = await imageFilesInSubdir[0].getFile();
                         const thumbnailUrl = URL.createObjectURL(file);
+                        createdUrls.add(thumbnailUrl); // ★変更点: URLを管理セットに追加
                         const img = document.createElement('img');
                         img.src = thumbnailUrl;
                         img.alt = `Thumbnail for ${item.name}`;
-                        img.onload = () => URL.revokeObjectURL(thumbnailUrl);
                         thumbnailContainer.innerHTML = '';
                         thumbnailContainer.appendChild(img);
 
-                        // 「読む」ボタンを追加
                         const readBtn = document.createElement('button');
                         readBtn.className = 'read-button';
                         readBtn.textContent = '読む';
                         readBtn.onclick = (e) => {
-                            e.stopPropagation(); // 親要素へのクリックイベント伝播を停止
+                            e.stopPropagation();
                             openViewer(item.handle, 0);
                         };
                         thumbnailContainer.appendChild(readBtn);
 
                     } else {
-                        // なければフォルダアイコン
                         thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
                     }
                 })();
 
             } else if (item.type === 'image') {
-                // 画像をクリックしたらビューワーを開く
                 card.classList.add('cursor-pointer');
                 card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
 
-                // サムネイル生成
                 (async () => {
                     try {
                         const file = await item.handle.getFile();
                         const thumbnailUrl = URL.createObjectURL(file);
+                        createdUrls.add(thumbnailUrl); // ★変更点: URLを管理セットに追加
                         const img = document.createElement('img');
                         img.src = thumbnailUrl;
                         img.alt = `Thumbnail for ${item.name}`;
-                        // メモリリーク防止のため、img要素がDOMから消える時にURLを解放するのが望ましいが、
-                        // このアプリのライフサイクルではページを離れるまでで十分と判断
                         thumbnailContainer.innerHTML = '';
                         thumbnailContainer.appendChild(img);
                     } catch(e) {
@@ -418,11 +417,6 @@
             }
         }
 
-        /**
-         * 指定されたディレクトリから画像ファイルのハンドル一覧を取得してソートする
-         * @param {FileSystemDirectoryHandle} dirHandle
-         * @returns {Promise<FileSystemFileHandle[]>}
-         */
         async function getImageFilesFromDirectory(dirHandle) {
             const imageFiles = [];
             try {
@@ -472,10 +466,19 @@
         function closeViewer() {
             viewer.style.display = 'none';
             document.body.style.overflow = 'auto';
-            if (leftPageImg.src) URL.revokeObjectURL(leftPageImg.src);
-            if (rightPageImg.src) URL.revokeObjectURL(rightPageImg.src);
+            // ★変更点: ビューワーで使用したURLも解放
+            if (leftPageImg.dataset.url) {
+                URL.revokeObjectURL(leftPageImg.dataset.url);
+                createdUrls.delete(leftPageImg.dataset.url);
+            }
+            if (rightPageImg.dataset.url) {
+                URL.revokeObjectURL(rightPageImg.dataset.url);
+                createdUrls.delete(rightPageImg.dataset.url);
+            }
             leftPageImg.src = '';
             rightPageImg.src = '';
+            leftPageImg.dataset.url = '';
+            rightPageImg.dataset.url = '';
             currentImageFiles = [];
             if (document.fullscreenElement) document.exitFullscreen();
         }
@@ -520,14 +523,17 @@
         }
 
         async function displayImage(imgElement, index) {
+            // ★変更点: 古いURLの解放処理をより安全に
             if (imgElement.dataset.url) {
                 URL.revokeObjectURL(imgElement.dataset.url);
+                createdUrls.delete(imgElement.dataset.url);
                 imgElement.dataset.url = '';
             }
             if (index >= 0 && index < currentImageFiles.length) {
                 try {
                     const file = await currentImageFiles[index].getFile();
                     const url = URL.createObjectURL(file);
+                    createdUrls.add(url); // ★変更点: URLを管理セットに追加
                     imgElement.src = url;
                     imgElement.dataset.url = url;
                     imgElement.style.visibility = 'visible';
