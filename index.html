@@ -163,7 +163,6 @@
                 </svg>
                 上の階層へ
             </button>
-            <!-- ★変更点: パスコピーボタンを追加 -->
             <button id="copy-path-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
@@ -172,6 +171,13 @@
                 パスをコピー
             </button>
             <h2 id="current-dir-name" class="text-xl text-gray-400 font-semibold order-first sm:order-none w-full sm:w-auto mb-2 sm:mb-0">フォルダを選択してください</h2>
+            <!-- ★変更点: サイズ切り替えボタンを追加 -->
+            <button id="toggle-size-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
+                </svg>
+                サイズ: 中
+            </button>
             <button id="select-dir-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
                 ルートフォルダを選択
             </button>
@@ -179,7 +185,7 @@
 
         <div id="status-area" class="text-center my-8"></div>
 
-        <div id="item-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+        <div id="item-list" class="grid">
             <!-- ディレクトリや画像がここに表示されます -->
         </div>
     </div>
@@ -227,7 +233,8 @@
         const viewerToolbar = document.getElementById('viewer-toolbar');
         const upDirBtn = document.getElementById('up-dir-btn');
         const currentDirName = document.getElementById('current-dir-name');
-        const copyPathBtn = document.getElementById('copy-path-btn'); // ★追加
+        const copyPathBtn = document.getElementById('copy-path-btn');
+        const toggleSizeBtn = document.getElementById('toggle-size-btn'); // ★追加
 
         // グローバル変数
         let directoryHistory = [];
@@ -238,6 +245,12 @@
         let toolbarHideTimer = null;
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
         let createdUrls = new Set();
+        let thumbnailSizeIndex = 1; // 0:小, 1:中, 2:大 ★追加
+        const sizeOptions = [ // ★追加
+            { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4' },
+            { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6' },
+            { name: '大', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 md:gap-8' }
+        ];
 
         // --- イベントリスナー ---
 
@@ -263,9 +276,10 @@
             }
         });
 
-        // ★追加: パスコピーボタンのイベント
         copyPathBtn.addEventListener('click', () => {
             if (directoryHistory.length > 0) {
+                // セキュリティ上の理由から、ブラウザは絶対パスへのアクセスを許可しません。
+                // そのため、ルートとして選択したフォルダからの相対パスをコピーします。
                 const path = directoryHistory.map(handle => handle.name).join('/');
                 navigator.clipboard.writeText(path)
                     .then(() => {
@@ -277,6 +291,12 @@
                         showStatus('パスのコピーに失敗しました。', 'error');
                     });
             }
+        });
+
+        // ★追加: サイズ切り替えボタンのイベント
+        toggleSizeBtn.addEventListener('click', () => {
+            thumbnailSizeIndex = (thumbnailSizeIndex + 1) % sizeOptions.length;
+            updateThumbnailSize();
         });
 
         closeViewerBtn.addEventListener('click', closeViewer);
@@ -293,7 +313,6 @@
         prevBtn.addEventListener('click', () => navigatePages(isSinglePageView ? 1 : 2));
         fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-        // ★変更点: Alt+左矢印のショートカットを追加
         document.addEventListener('keydown', (e) => {
             if (e.altKey && e.key === 'ArrowLeft') {
                 e.preventDefault();
@@ -334,6 +353,7 @@
             createdUrls.clear();
 
             showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
+            updateThumbnailSize(); // ★追加: ディレクトリ移動時にサイズを再適用
             itemList.innerHTML = '';
             updateNavigationUI();
 
@@ -376,17 +396,22 @@
             const thumbnailContainer = document.createElement('div');
             thumbnailContainer.className = 'thumbnail-container cursor-pointer';
 
+            // ★変更点: truncateを削除し、flex-wrapを追加
             const title = document.createElement('h3');
-            title.className = 'p-3 text-sm font-semibold text-white truncate flex items-center justify-between';
-            title.textContent = item.name;
+            title.className = 'p-3 text-sm font-semibold text-white flex items-start justify-between flex-wrap gap-y-1';
 
+            const titleText = document.createElement('span');
+            titleText.textContent = item.name;
+            titleText.className = "break-all"; // 単語の途中でも改行を許可
+
+            title.appendChild(titleText);
             card.appendChild(thumbnailContainer);
             card.appendChild(title);
             itemList.appendChild(card);
 
             if (item.type === 'directory') {
                 const badge = document.createElement('span');
-                badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2';
+                badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2 self-center';
                 badge.textContent = 'フォルダ';
                 title.appendChild(badge);
 
@@ -634,17 +659,27 @@
             toolbarHideTimer = setTimeout(() => viewerToolbar.classList.add('hidden'), 2000);
         }
 
-        // ★変更点: パスコピーボタンの表示/非表示を制御
         function updateNavigationUI() {
             const isNotRoot = directoryHistory.length > 1;
             upDirBtn.classList.toggle('hidden', !isNotRoot);
-            copyPathBtn.classList.toggle('hidden', directoryHistory.length === 0); // ルート選択前は非表示
+            const hasHistory = directoryHistory.length > 0;
+            copyPathBtn.classList.toggle('hidden', !hasHistory);
+            toggleSizeBtn.classList.toggle('hidden', !hasHistory); // ★追加
 
-            if (directoryHistory.length > 0) {
+            if (hasHistory) {
                 currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
             } else {
                 currentDirName.textContent = 'フォルダを選択してください';
             }
+        }
+
+        // ★追加: サムネイルサイズを更新する関数
+        function updateThumbnailSize() {
+            const size = sizeOptions[thumbnailSizeIndex];
+            // `grid`クラスは常に保持し、サイズ関連のクラスのみを置き換える
+            itemList.className = 'grid ' + size.classes;
+            const svgIcon = toggleSizeBtn.querySelector('svg').outerHTML;
+            toggleSizeBtn.innerHTML = `${svgIcon} サイズ: ${size.name}`;
         }
     </script>
 </body>
