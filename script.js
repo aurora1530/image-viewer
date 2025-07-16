@@ -22,6 +22,7 @@ const filterSelect = document.getElementById('filter-select');
 const searchInput = document.getElementById('search-input');
 const listToolbar = document.getElementById('list-toolbar');
 const toggleSortBtn = document.getElementById('toggle-sort-btn');
+const reloadBtn = document.getElementById('reload-btn');
 const recursiveBtn = document.getElementById('recursive-btn');
 const viewerPages = document.getElementById('viewer-pages');
 const viewerVideoContainer = document.getElementById('viewer-video-container');
@@ -169,6 +170,18 @@ toggleSortBtn.addEventListener('click', async () => {
     sortOrder = (sortOrder === 'asc') ? 'desc' : 'asc';
     if (directoryHistory.length > 0) {
         await processDirectory(directoryHistory[directoryHistory.length - 1]);
+    }
+});
+
+reloadBtn.addEventListener('click', async () => {
+    if (directoryHistory.length > 0) {
+        const currentDir = directoryHistory[directoryHistory.length - 1];
+        if (isRecursiveMode) {
+            await processDirectoryRecursive(currentDir);
+        } else {
+            await processDirectory(currentDir);
+            scrollToVisitedChild(currentDir);
+        }
     }
 });
 
