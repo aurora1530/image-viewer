@@ -40,7 +40,7 @@
             height: 100%;
             object-fit: cover;
         }
-        /* ★追加: 元サイズ表示モード用のスタイル */
+        /* 元サイズ表示モード用のスタイル */
         #item-list.original-aspect .image-card .thumbnail-container {
             aspect-ratio: auto; /* アスペクト比を自動に */
         }
@@ -117,8 +117,9 @@
             width: 50%;
             max-width: none;
         }
+        /* ★変更点: 全画面表示でもcontainを使い、画像がはみ出さないようにする */
         html:fullscreen .page-container img {
-            object-fit: cover;
+            object-fit: contain;
         }
         /* --- 全画面スタイルここまで --- */
         #viewer-toolbar {
@@ -255,7 +256,6 @@
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
         let createdUrls = new Set();
         let thumbnailSizeIndex = 1; // 0:小, 1:中, 2:大, 3:元
-        // ★変更点: サイズオプションに「元サイズ」を追加
         const sizeOptions = [
             { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
             { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
@@ -481,7 +481,7 @@
                 })();
 
             } else if (item.type === 'image') {
-                card.classList.add('cursor-pointer', 'image-card'); // ★変更点: image-cardクラスを追加
+                card.classList.add('cursor-pointer', 'image-card');
                 card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
 
                 (async () => {
@@ -680,7 +680,6 @@
             }
         }
 
-        // ★変更点: サムネイルサイズ更新ロジックを修正
         function updateThumbnailSize() {
             const size = sizeOptions[thumbnailSizeIndex];
             itemList.className = 'grid ' + size.classes;
