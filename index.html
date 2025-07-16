@@ -6,7 +6,125 @@
     <title>ローカル漫画ビューワー</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* スクロールバーのスタイル */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* サムネイルのコンテナ */
+        .thumbnail-container {
+            aspect-ratio: 3 / 4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background-color: #374151;
+        }
+        .thumbnail-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        /* ビューワーのスタイル */
+        #viewer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        #viewer-pages {
+            display: flex;
+            width: 100%;
+            height: calc(100% - 80px);
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        .page-container {
+            width: 48%;
+            height: 100%;
+            max-width: 90vh;
+        }
+        .page-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        /* --- 全画面表示の時だけ適用されるスタイル --- */
+        html:fullscreen #viewer {
+            background-color: #000;
+        }
+        html:fullscreen #viewer-pages {
+            height: 100%;
+            gap: 0;
+        }
+        html:fullscreen .page-container {
+            width: 50%;
+            max-width: none;
+        }
+        html:fullscreen .page-container img {
+            object-fit: cover;
+        }
+        /* --- 全画面スタイルここまで --- */
+        #viewer-toolbar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 80px;
+            background-color: rgba(17, 24, 39, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            z-index: 60;
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+        html:fullscreen #viewer-toolbar.hidden {
+            opacity: 0;
+            transform: translateY(100%);
+            pointer-events: none;
+        }
+        /* スピナー */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body class="bg-gray-900 text-gray-200">
 
@@ -16,11 +134,10 @@
             <p class="text-gray-400">ローカルのフォルダから漫画を高速で閲覧します。</p>
         </header>
 
-        <!-- ★変更点: ナビゲーションエリアの構造を変更 -->
         <div class="text-center mb-8 flex justify-center items-center gap-4 flex-wrap">
             <button id="up-dir-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  <path fill-rule="evenodd" d="M10.707 4.293a1 1 0 010 1.414L7.414 9H14a1 1 0 110 2H7.414l3.293 3.293a1 1 0 01-1.414 1.414l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 0z" clip-rule="evenodd" />
                 </svg>
                 上の階層へ
             </button>
@@ -30,12 +147,10 @@
             </button>
         </div>
 
-        <div id="status-area" class="text-center my-8">
-            <!-- メッセージやローディングインジケータがここに表示されます -->
-        </div>
+        <div id="status-area" class="text-center my-8"></div>
 
-        <div id="directory-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-            <!-- サブディレクトリがここに表示されます -->
+        <div id="item-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+            <!-- ディレクトリや画像がここに表示されます -->
         </div>
     </div>
 
@@ -64,6 +179,342 @@
         </div>
     </div>
 
-    <script src="script.js" defer></script>
+    <script>
+        // DOM要素の取得
+        const selectDirBtn = document.getElementById('select-dir-btn');
+        const itemList = document.getElementById('item-list');
+        const statusArea = document.getElementById('status-area');
+        const viewer = document.getElementById('viewer');
+        const leftPageImg = document.getElementById('left-page');
+        const rightPageImg = document.getElementById('right-page');
+        const closeViewerBtn = document.getElementById('close-viewer-btn');
+        const adjustSpreadBtn = document.getElementById('adjust-spread-btn');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const pageCounter = document.getElementById('page-counter');
+        const toggleViewBtn = document.getElementById('toggle-view-btn');
+        const viewerToolbar = document.getElementById('viewer-toolbar');
+        const upDirBtn = document.getElementById('up-dir-btn');
+        const currentDirName = document.getElementById('current-dir-name');
+
+        // グローバル変数
+        let directoryHistory = [];
+        let currentImageFiles = [];
+        let currentImageIndex = 0;
+        let pageOffset = 0;
+        let isSinglePageView = false;
+        let toolbarHideTimer = null;
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+
+        // --- イベントリスナー ---
+
+        selectDirBtn.addEventListener('click', async () => {
+            if (!('showDirectoryPicker' in window)) {
+                showStatus('お使いのブラウザはこの機能に対応していません。Google ChromeやMicrosoft Edgeの最新版をお試しください。', 'error');
+                return;
+            }
+            try {
+                const dirHandle = await window.showDirectoryPicker();
+                directoryHistory = [dirHandle];
+                await processDirectory(dirHandle);
+            } catch (err) {
+                if (err.name !== 'AbortError') console.error('ディレクトリ選択エラー:', err);
+            }
+        });
+
+        upDirBtn.addEventListener('click', async () => {
+            if (directoryHistory.length > 1) {
+                directoryHistory.pop();
+                const parentDirHandle = directoryHistory[directoryHistory.length - 1];
+                await processDirectory(parentDirHandle);
+            }
+        });
+
+        closeViewerBtn.addEventListener('click', closeViewer);
+        toggleViewBtn.addEventListener('click', () => {
+            isSinglePageView = !isSinglePageView;
+            updateViewModeUI();
+            displayPages();
+        });
+        adjustSpreadBtn.addEventListener('click', () => {
+            pageOffset = 1 - pageOffset;
+            displayPages();
+        });
+        nextBtn.addEventListener('click', () => navigatePages(isSinglePageView ? -1 : -2));
+        prevBtn.addEventListener('click', () => navigatePages(isSinglePageView ? 1 : 2));
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+        document.addEventListener('keydown', (e) => {
+            if (viewer.style.display === 'none') return;
+            const step = isSinglePageView ? 1 : 2;
+            switch (e.key) {
+                case 'ArrowLeft': navigatePages(step); break;
+                case 'ArrowRight': navigatePages(-step); break;
+                case 'Escape': closeViewer(); break;
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                viewer.addEventListener('mousemove', resetToolbarTimer);
+                resetToolbarTimer();
+            } else {
+                viewer.removeEventListener('mousemove', resetToolbarTimer);
+                clearTimeout(toolbarHideTimer);
+                viewerToolbar.classList.remove('hidden');
+            }
+        });
+
+        // --- 関数 ---
+
+        /**
+         * ディレクトリを処理して、中のアイテム（ディレクトリと画像）を一覧表示する
+         * @param {FileSystemDirectoryHandle} dirHandle
+         */
+        async function processDirectory(dirHandle) {
+            showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
+            itemList.innerHTML = '';
+            updateNavigationUI();
+
+            const items = [];
+            try {
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'directory') {
+                        items.push({ type: 'directory', handle: entry, name: entry.name });
+                    } else if (entry.kind === 'file' && imageExtensions.some(ext => entry.name.toLowerCase().endsWith(ext))) {
+                        items.push({ type: 'image', handle: entry, name: entry.name });
+                    }
+                }
+
+                items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+                if (items.length === 0) {
+                    showStatus('表示できるアイテムがありません。', 'info');
+                    return;
+                }
+
+                showStatus('', 'clear');
+
+                const imageItems = items.filter(item => item.type === 'image');
+
+                items.forEach((item, index) => {
+                    if (item.type === 'image') {
+                        // 画像アイテムのインデックスは、画像だけのリスト内でのインデックスとする
+                        const imageIndex = imageItems.findIndex(imgItem => imgItem.name === item.name);
+                        createItemCard(item, dirHandle, imageIndex);
+                    } else {
+                        createItemCard(item, dirHandle);
+                    }
+                });
+
+            } catch (err) {
+                console.error('ディレクトリ処理エラー:', err);
+                showStatus('フォルダの読み込み中にエラーが発生しました。', 'error');
+            }
+        }
+
+        /**
+         * アイテム（ディレクトリ or 画像）のカードを作成して表示
+         * @param {object} item - {type, handle, name}
+         * @param {FileSystemDirectoryHandle} parentHandle - 親ディレクトリのハンドル
+         * @param {number} [imageIndex] - 画像の場合のインデックス
+         */
+        function createItemCard(item, parentHandle, imageIndex) {
+            const card = document.createElement('div');
+            card.className = 'group cursor-pointer bg-gray-800 rounded-lg shadow-md overflow-hidden transform transition-transform hover:-translate-y-1';
+
+            const thumbnailContainer = document.createElement('div');
+            thumbnailContainer.className = 'thumbnail-container';
+
+            const title = document.createElement('h3');
+            title.className = 'p-3 text-sm font-semibold text-white truncate';
+            title.textContent = item.name;
+
+            card.appendChild(thumbnailContainer);
+            card.appendChild(title);
+            itemList.appendChild(card);
+
+            if (item.type === 'directory') {
+                card.addEventListener('click', async () => {
+                    directoryHistory.push(item.handle);
+                    await processDirectory(item.handle);
+                });
+                thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
+            } else if (item.type === 'image') {
+                card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
+
+                // サムネイル生成
+                (async () => {
+                    try {
+                        const file = await item.handle.getFile();
+                        const thumbnailUrl = URL.createObjectURL(file);
+                        const img = document.createElement('img');
+                        img.src = thumbnailUrl;
+                        img.alt = `Thumbnail for ${item.name}`;
+                        img.onload = () => URL.revokeObjectURL(thumbnailUrl);
+                        thumbnailContainer.innerHTML = '';
+                        thumbnailContainer.appendChild(img);
+                    } catch(e) {
+                         console.error(`サムネイル生成失敗: ${item.name}`, e);
+                         thumbnailContainer.innerHTML = '<span class="text-xs text-red-400">読込失敗</span>';
+                    }
+                })();
+            }
+        }
+
+        async function openViewer(dirHandle, startIndex) {
+            try {
+                showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
+
+                const imageHandles = [];
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file' && imageExtensions.some(ext => entry.name.toLowerCase().endsWith(ext))) {
+                        imageHandles.push(entry);
+                    }
+                }
+                imageHandles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+                currentImageFiles = imageHandles;
+
+                if (currentImageFiles.length === 0) {
+                    showStatus('このフォルダには表示できる画像がありません。', 'info');
+                    return;
+                }
+
+                currentImageIndex = startIndex;
+                pageOffset = 0;
+                isSinglePageView = false;
+
+                viewer.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+
+                updateViewModeUI();
+                displayPages();
+                showStatus('', 'clear');
+
+            } catch (err) {
+                console.error('ビューワー起動エラー:', err);
+                showStatus('画像の読み込みに失敗しました。', 'error');
+                closeViewer();
+            }
+        }
+
+        function closeViewer() {
+            viewer.style.display = 'none';
+            document.body.style.overflow = 'auto';
+            if (leftPageImg.src) URL.revokeObjectURL(leftPageImg.src);
+            if (rightPageImg.src) URL.revokeObjectURL(rightPageImg.src);
+            leftPageImg.src = '';
+            rightPageImg.src = '';
+            currentImageFiles = [];
+            if (document.fullscreenElement) document.exitFullscreen();
+        }
+
+        function updateViewModeUI() {
+            if (isSinglePageView) {
+                toggleViewBtn.textContent = '見開きに戻す';
+                adjustSpreadBtn.style.display = 'none';
+            } else {
+                toggleViewBtn.textContent = '単一表示にする';
+                adjustSpreadBtn.style.display = 'inline-block';
+            }
+        }
+
+        async function displayPages() {
+            const leftContainer = leftPageImg.parentElement;
+            const rightContainer = rightPageImg.parentElement;
+            const total = currentImageFiles.length;
+
+            if (isSinglePageView) {
+                leftContainer.style.display = 'none';
+                rightContainer.style.width = '100%';
+                await displayImage(rightPageImg, currentImageIndex);
+                await displayImage(leftPageImg, -1);
+                pageCounter.textContent = `${currentImageIndex + 1} / ${total}`;
+            } else {
+                leftContainer.style.display = 'block';
+                rightContainer.style.width = '50%';
+                let baseIndex = currentImageIndex;
+                if (baseIndex % 2 !== 0 && baseIndex > 0) baseIndex--;
+
+                const rightPageIndex = baseIndex - pageOffset;
+                const leftPageIndex = baseIndex + 1 - pageOffset;
+
+                await displayImage(rightPageImg, rightPageIndex);
+                await displayImage(leftPageImg, leftPageIndex);
+
+                const rightPageNum = rightPageIndex >= 0 && rightPageIndex < total ? rightPageIndex + 1 : '-';
+                const leftPageNum = leftPageIndex >= 0 && leftPageIndex < total ? leftPageIndex + 1 : '-';
+                pageCounter.textContent = `${leftPageNum} - ${rightPageNum} / ${total}`;
+            }
+        }
+
+        async function displayImage(imgElement, index) {
+            if (imgElement.dataset.url) {
+                URL.revokeObjectURL(imgElement.dataset.url);
+                imgElement.dataset.url = '';
+            }
+            if (index >= 0 && index < currentImageFiles.length) {
+                try {
+                    const file = await currentImageFiles[index].getFile();
+                    const url = URL.createObjectURL(file);
+                    imgElement.src = url;
+                    imgElement.dataset.url = url;
+                    imgElement.style.visibility = 'visible';
+                } catch (err) {
+                    console.error(`画像表示エラー (index: ${index}):`, err);
+                    imgElement.src = '';
+                    imgElement.style.visibility = 'hidden';
+                }
+            } else {
+                imgElement.src = '';
+                imgElement.style.visibility = 'hidden';
+            }
+        }
+
+        function navigatePages(direction) {
+            let newIndex = currentImageIndex + direction;
+            if (newIndex >= currentImageFiles.length) newIndex = currentImageFiles.length - 1;
+            if (newIndex < 0) newIndex = 0;
+            if (newIndex !== currentImageIndex) {
+                currentImageIndex = newIndex;
+                displayPages();
+            }
+        }
+
+        function showStatus(message, type) {
+            statusArea.innerHTML = message;
+            statusArea.className = 'text-center my-8 p-4 rounded-lg ';
+            switch (type) {
+                case 'info': statusArea.classList.add('bg-blue-900', 'text-blue-200'); break;
+                case 'error': statusArea.classList.add('bg-red-900', 'text-red-200'); break;
+                case 'loading': statusArea.classList.add('text-gray-300'); break;
+                case 'clear': statusArea.innerHTML = ''; statusArea.className = ''; break;
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.error(err));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function resetToolbarTimer() {
+            clearTimeout(toolbarHideTimer);
+            viewerToolbar.classList.remove('hidden');
+            toolbarHideTimer = setTimeout(() => viewerToolbar.classList.add('hidden'), 2000);
+        }
+
+        function updateNavigationUI() {
+            upDirBtn.classList.toggle('hidden', directoryHistory.length <= 1);
+            if (directoryHistory.length > 0) {
+                currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
+            } else {
+                currentDirName.textContent = 'フォルダを選択してください';
+            }
+        }
+    </script>
 </body>
 </html>
