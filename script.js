@@ -33,6 +33,8 @@ let isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
 let toolbarHideTimer = null;
 const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
+const LAZY_LOAD_THRESHOLD = 500; // threshold for enabling lazy loading
+let lazyLoadObserver = null;
 let createdUrls = new Set();
 let thumbnailSizeIndex = 1;
 let sortOrder = 'asc';
@@ -193,6 +195,10 @@ async function processDirectory(dirHandle) {
         URL.revokeObjectURL(url);
     }
     createdUrls.clear();
+    if (lazyLoadObserver) {
+        lazyLoadObserver.disconnect();
+        lazyLoadObserver = null;
+    }
 
     showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
     updateThumbnailSize();
@@ -200,6 +206,7 @@ async function processDirectory(dirHandle) {
     updateNavigationUI();
 
     const items = [];
+    let imageCount = 0;
     try {
         for await (const entry of dirHandle.values()) {
             if (entry.kind === 'directory') {
@@ -208,6 +215,7 @@ async function processDirectory(dirHandle) {
                 const lowerName = entry.name.toLowerCase();
                 if (imageExtensions.some(ext => lowerName.endsWith(ext))) {
                     items.push({ type: 'image', handle: entry, name: entry.name });
+                    imageCount++;
                 } else if (videoExtensions.some(ext => lowerName.endsWith(ext))) {
                     items.push({ type: 'video', handle: entry, name: entry.name });
                 }
@@ -231,10 +239,12 @@ async function processDirectory(dirHandle) {
 
         showStatus('', 'clear');
 
+        const useLazy = directoryHistory.length > 1 && imageCount >= LAZY_LOAD_THRESHOLD;
+
         let imgIdx = 0;
         items.forEach(item => {
             const imageIndex = item.type === 'image' ? imgIdx++ : -1;
-            createItemCard(item, dirHandle, imageIndex);
+            createItemCard(item, dirHandle, imageIndex, useLazy);
         });
 
     } catch (err) {
@@ -243,7 +253,8 @@ async function processDirectory(dirHandle) {
     }
 }
 
-function createItemCard(item, parentHandle, imageIndex) {
+
+function createItemCard(item, parentHandle, imageIndex, lazyLoad = false) {
     const card = document.createElement('div');
     card.className = 'group item-card';
 
@@ -257,7 +268,7 @@ function createItemCard(item, parentHandle, imageIndex) {
         title.className = 'p-3 text-sm font-semibold text-white flex items-start justify-between flex-wrap gap-y-1';
         const titleText = document.createElement('span');
         titleText.textContent = item.name;
-        titleText.className = "break-all";
+        titleText.className = 'break-all';
         title.appendChild(titleText);
         const badge = document.createElement('span');
         badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2 self-center';
@@ -272,14 +283,16 @@ function createItemCard(item, parentHandle, imageIndex) {
         card.appendChild(thumbnailContainer);
         if (item.type === 'image') {
             card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
-        } else { // video
+        } else {
             card.addEventListener('click', () => openVideoPlayer(item.handle));
         }
     }
 
     itemList.appendChild(card);
 
-    (async () => {
+    const loadThumb = async () => {
+        if (card.dataset.loaded) return;
+        card.dataset.loaded = '1';
         if (item.type === 'image') {
             try {
                 const file = await item.handle.getFile();
@@ -318,10 +331,10 @@ function createItemCard(item, parentHandle, imageIndex) {
             } else {
                 const subSubDirs = [];
                 try {
-                     for await (const entry of item.handle.values()) {
+                    for await (const entry of item.handle.values()) {
                         if (entry.kind === 'directory') subSubDirs.push(entry);
                     }
-                } catch (e) { console.error("サブディレクトリの読み込みに失敗", e); }
+                } catch (e) { console.error('サブディレクトリの読み込みに失敗', e); }
                 subSubDirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
                 if (subSubDirs.length > 0) {
                     const deepImages = await getImageFilesFromDirectory(subSubDirs[0]);
@@ -337,12 +350,19 @@ function createItemCard(item, parentHandle, imageIndex) {
                 img.alt = `Thumbnail for ${item.name}`;
                 thumbnailContainer.insertBefore(img, thumbnailContainer.firstChild);
             } else {
-                thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
+                thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>`;
             }
         }
-    })();
-}
+    };
 
+    if (lazyLoad) {
+        ensureLazyLoadObserver();
+        card._loadThumb = loadThumb;
+        lazyLoadObserver.observe(card);
+    } else {
+        loadThumb();
+    }
+}
 async function enterDirectory(dirHandle) {
     const current = directoryHistory[directoryHistory.length - 1];
     rememberVisitedChild(current, dirHandle.name);
@@ -390,6 +410,10 @@ async function processDirectoryRecursive(dirHandle) {
         URL.revokeObjectURL(url);
     }
     createdUrls.clear();
+    if (lazyLoadObserver) {
+        lazyLoadObserver.disconnect();
+        lazyLoadObserver = null;
+    }
 
     showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
     updateThumbnailSize();
@@ -413,8 +437,9 @@ async function processDirectoryRecursive(dirHandle) {
     }
 
     showStatus('', 'clear');
+    const useLazy = directoryHistory.length > 1 && items.length >= LAZY_LOAD_THRESHOLD;
     items.forEach(item => {
-        createItemCard({ type: 'image', handle: item.handle, name: item.name }, item.parentHandle, item.imageIndex);
+        createItemCard({ type: 'image', handle: item.handle, name: item.name }, item.parentHandle, item.imageIndex, useLazy);
     });
 }
 
@@ -622,6 +647,21 @@ function updateSortButtonUI() {
 populateSizeSelect();
 updateThumbnailSize();
 updateSortButtonUI();
+
+function ensureLazyLoadObserver() {
+    if (!lazyLoadObserver) {
+        lazyLoadObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const card = entry.target;
+                    if (card._loadThumb) card._loadThumb();
+                    lazyLoadObserver.unobserve(card);
+                    delete card._loadThumb;
+                }
+            });
+        }, { rootMargin: '200px' });
+    }
+}
 
 function rememberVisitedChild(parentHandle, childName) {
     if (parentHandle && childName) {
