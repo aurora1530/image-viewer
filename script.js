@@ -11,18 +11,19 @@ const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
 const pageCounter = document.getElementById('page-counter');
-const toggleViewBtn = document.getElementById('toggle-view-btn'); // ★追加
+const toggleViewBtn = document.getElementById('toggle-view-btn');
+const viewerToolbar = document.getElementById('viewer-toolbar'); // ★追加
 
 // グローバル変数
 let currentDirectoryHandle = null;
 let currentImageFiles = [];
 let currentImageIndex = 0;
-let pageOffset = 0; // 0: 通常, 1: 1ページずらす
-let isSinglePageView = false; // ★追加: 表示モードの状態
+let pageOffset = 0;
+let isSinglePageView = false;
+let toolbarHideTimer = null; // ★追加: ツールバー非表示タイマー
 
 // --- イベントリスナー ---
 
-// 親フォルダ選択ボタン
 selectDirBtn.addEventListener('click', async () => {
     if (!('showDirectoryPicker' in window)) {
         showStatus('お使いのブラウザはこの機能に対応していません。Google ChromeやMicrosoft Edgeの最新版をお試しください。', 'error');
@@ -40,40 +41,35 @@ selectDirBtn.addEventListener('click', async () => {
     }
 });
 
-// ビューワーを閉じる
 closeViewerBtn.addEventListener('click', closeViewer);
 
-// ★追加: 表示モード切替
 toggleViewBtn.addEventListener('click', () => {
     isSinglePageView = !isSinglePageView;
     updateViewMode();
     displayPages();
 });
 
-// 見開き調整
 adjustSpreadBtn.addEventListener('click', () => {
-    pageOffset = 1 - pageOffset; // 0と1をトグル
+    pageOffset = 1 - pageOffset;
     displayPages();
 });
 
-// ページ送りボタン
 nextBtn.addEventListener('click', () => navigatePages(isSinglePageView ? -1 : -2));
 prevBtn.addEventListener('click', () => navigatePages(isSinglePageView ? 1 : 2));
 
-// 全画面切り替え
 fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-// ★変更点: キーボード操作をモードに対応させる
+// ★変更点: キーボード操作の左右を反転
 document.addEventListener('keydown', (e) => {
     if (viewer.style.display === 'none') return;
 
     const step = isSinglePageView ? 1 : 2;
     switch (e.key) {
-        case 'ArrowRight':
-            navigatePages(step); // 前のページ
+        case 'ArrowLeft': // 左キーで前のページ
+            navigatePages(step);
             break;
-        case 'ArrowLeft':
-            navigatePages(-step); // 次のページ
+        case 'ArrowRight': // 右キーで次のページ
+            navigatePages(-step);
             break;
         case 'Escape':
             closeViewer();
@@ -81,12 +77,21 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// ★追加: 全画面時のツールバー表示制御
+document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement) {
+        viewer.addEventListener('mousemove', resetToolbarTimer);
+        resetToolbarTimer(); // 全画面開始時にタイマーを開始
+    } else {
+        viewer.removeEventListener('mousemove', resetToolbarTimer);
+        clearTimeout(toolbarHideTimer);
+        viewerToolbar.classList.remove('hidden');
+    }
+});
+
+
 // --- 関数 ---
 
-/**
- * 親ディレクトリを処理してサブディレクトリ一覧を表示する
- * @param {FileSystemDirectoryHandle} dirHandle
- */
 async function processDirectory(dirHandle) {
     showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
     directoryList.innerHTML = '';
@@ -119,10 +124,6 @@ async function processDirectory(dirHandle) {
     }
 }
 
-/**
- * サブディレクトリのカード（サムネイル付き）を作成して表示
- * @param {FileSystemDirectoryHandle} subdirHandle
- */
 async function createDirectoryCard(subdirHandle) {
     const card = document.createElement('div');
     card.className = 'group cursor-pointer bg-gray-800 rounded-lg shadow-md overflow-hidden transform transition-transform hover:-translate-y-1';
@@ -160,11 +161,6 @@ async function createDirectoryCard(subdirHandle) {
     }
 }
 
-/**
- * 指定されたディレクトリから画像ファイルの一覧を取得してソートする
- * @param {FileSystemDirectoryHandle} dirHandle
- * @returns {Promise<FileSystemFileHandle[]>}
- */
 async function getImageFilesFromDirectory(dirHandle) {
     const imageFiles = [];
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
@@ -177,11 +173,6 @@ async function getImageFilesFromDirectory(dirHandle) {
     return imageFiles;
 }
 
-/**
- * ビューワーを開く
- * @param {FileSystemDirectoryHandle} dirHandle
- * @param {number} startIndex
- */
 async function openViewer(dirHandle, startIndex) {
     try {
         showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
@@ -192,13 +183,13 @@ async function openViewer(dirHandle, startIndex) {
         }
 
         currentImageIndex = startIndex;
-        pageOffset = 0; // ズレをリセット
-        isSinglePageView = false; // ★追加: デフォルトは見開き
+        pageOffset = 0;
+        isSinglePageView = false;
 
         viewer.style.display = 'flex';
         document.body.style.overflow = 'hidden';
 
-        updateViewMode(); // ★追加: ボタンの表示を更新
+        updateViewMode();
         displayPages();
         showStatus('', 'clear');
 
@@ -209,9 +200,6 @@ async function openViewer(dirHandle, startIndex) {
     }
 }
 
-/**
- * ビューワーを閉じる
- */
 function closeViewer() {
     viewer.style.display = 'none';
     document.body.style.overflow = 'auto';
@@ -226,43 +214,35 @@ function closeViewer() {
     }
 }
 
-/**
- * ★追加: 表示モードに応じてUIを更新する
- */
+// ★変更点: ボタンのテキストを「実行するアクション」に変更
 function updateViewMode() {
     if (isSinglePageView) {
-        toggleViewBtn.textContent = '単一表示';
+        toggleViewBtn.textContent = '見開きに戻す';
         adjustSpreadBtn.style.display = 'none';
     } else {
-        toggleViewBtn.textContent = '見開き表示';
+        toggleViewBtn.textContent = '単一表示にする';
         adjustSpreadBtn.style.display = 'inline-block';
     }
 }
 
-/**
- * ★変更点: ページを表示する（モード対応）
- */
 async function displayPages() {
     const leftContainer = leftPageImg.parentElement;
     const rightContainer = rightPageImg.parentElement;
     const total = currentImageFiles.length;
 
     if (isSinglePageView) {
-        // --- 単一ページ表示 ---
         leftContainer.style.display = 'none';
         rightContainer.style.width = '100%';
 
         await displayImage(rightPageImg, currentImageIndex);
-        await displayImage(leftPageImg, -1); // 左ページは非表示
+        await displayImage(leftPageImg, -1);
 
         pageCounter.textContent = `${currentImageIndex + 1} / ${total}`;
 
     } else {
-        // --- 見開きページ表示 ---
         leftContainer.style.display = 'block';
         rightContainer.style.width = '50%';
 
-        // 現在のページが見開き開始位置（偶数）になるように調整
         if (currentImageIndex % 2 !== 0) {
             currentImageIndex--;
         }
@@ -279,12 +259,6 @@ async function displayPages() {
     }
 }
 
-
-/**
- * 指定されたimg要素に画像を表示する
- * @param {HTMLImageElement} imgElement
- * @param {number} index
- */
 async function displayImage(imgElement, index) {
     if (imgElement.dataset.url) {
         URL.revokeObjectURL(imgElement.dataset.url);
@@ -310,14 +284,9 @@ async function displayImage(imgElement, index) {
     }
 }
 
-/**
- * ★変更点: ページを移動する（モード対応）
- * @param {number} direction -1 or -2で次へ, 1 or 2で前へ
- */
 function navigatePages(direction) {
     let newIndex = currentImageIndex + direction;
 
-    // インデックスが範囲内に収まるように調整
     if (newIndex >= currentImageFiles.length) {
         newIndex = currentImageFiles.length - 1;
     }
@@ -331,11 +300,6 @@ function navigatePages(direction) {
     }
 }
 
-/**
- * ステータスメッセージを表示する
- * @param {string} message - HTMLも可
- * @param {'info'|'error'|'loading'|'clear'} type
- */
 function showStatus(message, type) {
     statusArea.innerHTML = message;
     statusArea.className = 'text-center my-8 p-4 rounded-lg ';
@@ -356,9 +320,6 @@ function showStatus(message, type) {
     }
 }
 
-/**
- * 全画面表示をトグルする
- */
 function toggleFullscreen() {
     if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(err => {
@@ -367,4 +328,13 @@ function toggleFullscreen() {
     } else {
         document.exitFullscreen();
     }
+}
+
+// ★追加: ツールバーを隠すタイマーをリセットする関数
+function resetToolbarTimer() {
+    clearTimeout(toolbarHideTimer);
+    viewerToolbar.classList.remove('hidden');
+    toolbarHideTimer = setTimeout(() => {
+        viewerToolbar.classList.add('hidden');
+    }, 2000); // 2秒後に隠す
 }
