@@ -26,7 +26,7 @@
             background: #6b7280;
         }
 
-        /* ★変更点: 一覧表示のレイアウトを調整 */
+        /* 一覧表示のレイアウトを調整 */
         #item-list {
             align-items: stretch; /* グリッド内のアイテムの高さを揃える */
         }
@@ -209,6 +209,8 @@
                 </svg>
                 サイズ: 中
             </button>
+            <!-- ★変更点: 並び替えボタンを追加 -->
+            <button id="toggle-sort-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden"></button>
             <button id="select-dir-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
                 ルートフォルダを選択
             </button>
@@ -272,6 +274,7 @@
         const currentDirName = document.getElementById('current-dir-name');
         const copyPathBtn = document.getElementById('copy-path-btn');
         const toggleSizeBtn = document.getElementById('toggle-size-btn');
+        const toggleSortBtn = document.getElementById('toggle-sort-btn'); // ★追加
         const viewerPages = document.getElementById('viewer-pages');
         const viewerVideoContainer = document.getElementById('viewer-video-container');
         const viewerVideo = document.getElementById('viewer-video');
@@ -287,6 +290,7 @@
         const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
         let createdUrls = new Set();
         let thumbnailSizeIndex = 1;
+        let sortOrder = 'asc'; // ★追加: 'asc' or 'desc'
         const sizeOptions = [
             { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
             { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
@@ -336,6 +340,14 @@
         toggleSizeBtn.addEventListener('click', () => {
             thumbnailSizeIndex = (thumbnailSizeIndex + 1) % sizeOptions.length;
             updateThumbnailSize();
+        });
+
+        // ★追加: 並び替えボタンのイベント
+        toggleSortBtn.addEventListener('click', async () => {
+            sortOrder = (sortOrder === 'asc') ? 'desc' : 'asc';
+            if (directoryHistory.length > 0) {
+                await processDirectory(directoryHistory[directoryHistory.length - 1]);
+            }
         });
 
         closeViewerBtn.addEventListener('click', closeViewer);
@@ -412,7 +424,16 @@
                     }
                 }
 
-                items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+                // ★変更点: 並び替えロジック
+                items.sort((a, b) => {
+                    const nameA = a.name.toLowerCase();
+                    const nameB = b.name.toLowerCase();
+                    if (sortOrder === 'asc') {
+                        return nameA.localeCompare(nameB, undefined, { numeric: true });
+                    } else {
+                        return nameB.localeCompare(nameA, undefined, { numeric: true });
+                    }
+                });
 
                 if (items.length === 0) {
                     showStatus('表示できるアイテムがありません。', 'info');
@@ -713,11 +734,13 @@
             const hasHistory = directoryHistory.length > 0;
             copyPathBtn.classList.toggle('hidden', !hasHistory);
             toggleSizeBtn.classList.toggle('hidden', !hasHistory);
+            toggleSortBtn.classList.toggle('hidden', !hasHistory); // ★追加
             if (hasHistory) {
                 currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
             } else {
                 currentDirName.textContent = 'フォルダを選択してください';
             }
+            updateSortButtonUI(); // ★追加
         }
 
         function updateThumbnailSize() {
@@ -727,6 +750,20 @@
             const svgIcon = toggleSizeBtn.querySelector('svg').outerHTML;
             toggleSizeBtn.innerHTML = `${svgIcon} サイズ: ${size.name}`;
         }
+
+        // ★追加: 並び替えボタンのUIを更新する関数
+        function updateSortButtonUI() {
+            const iconUp = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>`;
+            const iconDown = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
+            if (sortOrder === 'asc') {
+                toggleSortBtn.innerHTML = `${iconUp} 名前: 昇順`;
+            } else {
+                toggleSortBtn.innerHTML = `${iconDown} 名前: 降順`;
+            }
+        }
+
+        // ★追加: 初期化時に一度呼び出す
+        updateSortButtonUI();
     </script>
 </body>
 </html>
