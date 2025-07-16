@@ -11,12 +11,14 @@ const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
 const pageCounter = document.getElementById('page-counter');
+const toggleViewBtn = document.getElementById('toggle-view-btn'); // ★追加
 
 // グローバル変数
 let currentDirectoryHandle = null;
 let currentImageFiles = [];
 let currentImageIndex = 0;
 let pageOffset = 0; // 0: 通常, 1: 1ページずらす
+let isSinglePageView = false; // ★追加: 表示モードの状態
 
 // --- イベントリスナー ---
 
@@ -41,6 +43,13 @@ selectDirBtn.addEventListener('click', async () => {
 // ビューワーを閉じる
 closeViewerBtn.addEventListener('click', closeViewer);
 
+// ★追加: 表示モード切替
+toggleViewBtn.addEventListener('click', () => {
+    isSinglePageView = !isSinglePageView;
+    updateViewMode();
+    displayPages();
+});
+
 // 見開き調整
 adjustSpreadBtn.addEventListener('click', () => {
     pageOffset = 1 - pageOffset; // 0と1をトグル
@@ -48,22 +57,23 @@ adjustSpreadBtn.addEventListener('click', () => {
 });
 
 // ページ送りボタン
-nextBtn.addEventListener('click', () => navigatePages(-2)); // 右から左へ読むので、次へはインデックスを減らす
-prevBtn.addEventListener('click', () => navigatePages(2));
+nextBtn.addEventListener('click', () => navigatePages(isSinglePageView ? -1 : -2));
+prevBtn.addEventListener('click', () => navigatePages(isSinglePageView ? 1 : 2));
 
 // 全画面切り替え
 fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-// キーボード操作
+// ★変更点: キーボード操作をモードに対応させる
 document.addEventListener('keydown', (e) => {
     if (viewer.style.display === 'none') return;
 
+    const step = isSinglePageView ? 1 : 2;
     switch (e.key) {
         case 'ArrowRight':
-            navigatePages(2); // 前のページ
+            navigatePages(step); // 前のページ
             break;
         case 'ArrowLeft':
-            navigatePages(-2); // 次のページ
+            navigatePages(-step); // 次のページ
             break;
         case 'Escape':
             closeViewer();
@@ -89,7 +99,6 @@ async function processDirectory(dirHandle) {
             }
         }
 
-        // ディレクトリ名を自然順ソート
         subdirectories.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
         if (subdirectories.length === 0) {
@@ -102,7 +111,7 @@ async function processDirectory(dirHandle) {
         const thumbnailPromises = subdirectories.map(subdir => createDirectoryCard(subdir));
         await Promise.all(thumbnailPromises);
 
-        showStatus('', 'clear'); // 完了したらステータスをクリア
+        showStatus('', 'clear');
 
     } catch (err) {
         console.error('ディレクトリ処理エラー:', err);
@@ -139,7 +148,7 @@ async function createDirectoryCard(subdirHandle) {
             const img = document.createElement('img');
             img.src = thumbnailUrl;
             img.alt = `Thumbnail for ${subdirHandle.name}`;
-            img.onload = () => URL.revokeObjectURL(thumbnailUrl); // メモリリーク防止
+            img.onload = () => URL.revokeObjectURL(thumbnailUrl);
             thumbnailContainer.innerHTML = '';
             thumbnailContainer.appendChild(img);
         } else {
@@ -164,7 +173,6 @@ async function getImageFilesFromDirectory(dirHandle) {
             imageFiles.push(entry);
         }
     }
-    // ファイル名を自然順ソート
     imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     return imageFiles;
 }
@@ -183,12 +191,14 @@ async function openViewer(dirHandle, startIndex) {
             return;
         }
 
-        currentImageIndex = startIndex % 2 === 0 ? startIndex : startIndex - 1; // 常に偶数から開始
+        currentImageIndex = startIndex;
         pageOffset = 0; // ズレをリセット
+        isSinglePageView = false; // ★追加: デフォルトは見開き
 
         viewer.style.display = 'flex';
-        document.body.style.overflow = 'hidden'; // 背景のスクロールを禁止
+        document.body.style.overflow = 'hidden';
 
+        updateViewMode(); // ★追加: ボタンの表示を更新
         displayPages();
         showStatus('', 'clear');
 
@@ -205,12 +215,11 @@ async function openViewer(dirHandle, startIndex) {
 function closeViewer() {
     viewer.style.display = 'none';
     document.body.style.overflow = 'auto';
-    // 表示していた画像のURLを解放してメモリリークを防ぐ
     if (leftPageImg.src) URL.revokeObjectURL(leftPageImg.src);
     if (rightPageImg.src) URL.revokeObjectURL(rightPageImg.src);
     leftPageImg.src = '';
     rightPageImg.src = '';
-    currentImageFiles = []; // 画像ファイルリストをクリア
+    currentImageFiles = [];
 
     if (document.fullscreenElement) {
         document.exitFullscreen();
@@ -218,26 +227,58 @@ function closeViewer() {
 }
 
 /**
- * ページを表示する
+ * ★追加: 表示モードに応じてUIを更新する
+ */
+function updateViewMode() {
+    if (isSinglePageView) {
+        toggleViewBtn.textContent = '単一表示';
+        adjustSpreadBtn.style.display = 'none';
+    } else {
+        toggleViewBtn.textContent = '見開き表示';
+        adjustSpreadBtn.style.display = 'inline-block';
+    }
+}
+
+/**
+ * ★変更点: ページを表示する（モード対応）
  */
 async function displayPages() {
-    // 漫画の読み方（右から左）を考慮したインデックス計算
-    // pageOffsetが0の時: 右=index, 左=index+1
-    // pageOffsetが1の時: 右=index-1, 左=index
-    const rightPageIndex = currentImageIndex - pageOffset;
-    const leftPageIndex = currentImageIndex + 1 - pageOffset;
-
-    // 右ページの表示
-    await displayImage(rightPageImg, rightPageIndex);
-    // 左ページの表示
-    await displayImage(leftPageImg, leftPageIndex);
-
-    // ページカウンターの更新
+    const leftContainer = leftPageImg.parentElement;
+    const rightContainer = rightPageImg.parentElement;
     const total = currentImageFiles.length;
-    const rightPageNum = rightPageIndex >= 0 && rightPageIndex < total ? rightPageIndex + 1 : '-';
-    const leftPageNum = leftPageIndex >= 0 && leftPageIndex < total ? leftPageIndex + 1 : '-';
-    pageCounter.textContent = `${leftPageNum} - ${rightPageNum} / ${total}`;
+
+    if (isSinglePageView) {
+        // --- 単一ページ表示 ---
+        leftContainer.style.display = 'none';
+        rightContainer.style.width = '100%';
+
+        await displayImage(rightPageImg, currentImageIndex);
+        await displayImage(leftPageImg, -1); // 左ページは非表示
+
+        pageCounter.textContent = `${currentImageIndex + 1} / ${total}`;
+
+    } else {
+        // --- 見開きページ表示 ---
+        leftContainer.style.display = 'block';
+        rightContainer.style.width = '50%';
+
+        // 現在のページが見開き開始位置（偶数）になるように調整
+        if (currentImageIndex % 2 !== 0) {
+            currentImageIndex--;
+        }
+
+        const rightPageIndex = currentImageIndex - pageOffset;
+        const leftPageIndex = currentImageIndex + 1 - pageOffset;
+
+        await displayImage(rightPageImg, rightPageIndex);
+        await displayImage(leftPageImg, leftPageIndex);
+
+        const rightPageNum = rightPageIndex >= 0 && rightPageIndex < total ? rightPageIndex + 1 : '-';
+        const leftPageNum = leftPageIndex >= 0 && leftPageIndex < total ? leftPageIndex + 1 : '-';
+        pageCounter.textContent = `${leftPageNum} - ${rightPageNum} / ${total}`;
+    }
 }
+
 
 /**
  * 指定されたimg要素に画像を表示する
@@ -245,9 +286,9 @@ async function displayPages() {
  * @param {number} index
  */
 async function displayImage(imgElement, index) {
-    // 前の画像のURLを解放
     if (imgElement.dataset.url) {
         URL.revokeObjectURL(imgElement.dataset.url);
+        imgElement.dataset.url = '';
     }
 
     if (index >= 0 && index < currentImageFiles.length) {
@@ -256,7 +297,7 @@ async function displayImage(imgElement, index) {
             const file = await fileHandle.getFile();
             const url = URL.createObjectURL(file);
             imgElement.src = url;
-            imgElement.dataset.url = url; // 解放用にURLを保持
+            imgElement.dataset.url = url;
             imgElement.style.visibility = 'visible';
         } catch (err) {
             console.error(`画像表示エラー (index: ${index}):`, err);
@@ -270,24 +311,19 @@ async function displayImage(imgElement, index) {
 }
 
 /**
- * ページを移動する
- * @param {number} direction -2で次へ, +2で前へ
+ * ★変更点: ページを移動する（モード対応）
+ * @param {number} direction -1 or -2で次へ, 1 or 2で前へ
  */
 function navigatePages(direction) {
     let newIndex = currentImageIndex + direction;
 
     // インデックスが範囲内に収まるように調整
     if (newIndex >= currentImageFiles.length) {
-        newIndex = currentImageFiles.length % 2 === 0 ? currentImageFiles.length - 2 : currentImageFiles.length - 1;
+        newIndex = currentImageFiles.length - 1;
     }
-    if (newIndex < -1) { // 最初のページ(0,1)より前には行かない
+    if (newIndex < 0) {
         newIndex = 0;
     }
-    // 奇数インデックスにならないように調整
-    if (newIndex % 2 !== 0 && newIndex > 0) {
-         newIndex--;
-    }
-
 
     if (newIndex !== currentImageIndex) {
         currentImageIndex = newIndex;
@@ -325,9 +361,8 @@ function showStatus(message, type) {
  */
 function toggleFullscreen() {
     if (!document.fullscreenElement) {
-        // viewer全体ではなく、bodyを全画面にすることでUIの互換性を保つ
         document.documentElement.requestFullscreen().catch(err => {
-            alert(`全画面表示にできませんでした: ${err.message} (${err.name})`);
+            console.error(`全画面表示にできませんでした: ${err.message} (${err.name})`);
         });
     } else {
         document.exitFullscreen();
