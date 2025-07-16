@@ -163,6 +163,14 @@
                 </svg>
                 上の階層へ
             </button>
+            <!-- ★変更点: パスコピーボタンを追加 -->
+            <button id="copy-path-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                  <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                </svg>
+                パスをコピー
+            </button>
             <h2 id="current-dir-name" class="text-xl text-gray-400 font-semibold order-first sm:order-none w-full sm:w-auto mb-2 sm:mb-0">フォルダを選択してください</h2>
             <button id="select-dir-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
                 ルートフォルダを選択
@@ -172,9 +180,11 @@
         <div id="status-area" class="text-center my-8"></div>
 
         <div id="item-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-            </div>
+            <!-- ディレクトリや画像がここに表示されます -->
+        </div>
     </div>
 
+    <!-- 画像ビューワー -->
     <div id="viewer">
         <div id="viewer-pages">
             <div class="page-container">
@@ -217,6 +227,7 @@
         const viewerToolbar = document.getElementById('viewer-toolbar');
         const upDirBtn = document.getElementById('up-dir-btn');
         const currentDirName = document.getElementById('current-dir-name');
+        const copyPathBtn = document.getElementById('copy-path-btn'); // ★追加
 
         // グローバル変数
         let directoryHistory = [];
@@ -252,6 +263,22 @@
             }
         });
 
+        // ★追加: パスコピーボタンのイベント
+        copyPathBtn.addEventListener('click', () => {
+            if (directoryHistory.length > 0) {
+                const path = directoryHistory.map(handle => handle.name).join('/');
+                navigator.clipboard.writeText(path)
+                    .then(() => {
+                        showStatus('パスをクリップボードにコピーしました。', 'info');
+                        setTimeout(() => showStatus('', 'clear'), 2000);
+                    })
+                    .catch(err => {
+                        console.error('パスのコピーに失敗:', err);
+                        showStatus('パスのコピーに失敗しました。', 'error');
+                    });
+            }
+        });
+
         closeViewerBtn.addEventListener('click', closeViewer);
         toggleViewBtn.addEventListener('click', () => {
             isSinglePageView = !isSinglePageView;
@@ -266,7 +293,18 @@
         prevBtn.addEventListener('click', () => navigatePages(isSinglePageView ? 1 : 2));
         fullscreenBtn.addEventListener('click', toggleFullscreen);
 
+        // ★変更点: Alt+左矢印のショートカットを追加
         document.addEventListener('keydown', (e) => {
+            if (e.altKey && e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (viewer.style.display !== 'none') {
+                    closeViewer();
+                } else if (directoryHistory.length > 1) {
+                    upDirBtn.click();
+                }
+                return;
+            }
+
             if (viewer.style.display === 'none') return;
             const step = isSinglePageView ? 1 : 2;
             switch (e.key) {
@@ -331,12 +369,6 @@
             }
         }
 
-        /**
-         * アイテム（ディレクトリ or 画像）のカードを作成して表示
-         * @param {object} item - {type, handle, name}
-         * @param {FileSystemDirectoryHandle} parentHandle - 親ディレクトリのハンドル
-         * @param {number} imageIndex - 画像の場合のインデックス
-         */
         function createItemCard(item, parentHandle, imageIndex) {
             const card = document.createElement('div');
             card.className = 'group bg-gray-800 rounded-lg shadow-md overflow-hidden';
@@ -370,13 +402,10 @@
 
                 (async () => {
                     let imageForThumbnail = null;
-                    // ★変更点: サムネイル探索ロジック
-                    // 1. ディレクトリ直下を探索
                     const directImages = await getImageFilesFromDirectory(item.handle);
                     if (directImages.length > 0) {
                         imageForThumbnail = directImages[0];
                     } else {
-                        // 2. 直下にない場合、サブディレクトリの1階層下まで探索
                         const subSubDirs = [];
                         try {
                              for await (const entry of item.handle.values()) {
@@ -394,7 +423,6 @@
                         }
                     }
 
-                    // サムネイル画像の表示
                     if (imageForThumbnail) {
                         const file = await imageForThumbnail.getFile();
                         const thumbnailUrl = URL.createObjectURL(file);
@@ -408,7 +436,6 @@
                         thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
                     }
 
-                    // 「開く」ボタンの表示（直下に画像がある場合のみ）
                     if (directImages.length > 0) {
                         const readBtn = document.createElement('button');
                         readBtn.className = 'read-button';
@@ -607,8 +634,12 @@
             toolbarHideTimer = setTimeout(() => viewerToolbar.classList.add('hidden'), 2000);
         }
 
+        // ★変更点: パスコピーボタンの表示/非表示を制御
         function updateNavigationUI() {
-            upDirBtn.classList.toggle('hidden', directoryHistory.length <= 1);
+            const isNotRoot = directoryHistory.length > 1;
+            upDirBtn.classList.toggle('hidden', !isNotRoot);
+            copyPathBtn.classList.toggle('hidden', directoryHistory.length === 0); // ルート選択前は非表示
+
             if (directoryHistory.length > 0) {
                 currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
             } else {
