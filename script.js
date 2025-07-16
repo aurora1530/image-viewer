@@ -17,6 +17,7 @@ const upDirBtn = document.getElementById('up-dir-btn');
 const currentDirName = document.getElementById('current-dir-name');
 const copyPathBtn = document.getElementById('copy-path-btn');
 const sizeSelect = document.getElementById('size-select');
+const filterSelect = document.getElementById('filter-select');
 const listToolbar = document.getElementById('list-toolbar');
 const toggleSortBtn = document.getElementById('toggle-sort-btn');
 const recursiveBtn = document.getElementById('recursive-btn');
@@ -38,6 +39,7 @@ let lazyLoadObserver = null;
 let createdUrls = new Set();
 let thumbnailSizeIndex = parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10);
 let sortOrder = 'asc';
+let filterType = 'all';
 let isRecursiveMode = false;
 const lastVisitedChild = new WeakMap();
 let currentDirHandle = null;
@@ -108,6 +110,18 @@ sizeSelect.addEventListener('change', () => {
     thumbnailSizeIndex = parseInt(sizeSelect.value, 10);
     localStorage.setItem('thumbnailSizeIndex', thumbnailSizeIndex.toString());
     updateThumbnailSize();
+});
+
+filterSelect.addEventListener('change', async () => {
+    filterType = filterSelect.value;
+    if (directoryHistory.length > 0) {
+        const currentDir = directoryHistory[directoryHistory.length - 1];
+        if (isRecursiveMode) {
+            await processDirectoryRecursive(currentDir);
+        } else {
+            await processDirectory(currentDir);
+        }
+    }
 });
 
 toggleSortBtn.addEventListener('click', async () => {
@@ -213,7 +227,7 @@ async function processDirectory(dirHandle) {
     let imageCount = 0;
     try {
         if (currentDirHandle === dirHandle && cachedItems.length > 0) {
-            items = [...cachedItems];
+            items = cachedItems.map(i => ({ ...i }));
             imageCount = cachedImageCount;
         } else {
             items = [];
@@ -245,7 +259,23 @@ async function processDirectory(dirHandle) {
             }
         });
 
-        if (items.length === 0) {
+        let imgIdx = 0;
+        items.forEach(item => {
+            item.imageIndex = item.type === 'image' ? imgIdx++ : -1;
+        });
+
+        let filteredItems = items;
+        if (filterType === 'directory') {
+            filteredItems = items.filter(i => i.type === 'directory');
+        } else if (filterType === 'image') {
+            filteredItems = items.filter(i => i.type === 'image');
+        } else if (filterType === 'gif') {
+            filteredItems = items.filter(i => i.type === 'image' && i.name.toLowerCase().endsWith('.gif'));
+        } else if (filterType === 'video') {
+            filteredItems = items.filter(i => i.type === 'video');
+        }
+
+        if (filteredItems.length === 0) {
             showStatus('表示できるアイテムがありません。', 'info');
             return;
         }
@@ -254,10 +284,8 @@ async function processDirectory(dirHandle) {
 
         const useLazy = directoryHistory.length > 1 && imageCount >= LAZY_LOAD_THRESHOLD;
 
-        let imgIdx = 0;
-        items.forEach(item => {
-            const imageIndex = item.type === 'image' ? imgIdx++ : -1;
-            createItemCard(item, dirHandle, imageIndex, useLazy);
+        filteredItems.forEach(item => {
+            createItemCard(item, dirHandle, item.imageIndex, useLazy);
         });
 
     } catch (err) {
@@ -441,7 +469,7 @@ async function processDirectoryRecursive(dirHandle) {
     itemList.innerHTML = '';
     updateNavigationUI();
 
-    const items = await collectImagesRecursively(dirHandle);
+    let items = await collectImagesRecursively(dirHandle);
     items.sort((a, b) => {
         const pathA = a.path.toLowerCase();
         const pathB = b.path.toLowerCase();
@@ -451,6 +479,14 @@ async function processDirectoryRecursive(dirHandle) {
             return pathB.localeCompare(pathA, undefined, { numeric: true });
         }
     });
+
+    if (filterType === 'gif') {
+        items = items.filter(i => i.name.toLowerCase().endsWith('.gif'));
+    } else if (filterType === 'image') {
+        // no change, show all images
+    } else if (filterType === 'directory' || filterType === 'video') {
+        items = [];
+    }
 
     if (items.length === 0) {
         showStatus('表示できる画像がありません。', 'info');
@@ -668,6 +704,7 @@ function updateSortButtonUI() {
 populateSizeSelect();
 updateThumbnailSize();
 updateSortButtonUI();
+filterSelect.value = filterType;
 
 function ensureLazyLoadObserver() {
     if (!lazyLoadObserver) {
