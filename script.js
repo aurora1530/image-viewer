@@ -16,7 +16,8 @@ const viewerToolbar = document.getElementById('viewer-toolbar');
 const upDirBtn = document.getElementById('up-dir-btn');
 const currentDirName = document.getElementById('current-dir-name');
 const copyPathBtn = document.getElementById('copy-path-btn');
-const toggleSizeBtn = document.getElementById('toggle-size-btn');
+const sizeSelect = document.getElementById('size-select');
+const listToolbar = document.getElementById('list-toolbar');
 const toggleSortBtn = document.getElementById('toggle-sort-btn');
 const recursiveBtn = document.getElementById('recursive-btn');
 const viewerPages = document.getElementById('viewer-pages');
@@ -38,11 +39,23 @@ let sortOrder = 'asc';
 let isRecursiveMode = false;
 const lastVisitedChild = new WeakMap();
 const sizeOptions = [
-    { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
-    { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
-    { name: '大', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 md:gap-8', originalAspect: false },
-    { name: '元サイズ', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8', originalAspect: true }
+    { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-2', originalAspect: false },
+    { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-3', originalAspect: false },
+    { name: '大', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4', originalAspect: false },
+    { name: '元サイズ2列', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-3 md:gap-4', originalAspect: true },
+    { name: '元サイズ3列', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 md:gap-4', originalAspect: true },
+    { name: '元サイズ4列', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-3 md:gap-4', originalAspect: true }
 ];
+
+function populateSizeSelect() {
+    sizeSelect.innerHTML = '';
+    sizeOptions.forEach((opt, idx) => {
+        const option = document.createElement('option');
+        option.value = idx;
+        option.textContent = opt.name;
+        sizeSelect.appendChild(option);
+    });
+}
 
 // --- イベントリスナー ---
 
@@ -86,8 +99,8 @@ copyPathBtn.addEventListener('click', () => {
     }
 });
 
-toggleSizeBtn.addEventListener('click', () => {
-    thumbnailSizeIndex = (thumbnailSizeIndex + 1) % sizeOptions.length;
+sizeSelect.addEventListener('change', () => {
+    thumbnailSizeIndex = parseInt(sizeSelect.value, 10);
     updateThumbnailSize();
 });
 
@@ -411,6 +424,7 @@ async function openViewer(dirHandle, startIndex) {
         viewerPages.style.display = 'flex';
         viewerVideoContainer.classList.add('hidden');
         viewerToolbar.style.display = 'flex';
+        listToolbar.style.display = 'none';
         document.body.style.overflow = 'hidden';
         updateViewModeUI();
         displayPages();
@@ -428,6 +442,7 @@ async function openVideoPlayer(videoHandle) {
         viewerPages.style.display = 'none';
         viewerVideoContainer.classList.remove('hidden');
         viewerToolbar.style.display = 'none';
+        listToolbar.style.display = 'none';
         document.body.style.overflow = 'hidden';
         const file = await videoHandle.getFile();
         const url = URL.createObjectURL(file);
@@ -443,6 +458,7 @@ async function openVideoPlayer(videoHandle) {
 
 function closeViewer() {
     viewer.style.display = 'none';
+    listToolbar.style.display = '';
     document.body.style.overflow = 'auto';
     if (leftPageImg.dataset.url) URL.revokeObjectURL(leftPageImg.dataset.url);
     if (rightPageImg.dataset.url) URL.revokeObjectURL(rightPageImg.dataset.url);
@@ -568,9 +584,7 @@ function updateNavigationUI() {
     upDirBtn.classList.toggle('hidden', !isNotRoot);
     const hasHistory = directoryHistory.length > 0;
     copyPathBtn.classList.toggle('hidden', !hasHistory);
-    toggleSizeBtn.classList.toggle('hidden', !hasHistory);
-    toggleSortBtn.classList.toggle('hidden', !hasHistory);
-    recursiveBtn.classList.toggle('hidden', !hasHistory);
+    listToolbar.classList.toggle('hidden', !hasHistory);
     if (hasHistory) {
         currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
         recursiveBtn.textContent = isRecursiveMode ? '戻る' : '全画像一覧';
@@ -586,8 +600,7 @@ function updateThumbnailSize() {
     const size = sizeOptions[thumbnailSizeIndex];
     itemList.className = 'grid ' + size.classes;
     itemList.classList.toggle('original-aspect', size.originalAspect);
-    const svgIcon = toggleSizeBtn.querySelector('svg').outerHTML;
-    toggleSizeBtn.innerHTML = `${svgIcon} サイズ: ${size.name}`;
+    sizeSelect.value = thumbnailSizeIndex;
 }
 
 function updateSortButtonUI() {
@@ -600,6 +613,8 @@ function updateSortButtonUI() {
     }
 }
 
+populateSizeSelect();
+updateThumbnailSize();
 updateSortButtonUI();
 
 function rememberVisitedChild(parentHandle, childName) {
