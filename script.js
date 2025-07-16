@@ -371,7 +371,7 @@ async function enterDirectory(dirHandle) {
     scrollToVisitedChild(dirHandle);
 }
 
-async function getImageFilesFromDirectory(dirHandle) {
+async function getImageFilesFromDirectory(dirHandle, order = 'asc') {
     const imageFiles = [];
     try {
         for await (const entry of dirHandle.values()) {
@@ -379,7 +379,15 @@ async function getImageFilesFromDirectory(dirHandle) {
                 imageFiles.push(entry);
             }
         }
-        imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        imageFiles.sort((a, b) => {
+            const nameA = a.name.toLowerCase();
+            const nameB = b.name.toLowerCase();
+            if (order === 'asc') {
+                return nameA.localeCompare(nameB, undefined, { numeric: true });
+            } else {
+                return nameB.localeCompare(nameA, undefined, { numeric: true });
+            }
+        });
     } catch (e) { console.error(`ディレクトリ内の画像取得エラー (${dirHandle.name}):`, e); }
     return imageFiles;
 }
@@ -446,7 +454,7 @@ async function processDirectoryRecursive(dirHandle) {
 async function openViewer(dirHandle, startIndex) {
     try {
         showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
-        currentImageFiles = await getImageFilesFromDirectory(dirHandle);
+        currentImageFiles = await getImageFilesFromDirectory(dirHandle, sortOrder);
         if (currentImageFiles.length === 0) { showStatus('このフォルダには表示できる画像がありません。', 'info'); return; }
         currentImageIndex = startIndex;
         pageOffset = 0;
