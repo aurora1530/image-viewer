@@ -12,18 +12,21 @@ const nextBtn = document.getElementById('next-btn');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
 const pageCounter = document.getElementById('page-counter');
 const toggleViewBtn = document.getElementById('toggle-view-btn');
-const viewerToolbar = document.getElementById('viewer-toolbar'); // ★追加
+const viewerToolbar = document.getElementById('viewer-toolbar');
+const upDirBtn = document.getElementById('up-dir-btn'); // ★追加
+const currentDirName = document.getElementById('current-dir-name'); // ★追加
 
 // グローバル変数
-let currentDirectoryHandle = null;
+let directoryHistory = []; // ★変更: ディレクトリ階層を管理
 let currentImageFiles = [];
 let currentImageIndex = 0;
 let pageOffset = 0;
 let isSinglePageView = false;
-let toolbarHideTimer = null; // ★追加: ツールバー非表示タイマー
+let toolbarHideTimer = null;
 
 // --- イベントリスナー ---
 
+// ルートフォルダ選択ボタン
 selectDirBtn.addEventListener('click', async () => {
     if (!('showDirectoryPicker' in window)) {
         showStatus('お使いのブラウザはこの機能に対応していません。Google ChromeやMicrosoft Edgeの最新版をお試しください。', 'error');
@@ -31,7 +34,7 @@ selectDirBtn.addEventListener('click', async () => {
     }
     try {
         const dirHandle = await window.showDirectoryPicker();
-        currentDirectoryHandle = dirHandle;
+        directoryHistory = [dirHandle]; // ★変更: 履歴をリセットしてルートを設定
         await processDirectory(dirHandle);
     } catch (err) {
         if (err.name !== 'AbortError') {
@@ -41,11 +44,20 @@ selectDirBtn.addEventListener('click', async () => {
     }
 });
 
+// ★追加: 上の階層へ戻るボタン
+upDirBtn.addEventListener('click', async () => {
+    if (directoryHistory.length > 1) {
+        directoryHistory.pop();
+        const parentDirHandle = directoryHistory[directoryHistory.length - 1];
+        await processDirectory(parentDirHandle);
+    }
+});
+
 closeViewerBtn.addEventListener('click', closeViewer);
 
 toggleViewBtn.addEventListener('click', () => {
     isSinglePageView = !isSinglePageView;
-    updateViewMode();
+    updateViewModeUI();
     displayPages();
 });
 
@@ -59,16 +71,15 @@ prevBtn.addEventListener('click', () => navigatePages(isSinglePageView ? 1 : 2))
 
 fullscreenBtn.addEventListener('click', toggleFullscreen);
 
-// ★変更点: キーボード操作の左右を反転
 document.addEventListener('keydown', (e) => {
     if (viewer.style.display === 'none') return;
 
     const step = isSinglePageView ? 1 : 2;
     switch (e.key) {
-        case 'ArrowLeft': // 左キーで前のページ
+        case 'ArrowLeft':
             navigatePages(step);
             break;
-        case 'ArrowRight': // 右キーで次のページ
+        case 'ArrowRight':
             navigatePages(-step);
             break;
         case 'Escape':
@@ -77,11 +88,10 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// ★追加: 全画面時のツールバー表示制御
 document.addEventListener('fullscreenchange', () => {
     if (document.fullscreenElement) {
         viewer.addEventListener('mousemove', resetToolbarTimer);
-        resetToolbarTimer(); // 全画面開始時にタイマーを開始
+        resetToolbarTimer();
     } else {
         viewer.removeEventListener('mousemove', resetToolbarTimer);
         clearTimeout(toolbarHideTimer);
@@ -92,11 +102,16 @@ document.addEventListener('fullscreenchange', () => {
 
 // --- 関数 ---
 
+/**
+ * ★変更: ディレクトリを処理してサブディレクトリ一覧を表示する
+ * @param {FileSystemDirectoryHandle} dirHandle
+ */
 async function processDirectory(dirHandle) {
     showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
     directoryList.innerHTML = '';
-    const subdirectories = [];
+    updateNavigationUI(); // ★追加: ナビゲーションUIを更新
 
+    const subdirectories = [];
     try {
         for await (const entry of dirHandle.values()) {
             if (entry.kind === 'directory') {
@@ -113,8 +128,8 @@ async function processDirectory(dirHandle) {
 
         showStatus(`<strong>${subdirectories.length}</strong>個のフォルダを検出しました。サムネイルを生成中...`, 'loading');
 
-        const thumbnailPromises = subdirectories.map(subdir => createDirectoryCard(subdir));
-        await Promise.all(thumbnailPromises);
+        const cardPromises = subdirectories.map(subdir => createDirectoryCard(subdir));
+        await Promise.all(cardPromises);
 
         showStatus('', 'clear');
 
@@ -124,6 +139,10 @@ async function processDirectory(dirHandle) {
     }
 }
 
+/**
+ * ★大幅変更: サブディレクトリのカードを作成して表示（画像有無で動作を分岐）
+ * @param {FileSystemDirectoryHandle} subdirHandle
+ */
 async function createDirectoryCard(subdirHandle) {
     const card = document.createElement('div');
     card.className = 'group cursor-pointer bg-gray-800 rounded-lg shadow-md overflow-hidden transform transition-transform hover:-translate-y-1';
@@ -137,13 +156,14 @@ async function createDirectoryCard(subdirHandle) {
 
     card.appendChild(thumbnailContainer);
     card.appendChild(title);
-
-    card.addEventListener('click', () => openViewer(subdirHandle, 0));
     directoryList.appendChild(card);
 
     try {
         const imageFiles = await getImageFilesFromDirectory(subdirHandle);
+
         if (imageFiles.length > 0) {
+            // 画像がある場合：ビューワーを開く
+            card.addEventListener('click', () => openViewer(subdirHandle, 0));
             const firstImageFile = await imageFiles[0].getFile();
             const thumbnailUrl = URL.createObjectURL(firstImageFile);
             const img = document.createElement('img');
@@ -153,13 +173,20 @@ async function createDirectoryCard(subdirHandle) {
             thumbnailContainer.innerHTML = '';
             thumbnailContainer.appendChild(img);
         } else {
-            thumbnailContainer.innerHTML = '<span class="text-xs text-gray-400">画像なし</span>';
+            // 画像がない場合：下の階層へ移動する
+            card.addEventListener('click', async () => {
+                directoryHistory.push(subdirHandle);
+                await processDirectory(subdirHandle);
+            });
+            // フォルダアイコンを表示
+            thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
         }
     } catch (err) {
-        console.error(`サムネイル生成エラー (${subdirHandle.name}):`, err);
+        console.error(`カード生成エラー (${subdirHandle.name}):`, err);
         thumbnailContainer.innerHTML = '<span class="text-xs text-red-400">読込失敗</span>';
     }
 }
+
 
 async function getImageFilesFromDirectory(dirHandle) {
     const imageFiles = [];
@@ -189,7 +216,7 @@ async function openViewer(dirHandle, startIndex) {
         viewer.style.display = 'flex';
         document.body.style.overflow = 'hidden';
 
-        updateViewMode();
+        updateViewModeUI();
         displayPages();
         showStatus('', 'clear');
 
@@ -214,8 +241,7 @@ function closeViewer() {
     }
 }
 
-// ★変更点: ボタンのテキストを「実行するアクション」に変更
-function updateViewMode() {
+function updateViewModeUI() {
     if (isSinglePageView) {
         toggleViewBtn.textContent = '見開きに戻す';
         adjustSpreadBtn.style.display = 'none';
@@ -243,7 +269,7 @@ async function displayPages() {
         leftContainer.style.display = 'block';
         rightContainer.style.width = '50%';
 
-        if (currentImageIndex % 2 !== 0) {
+        if (currentImageIndex % 2 !== 0 && currentImageIndex > 0) {
             currentImageIndex--;
         }
 
@@ -330,11 +356,28 @@ function toggleFullscreen() {
     }
 }
 
-// ★追加: ツールバーを隠すタイマーをリセットする関数
 function resetToolbarTimer() {
     clearTimeout(toolbarHideTimer);
     viewerToolbar.classList.remove('hidden');
     toolbarHideTimer = setTimeout(() => {
         viewerToolbar.classList.add('hidden');
-    }, 2000); // 2秒後に隠す
+    }, 2000);
+}
+
+/**
+ * ★追加: ナビゲーションUI（戻るボタン、現在地表示）を更新する
+ */
+function updateNavigationUI() {
+    if (directoryHistory.length > 1) {
+        upDirBtn.classList.remove('hidden');
+    } else {
+        upDirBtn.classList.add('hidden');
+    }
+
+    if (directoryHistory.length > 0) {
+        const currentHandle = directoryHistory[directoryHistory.length - 1];
+        currentDirName.textContent = currentHandle.name;
+    } else {
+        currentDirName.textContent = 'フォルダを選択してください';
+    }
 }
