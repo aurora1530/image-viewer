@@ -33,11 +33,33 @@
             justify-content: center;
             overflow: hidden;
             background-color: #374151;
+            position: relative; /* ボタンを配置するため */
         }
         .thumbnail-container img {
             width: 100%;
             height: 100%;
             object-fit: cover;
+        }
+        /* ★追加: ディレクトリカード内の「読む」ボタン */
+        .read-button {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(30, 41, 59, 0.8);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+            pointer-events: none;
+        }
+        .group:hover .read-button {
+            opacity: 1;
+            pointer-events: auto;
         }
         /* ビューワーのスタイル */
         #viewer {
@@ -266,7 +288,7 @@
             }
         });
 
-        // --- 関数 ---
+        // --- メインロジック ---
 
         /**
          * ディレクトリを処理して、中のアイテム（ディレクトリと画像）を一覧表示する
@@ -298,14 +320,9 @@
 
                 const imageItems = items.filter(item => item.type === 'image');
 
-                items.forEach((item, index) => {
-                    if (item.type === 'image') {
-                        // 画像アイテムのインデックスは、画像だけのリスト内でのインデックスとする
-                        const imageIndex = imageItems.findIndex(imgItem => imgItem.name === item.name);
-                        createItemCard(item, dirHandle, imageIndex);
-                    } else {
-                        createItemCard(item, dirHandle);
-                    }
+                items.forEach(item => {
+                    const imageIndex = item.type === 'image' ? imageItems.findIndex(imgItem => imgItem.name === item.name) : -1;
+                    createItemCard(item, dirHandle, imageIndex);
                 });
 
             } catch (err) {
@@ -315,17 +332,17 @@
         }
 
         /**
-         * アイテム（ディレクトリ or 画像）のカードを作成して表示
+         * ★大幅改修: アイテム（ディレクトリ or 画像）のカードを作成して表示
          * @param {object} item - {type, handle, name}
          * @param {FileSystemDirectoryHandle} parentHandle - 親ディレクトリのハンドル
-         * @param {number} [imageIndex] - 画像の場合のインデックス
+         * @param {number} imageIndex - 画像の場合のインデックス
          */
         function createItemCard(item, parentHandle, imageIndex) {
             const card = document.createElement('div');
-            card.className = 'group cursor-pointer bg-gray-800 rounded-lg shadow-md overflow-hidden transform transition-transform hover:-translate-y-1';
+            card.className = 'group bg-gray-800 rounded-lg shadow-md overflow-hidden';
 
             const thumbnailContainer = document.createElement('div');
-            thumbnailContainer.className = 'thumbnail-container';
+            thumbnailContainer.className = 'thumbnail-container cursor-pointer';
 
             const title = document.createElement('h3');
             title.className = 'p-3 text-sm font-semibold text-white truncate';
@@ -336,12 +353,49 @@
             itemList.appendChild(card);
 
             if (item.type === 'directory') {
-                card.addEventListener('click', async () => {
+                // ディレクトリをクリックしたら下の階層へ
+                thumbnailContainer.addEventListener('click', async () => {
                     directoryHistory.push(item.handle);
                     await processDirectory(item.handle);
                 });
-                thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
+                title.addEventListener('click', async () => {
+                    directoryHistory.push(item.handle);
+                    await processDirectory(item.handle);
+                });
+
+                // ★このディレクトリ内に画像があるか非同期でチェック
+                (async () => {
+                    const imageFilesInSubdir = await getImageFilesFromDirectory(item.handle);
+                    if (imageFilesInSubdir.length > 0) {
+                        // あれば最初の画像をサムネイルに
+                        const file = await imageFilesInSubdir[0].getFile();
+                        const thumbnailUrl = URL.createObjectURL(file);
+                        const img = document.createElement('img');
+                        img.src = thumbnailUrl;
+                        img.alt = `Thumbnail for ${item.name}`;
+                        img.onload = () => URL.revokeObjectURL(thumbnailUrl);
+                        thumbnailContainer.innerHTML = '';
+                        thumbnailContainer.appendChild(img);
+
+                        // 「読む」ボタンを追加
+                        const readBtn = document.createElement('button');
+                        readBtn.className = 'read-button';
+                        readBtn.textContent = '読む';
+                        readBtn.onclick = (e) => {
+                            e.stopPropagation(); // 親要素へのクリックイベント伝播を停止
+                            openViewer(item.handle, 0);
+                        };
+                        thumbnailContainer.appendChild(readBtn);
+
+                    } else {
+                        // なければフォルダアイコン
+                        thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>`;
+                    }
+                })();
+
             } else if (item.type === 'image') {
+                // 画像をクリックしたらビューワーを開く
+                card.classList.add('cursor-pointer');
                 card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
 
                 // サムネイル生成
@@ -352,7 +406,8 @@
                         const img = document.createElement('img');
                         img.src = thumbnailUrl;
                         img.alt = `Thumbnail for ${item.name}`;
-                        img.onload = () => URL.revokeObjectURL(thumbnailUrl);
+                        // メモリリーク防止のため、img要素がDOMから消える時にURLを解放するのが望ましいが、
+                        // このアプリのライフサイクルではページを離れるまでで十分と判断
                         thumbnailContainer.innerHTML = '';
                         thumbnailContainer.appendChild(img);
                     } catch(e) {
@@ -363,18 +418,31 @@
             }
         }
 
+        /**
+         * 指定されたディレクトリから画像ファイルのハンドル一覧を取得してソートする
+         * @param {FileSystemDirectoryHandle} dirHandle
+         * @returns {Promise<FileSystemFileHandle[]>}
+         */
+        async function getImageFilesFromDirectory(dirHandle) {
+            const imageFiles = [];
+            try {
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file' && imageExtensions.some(ext => entry.name.toLowerCase().endsWith(ext))) {
+                        imageFiles.push(entry);
+                    }
+                }
+                imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            } catch (e) {
+                console.error(`ディレクトリ内の画像取得エラー (${dirHandle.name}):`, e);
+            }
+            return imageFiles;
+        }
+
         async function openViewer(dirHandle, startIndex) {
             try {
                 showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
 
-                const imageHandles = [];
-                for await (const entry of dirHandle.values()) {
-                    if (entry.kind === 'file' && imageExtensions.some(ext => entry.name.toLowerCase().endsWith(ext))) {
-                        imageHandles.push(entry);
-                    }
-                }
-                imageHandles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-                currentImageFiles = imageHandles;
+                currentImageFiles = await getImageFilesFromDirectory(dirHandle);
 
                 if (currentImageFiles.length === 0) {
                     showStatus('このフォルダには表示できる画像がありません。', 'info');
@@ -398,6 +466,8 @@
                 closeViewer();
             }
         }
+
+        // --- UI更新 & ビューワー関連のヘルパー関数 ---
 
         function closeViewer() {
             viewer.style.display = 'none';
