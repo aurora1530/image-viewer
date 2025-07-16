@@ -36,6 +36,7 @@ let createdUrls = new Set();
 let thumbnailSizeIndex = 1;
 let sortOrder = 'asc';
 let isRecursiveMode = false;
+const lastVisitedChild = new WeakMap();
 const sizeOptions = [
     { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
     { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
@@ -54,6 +55,7 @@ selectDirBtn.addEventListener('click', async () => {
         const dirHandle = await window.showDirectoryPicker();
         directoryHistory = [dirHandle];
         await processDirectory(dirHandle);
+        scrollToVisitedChild(dirHandle);
     } catch (err) {
         if (err.name !== 'AbortError') console.error('ディレクトリ選択エラー:', err);
     }
@@ -61,9 +63,11 @@ selectDirBtn.addEventListener('click', async () => {
 
 upDirBtn.addEventListener('click', async () => {
     if (directoryHistory.length > 1) {
-        directoryHistory.pop();
+        const current = directoryHistory.pop();
         const parentDirHandle = directoryHistory[directoryHistory.length - 1];
+        rememberVisitedChild(parentDirHandle, current.name);
         await processDirectory(parentDirHandle);
+        scrollToVisitedChild(parentDirHandle);
     }
 });
 
@@ -101,6 +105,7 @@ recursiveBtn.addEventListener('click', async () => {
         isRecursiveMode = false;
         recursiveBtn.textContent = '全画像一覧';
         await processDirectory(currentDir);
+        scrollToVisitedChild(currentDir);
     } else {
         const confirmLoad = confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？');
         if (!confirmLoad) return;
@@ -234,6 +239,7 @@ function createItemCard(item, parentHandle, imageIndex) {
 
     if (item.type === 'directory') {
         card.classList.add('directory-card', 'bg-gray-800', 'rounded-lg', 'shadow-md', 'overflow-hidden');
+        card.dataset.dirName = item.name;
         const title = document.createElement('h3');
         title.className = 'p-3 text-sm font-semibold text-white flex items-start justify-between flex-wrap gap-y-1';
         const titleText = document.createElement('span');
@@ -325,8 +331,11 @@ function createItemCard(item, parentHandle, imageIndex) {
 }
 
 async function enterDirectory(dirHandle) {
+    const current = directoryHistory[directoryHistory.length - 1];
+    rememberVisitedChild(current, dirHandle.name);
     directoryHistory.push(dirHandle);
     await processDirectory(dirHandle);
+    scrollToVisitedChild(dirHandle);
 }
 
 async function getImageFilesFromDirectory(dirHandle) {
@@ -592,3 +601,24 @@ function updateSortButtonUI() {
 }
 
 updateSortButtonUI();
+
+function rememberVisitedChild(parentHandle, childName) {
+    if (parentHandle && childName) {
+        lastVisitedChild.set(parentHandle, childName);
+    }
+}
+
+function scrollToVisitedChild(handle) {
+    const childName = handle ? lastVisitedChild.get(handle) : null;
+    if (!childName) return;
+    const target = Array.from(itemList.querySelectorAll('.directory-card'))
+        .find(card => card.dataset.dirName === childName);
+    if (target) {
+      setTimeout(() => {
+        target.scrollIntoView();
+        setTimeout(() => {
+          target.scrollIntoView();
+        }, 500);
+      }, 1000);
+    }
+}
