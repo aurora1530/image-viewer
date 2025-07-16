@@ -677,9 +677,6 @@ function scrollToVisitedChild(handle) {
     if (target) {
       setTimeout(() => {
         target.scrollIntoView();
-        setTimeout(() => {
-          target.scrollIntoView();
-        }, 500);
-      }, 1000);
+      }, 100);
     }
 }
