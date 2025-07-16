@@ -36,6 +36,7 @@ let createdUrls = new Set();
 let thumbnailSizeIndex = 1;
 let sortOrder = 'asc';
 let isRecursiveMode = false;
+const scrollPositions = new WeakMap();
 const sizeOptions = [
     { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 gap-4', originalAspect: false },
     { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6', originalAspect: false },
@@ -54,6 +55,7 @@ selectDirBtn.addEventListener('click', async () => {
         const dirHandle = await window.showDirectoryPicker();
         directoryHistory = [dirHandle];
         await processDirectory(dirHandle);
+        restoreScrollPosition(dirHandle);
     } catch (err) {
         if (err.name !== 'AbortError') console.error('ディレクトリ選択エラー:', err);
     }
@@ -61,9 +63,11 @@ selectDirBtn.addEventListener('click', async () => {
 
 upDirBtn.addEventListener('click', async () => {
     if (directoryHistory.length > 1) {
-        directoryHistory.pop();
+        const current = directoryHistory.pop();
+        saveScrollPosition(current);
         const parentDirHandle = directoryHistory[directoryHistory.length - 1];
         await processDirectory(parentDirHandle);
+        restoreScrollPosition(parentDirHandle);
     }
 });
 
@@ -101,11 +105,13 @@ recursiveBtn.addEventListener('click', async () => {
         isRecursiveMode = false;
         recursiveBtn.textContent = '全画像一覧';
         await processDirectory(currentDir);
+        restoreScrollPosition(currentDir);
     } else {
         const confirmLoad = confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？');
         if (!confirmLoad) return;
         isRecursiveMode = true;
         recursiveBtn.textContent = '戻る';
+        saveScrollPosition(currentDir);
         await processDirectoryRecursive(currentDir);
     }
 });
@@ -325,8 +331,11 @@ function createItemCard(item, parentHandle, imageIndex) {
 }
 
 async function enterDirectory(dirHandle) {
+    const current = directoryHistory[directoryHistory.length - 1];
+    saveScrollPosition(current);
     directoryHistory.push(dirHandle);
     await processDirectory(dirHandle);
+    restoreScrollPosition(dirHandle);
 }
 
 async function getImageFilesFromDirectory(dirHandle) {
@@ -592,3 +601,12 @@ function updateSortButtonUI() {
 }
 
 updateSortButtonUI();
+
+function saveScrollPosition(handle) {
+    if (handle) scrollPositions.set(handle, window.scrollY);
+}
+
+function restoreScrollPosition(handle) {
+    const pos = handle ? scrollPositions.get(handle) : 0;
+    if (typeof pos === "number") window.scrollTo(0, pos);
+}
