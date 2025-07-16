@@ -10,6 +10,7 @@ const adjustSpreadBtn = document.getElementById('adjust-spread-btn');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
+const copyImagePathBtn = document.getElementById('copy-image-path-btn');
 const pageCounter = document.getElementById('page-counter');
 const toggleViewBtn = document.getElementById('toggle-view-btn');
 const viewerToolbar = document.getElementById('viewer-toolbar');
@@ -100,6 +101,23 @@ copyPathBtn.addEventListener('click', () => {
             .catch(err => {
                 console.error('パスのコピーに失敗:', err);
                 showStatus('パスのコピーに失敗しました。', 'error');
+            });
+    }
+});
+
+copyImagePathBtn.addEventListener('click', () => {
+    if (currentImageFiles.length > 0) {
+        const dirPath = directoryHistory.map(handle => handle.name).join('/');
+        const fileName = currentImageFiles[currentImageIndex].name;
+        const fullPath = `${dirPath}/${fileName}`;
+        navigator.clipboard.writeText(fullPath)
+            .then(() => {
+                showStatus('フルパスをクリップボードにコピーしました。', 'info');
+                setTimeout(() => showStatus('', 'clear'), 2000);
+            })
+            .catch(err => {
+                console.error('フルパスのコピーに失敗:', err);
+                showStatus('フルパスのコピーに失敗しました。', 'error');
             });
     }
 });
