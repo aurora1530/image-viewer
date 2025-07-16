@@ -20,6 +20,7 @@ body {
 /* 一覧表示のレイアウトを調整 */
 #item-list {
     align-items: stretch; /* グリッド内のアイテムの高さを揃える */
+    padding-bottom: 6rem; /* 下部ツールバーに隠れないよう余白を追加 */
 }
 .item-card { /* 全カードの基本設定 */
     display: flex;
