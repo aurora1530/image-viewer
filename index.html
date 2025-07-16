@@ -388,7 +388,7 @@
             if (viewer.style.display === 'none') return;
             if (!viewerVideoContainer.classList.contains('hidden')) return;
 
-            // ★変更点: ユーザーの要望により、右から左へ読み進める操作に戻す (右矢印: 前のページ, 左矢印: 次のページ)
+            // 右から左へ読み進める操作は意図されたもの (右矢印: 前のページ, 左矢印: 次のページ)
             const step = isSinglePageView ? 1 : 2;
             switch (e.key) {
                 case 'ArrowLeft': navigatePages(step); break; // 次へ
