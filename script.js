@@ -47,6 +47,13 @@ const lastVisitedChild = new WeakMap();
 let currentDirHandle = null;
 let cachedItems = [];
 let cachedImageCount = 0;
+
+function resetSearchQuery() {
+    if (searchQuery) {
+        searchQuery = '';
+        searchInput.value = '';
+    }
+}
 const sizeOptions = [
     { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10 gap-2', originalAspect: false },
     { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 md:gap-3', originalAspect: false },
@@ -76,6 +83,7 @@ selectDirBtn.addEventListener('click', async () => {
     try {
         const dirHandle = await window.showDirectoryPicker();
         directoryHistory = [dirHandle];
+        resetSearchQuery();
         await processDirectory(dirHandle);
         scrollToVisitedChild(dirHandle);
     } catch (err) {
@@ -88,6 +96,7 @@ upDirBtn.addEventListener('click', async () => {
         const current = directoryHistory.pop();
         const parentDirHandle = directoryHistory[directoryHistory.length - 1];
         rememberVisitedChild(parentDirHandle, current.name);
+        resetSearchQuery();
         await processDirectory(parentDirHandle);
         scrollToVisitedChild(parentDirHandle);
     }
@@ -426,6 +435,7 @@ async function enterDirectory(dirHandle) {
     const current = directoryHistory[directoryHistory.length - 1];
     rememberVisitedChild(current, dirHandle.name);
     directoryHistory.push(dirHandle);
+    resetSearchQuery();
     await processDirectory(dirHandle);
     scrollToVisitedChild(dirHandle);
 }
