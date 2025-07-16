@@ -28,7 +28,7 @@ let directoryHistory = [];
 let currentImageFiles = [];
 let currentImageIndex = 0;
 let pageOffset = 0;
-let isSinglePageView = false;
+let isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
 let toolbarHideTimer = null;
 const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
 const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
@@ -118,6 +118,7 @@ recursiveBtn.addEventListener('click', async () => {
 closeViewerBtn.addEventListener('click', closeViewer);
 toggleViewBtn.addEventListener('click', () => {
     isSinglePageView = !isSinglePageView;
+    localStorage.setItem('isSinglePageView', isSinglePageView ? '1' : '0');
     updateViewModeUI();
     displayPages();
 });
@@ -406,7 +407,7 @@ async function openViewer(dirHandle, startIndex) {
         if (currentImageFiles.length === 0) { showStatus('このフォルダには表示できる画像がありません。', 'info'); return; }
         currentImageIndex = startIndex;
         pageOffset = 0;
-        isSinglePageView = false;
+        isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
         viewer.style.display = 'flex';
         viewerPages.style.display = 'flex';
         viewerVideoContainer.classList.add('hidden');
