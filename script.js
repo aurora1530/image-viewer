@@ -36,10 +36,13 @@ const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
 const LAZY_LOAD_THRESHOLD = 500; // threshold for enabling lazy loading
 let lazyLoadObserver = null;
 let createdUrls = new Set();
-let thumbnailSizeIndex = 1;
+let thumbnailSizeIndex = parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10);
 let sortOrder = 'asc';
 let isRecursiveMode = false;
 const lastVisitedChild = new WeakMap();
+let currentDirHandle = null;
+let cachedItems = [];
+let cachedImageCount = 0;
 const sizeOptions = [
     { name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10 gap-2', originalAspect: false },
     { name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 md:gap-3', originalAspect: false },
@@ -103,6 +106,7 @@ copyPathBtn.addEventListener('click', () => {
 
 sizeSelect.addEventListener('change', () => {
     thumbnailSizeIndex = parseInt(sizeSelect.value, 10);
+    localStorage.setItem('thumbnailSizeIndex', thumbnailSizeIndex.toString());
     updateThumbnailSize();
 });
 
@@ -205,21 +209,30 @@ async function processDirectory(dirHandle) {
     itemList.innerHTML = '';
     updateNavigationUI();
 
-    const items = [];
+    let items;
     let imageCount = 0;
     try {
-        for await (const entry of dirHandle.values()) {
-            if (entry.kind === 'directory') {
-                items.push({ type: 'directory', handle: entry, name: entry.name });
-            } else if (entry.kind === 'file') {
-                const lowerName = entry.name.toLowerCase();
-                if (imageExtensions.some(ext => lowerName.endsWith(ext))) {
-                    items.push({ type: 'image', handle: entry, name: entry.name });
-                    imageCount++;
-                } else if (videoExtensions.some(ext => lowerName.endsWith(ext))) {
-                    items.push({ type: 'video', handle: entry, name: entry.name });
+        if (currentDirHandle === dirHandle && cachedItems.length > 0) {
+            items = [...cachedItems];
+            imageCount = cachedImageCount;
+        } else {
+            items = [];
+            for await (const entry of dirHandle.values()) {
+                if (entry.kind === 'directory') {
+                    items.push({ type: 'directory', handle: entry, name: entry.name });
+                } else if (entry.kind === 'file') {
+                    const lowerName = entry.name.toLowerCase();
+                    if (imageExtensions.some(ext => lowerName.endsWith(ext))) {
+                        items.push({ type: 'image', handle: entry, name: entry.name });
+                        imageCount++;
+                    } else if (videoExtensions.some(ext => lowerName.endsWith(ext))) {
+                        items.push({ type: 'video', handle: entry, name: entry.name });
+                    }
                 }
             }
+            cachedItems = [...items];
+            cachedImageCount = imageCount;
+            currentDirHandle = dirHandle;
         }
 
         items.sort((a, b) => {
@@ -688,3 +701,11 @@ function scrollToVisitedChild(handle) {
       }, 100);
     }
 }
+
+// Clean up created Object URLs when leaving the page
+window.addEventListener('beforeunload', () => {
+    for (const url of createdUrls) {
+        URL.revokeObjectURL(url);
+    }
+    createdUrls.clear();
+});
