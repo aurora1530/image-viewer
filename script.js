@@ -35,7 +35,7 @@ let currentImageIndex = 0;
 let pageOffset = 0;
 let isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
 let toolbarHideTimer = null;
-const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', ".heic"];
 const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
 const LAZY_LOAD_THRESHOLD = 500; // threshold for enabling lazy loading
 let lazyLoadObserver = null;
