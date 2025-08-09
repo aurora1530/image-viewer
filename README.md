@@ -25,6 +25,58 @@
 3. 画像やフォルダのサムネイルをクリックして閲覧を開始
 4. 必要に応じて「全画像一覧」ボタンを押すと、サブディレクトリも含めた画像を確認ダイアログ後にまとめて表示できます
 
+## デスクトップ(Electron)版
+
+`desktop` ディレクトリに Electron 版を同梱しています。ブラウザ版と同等機能を Windows 11 上でスタンドアロン実行できます。
+
+### 前提条件
+
+- Node.js (推奨: LTS 最新)
+
+### セットアップ & 起動
+
+```bash
+cd desktop
+npm install
+npm run dev  # 開発モード (DevTools 有効化オプション付きで起動したい場合は main.js で openDevTools コメント解除)
+```
+
+または通常起動:
+
+```bash
+npm start
+```
+
+### パッケージング (簡易)
+
+`electron-packager` を利用:
+
+```bash
+npm run pack
+```
+
+`dist/image-viewer-win32-x64/` 配下に実行ファイルが生成されます。
+
+### ビルド (installer など)
+
+`electron-builder` を利用した高度なビルド:
+
+```bash
+npm run dist
+```
+
+設定をカスタムしたい場合は `desktop/package.json` に `build` セクションを追加してください。
+
+### ブラウザ版との違い
+
+- File System Access API の代わりに `dialog.showOpenDialog` + Node.js FS を preload 経由でラップ
+- それ以外の UI / 操作はほぼ同一
+
+### 既知の注意点
+
+- 大量ファイル読み込み時は初回走査がブラウザ版より速い/遅い環境差が出る場合があります (SSD 推奨)
+- HEIC の MIME 判定は簡易的です。必要に応じて heic 変換ライブラリ導入を検討してください。
+
 ### キーボード操作
 
 - `←` / `→`: ページ送り（右から左へ読み進め）

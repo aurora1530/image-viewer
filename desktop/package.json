@@ -1,0 +1,20 @@
+{
+  "name": "image-viewer-desktop",
+  "version": "0.1.0",
+  "description": "ローカル画像ビューワー (Electron デスクトップ版)",
+  "main": "main.js",
+  "type": "commonjs",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
+    "pack": "electron-packager . image-viewer --overwrite --platform=win32 --arch=x64 --icon=icon.ico --prune=true --out=dist",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "28.2.0",
+    "electron-packager": "17.1.2",
+    "electron-builder": "24.13.3"
+  }
+}
