@@ -25,6 +25,9 @@ body {
 .item-card { /* 全カードの基本設定 */
     display: flex;
     flex-direction: column;
+    /* 大量項目時の初期描画コストを削減 */
+    content-visibility: auto;
+    contain-intrinsic-size: 300px 200px;
 }
 .thumbnail-container {
     position: relative;
@@ -34,6 +37,8 @@ body {
     overflow: hidden;
     background-color: #374151;
     flex-grow: 1; /* サムネイルコンテナが余ったスペースを吸収するようにする */
+    /* アイテム単位でレイアウトの影響範囲を限定 */
+    contain: content;
 }
 .media-card { /* 画像・動画カードのスタイル */
     background-color: transparent;

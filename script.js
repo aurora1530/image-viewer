@@ -49,6 +49,10 @@ const lastVisitedChild = new WeakMap();
 let currentDirHandle = null;
 let cachedItems = [];
 let cachedImageCount = 0;
+let cachedSortOrder = 'asc';
+let searchDebounceTimer = null;
+const RIC = window.requestIdleCallback || function (cb) { return setTimeout(cb, 16); };
+const CIC = window.cancelIdleCallback || clearTimeout;
 
 function resetSearchQuery() {
     if (searchQuery) {
@@ -144,33 +148,17 @@ sizeSelect.addEventListener('change', () => {
 
 filterSelect.addEventListener('change', async () => {
     filterType = filterSelect.value;
-    if (directoryHistory.length > 0) {
-        const currentDir = directoryHistory[directoryHistory.length - 1];
-        if (isRecursiveMode) {
-            await processDirectoryRecursive(currentDir);
-        } else {
-            await processDirectory(currentDir);
-        }
-    }
+    scheduleProcessForCurrentDir(0);
 });
 
-searchInput.addEventListener('input', async () => {
+searchInput.addEventListener('input', () => {
     searchQuery = searchInput.value.toLowerCase();
-    if (directoryHistory.length > 0) {
-        const currentDir = directoryHistory[directoryHistory.length - 1];
-        if (isRecursiveMode) {
-            await processDirectoryRecursive(currentDir);
-        } else {
-            await processDirectory(currentDir);
-        }
-    }
+    scheduleProcessForCurrentDir(180);
 });
 
 toggleSortBtn.addEventListener('click', async () => {
     sortOrder = (sortOrder === 'asc') ? 'desc' : 'asc';
-    if (directoryHistory.length > 0) {
-        await processDirectory(directoryHistory[directoryHistory.length - 1]);
-    }
+    scheduleProcessForCurrentDir(0);
 });
 
 reloadBtn.addEventListener('click', async () => {
@@ -287,31 +275,35 @@ async function processDirectory(dirHandle) {
             items = [];
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'directory') {
-                    items.push({ type: 'directory', handle: entry, name: entry.name });
+                    items.push({ type: 'directory', handle: entry, name: entry.name, nameLower: entry.name.toLowerCase() });
                 } else if (entry.kind === 'file') {
                     const lowerName = entry.name.toLowerCase();
                     if (imageExtensions.some(ext => lowerName.endsWith(ext))) {
-                        items.push({ type: 'image', handle: entry, name: entry.name });
+                        items.push({ type: 'image', handle: entry, name: entry.name, nameLower: lowerName });
                         imageCount++;
                     } else if (videoExtensions.some(ext => lowerName.endsWith(ext))) {
-                        items.push({ type: 'video', handle: entry, name: entry.name });
+                        items.push({ type: 'video', handle: entry, name: entry.name, nameLower: lowerName });
                     }
                 }
             }
             cachedItems = [...items];
             cachedImageCount = imageCount;
             currentDirHandle = dirHandle;
+            cachedSortOrder = null; // force sort below
         }
-
-        items.sort((a, b) => {
-            const nameA = a.name.toLowerCase();
-            const nameB = b.name.toLowerCase();
-            if (sortOrder === 'asc') {
-                return nameA.localeCompare(nameB, undefined, { numeric: true });
-            } else {
-                return nameB.localeCompare(nameA, undefined, { numeric: true });
+        if (cachedSortOrder !== sortOrder) {
+            items.sort((a, b) => {
+                const nameA = (a.nameLower || a.name.toLowerCase());
+                const nameB = (b.nameLower || b.name.toLowerCase());
+                return sortOrder === 'asc'
+                    ? nameA.localeCompare(nameB, undefined, { numeric: true })
+                    : nameB.localeCompare(nameA, undefined, { numeric: true });
+            });
+            if (currentDirHandle === dirHandle) {
+                cachedItems = [...items];
+                cachedSortOrder = sortOrder;
             }
-        });
+        }
 
         let imgIdx = 0;
         items.forEach(item => {
@@ -330,7 +322,7 @@ async function processDirectory(dirHandle) {
         }
 
         if (searchQuery) {
-            filteredItems = filteredItems.filter(i => i.name.toLowerCase().includes(searchQuery));
+            filteredItems = filteredItems.filter(i => (i.nameLower || i.name.toLowerCase()).includes(searchQuery));
         }
 
         if (filteredItems.length === 0) {
@@ -341,10 +333,7 @@ async function processDirectory(dirHandle) {
         showStatus('', 'clear');
 
         const useLazy = directoryHistory.length > 1 && imageCount >= LAZY_LOAD_THRESHOLD;
-
-        filteredItems.forEach(item => {
-            createItemCard(item, dirHandle, item.imageIndex, useLazy);
-        });
+        renderItemsInBatches(filteredItems, dirHandle, useLazy);
 
     } catch (err) {
         console.error('ディレクトリ処理エラー:', err);
@@ -353,7 +342,7 @@ async function processDirectory(dirHandle) {
 }
 
 
-function createItemCard(item, parentHandle, imageIndex, lazyLoad = false) {
+function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, container = null) {
     const card = document.createElement('div');
     card.className = 'group item-card';
 
@@ -387,7 +376,7 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false) {
         }
     }
 
-    itemList.appendChild(card);
+    (container || itemList).appendChild(card);
 
     const loadThumb = async () => {
         if (card.dataset.loaded) return;
@@ -398,6 +387,8 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false) {
                 const thumbnailUrl = URL.createObjectURL(file);
                 createdUrls.add(thumbnailUrl);
                 const img = document.createElement('img');
+                img.loading = 'lazy';
+                img.decoding = 'async';
                 img.src = thumbnailUrl;
                 img.alt = item.name;
                 thumbnailContainer.appendChild(img);
@@ -445,6 +436,8 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false) {
                 const thumbnailUrl = URL.createObjectURL(file);
                 createdUrls.add(thumbnailUrl);
                 const img = document.createElement('img');
+                img.loading = 'lazy';
+                img.decoding = 'async';
                 img.src = thumbnailUrl;
                 img.alt = `Thumbnail for ${item.name}`;
                 thumbnailContainer.insertBefore(img, thumbnailContainer.firstChild);
@@ -558,9 +551,7 @@ async function processDirectoryRecursive(dirHandle) {
 
     showStatus('', 'clear');
     const useLazy = directoryHistory.length > 1 && items.length >= LAZY_LOAD_THRESHOLD;
-    items.forEach(item => {
-        createItemCard({ type: 'image', handle: item.handle, name: item.name }, item.parentHandle, item.imageIndex, useLazy);
-    });
+    renderItemsInBatches(items, null, useLazy, true);
 }
 
 async function openViewer(dirHandle, startIndex) {
@@ -641,16 +632,20 @@ async function displayPages() {
     viewerPages.classList.toggle('single-view', isSinglePageView);
     const total = currentImageFiles.length;
     if (isSinglePageView) {
-        await displayImage(rightPageImg, currentImageIndex);
-        await displayImage(leftPageImg, -1);
+        await Promise.all([
+            displayImage(rightPageImg, currentImageIndex),
+            displayImage(leftPageImg, -1)
+        ]);
         pageCounter.textContent = `${currentImageIndex + 1} / ${total}`;
     } else {
         let baseIndex = currentImageIndex;
         if (baseIndex % 2 !== 0 && baseIndex > 0) baseIndex--;
         const rightPageIndex = baseIndex - pageOffset;
         const leftPageIndex = baseIndex + 1 - pageOffset;
-        await displayImage(rightPageImg, rightPageIndex);
-        await displayImage(leftPageImg, leftPageIndex);
+        await Promise.all([
+            displayImage(rightPageImg, rightPageIndex),
+            displayImage(leftPageImg, leftPageIndex)
+        ]);
         const rightPageNum = rightPageIndex >= 0 && rightPageIndex < total ? rightPageIndex + 1 : '-';
         const leftPageNum = leftPageIndex >= 0 && leftPageIndex < total ? leftPageIndex + 1 : '-';
         pageCounter.textContent = `${leftPageNum} - ${rightPageNum} / ${total}`;
@@ -809,3 +804,41 @@ window.addEventListener('beforeunload', () => {
     }
     createdUrls.clear();
 });
+
+// ---- Rendering helpers ----
+function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false) {
+    const total = items.length;
+    const chunkSize = 100;
+    let index = 0;
+    function renderChunk() {
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < chunkSize && index < total; i++, index++) {
+            const it = items[index];
+            if (isRecursiveList) {
+                createItemCard({ type: 'image', handle: it.handle, name: it.name, nameLower: it.name.toLowerCase() }, it.parentHandle, it.imageIndex, useLazy, frag);
+            } else {
+                createItemCard(it, dirHandle, it.imageIndex, useLazy, frag);
+            }
+        }
+        itemList.appendChild(frag);
+        if (index < total) {
+            RIC(renderChunk);
+        }
+    }
+    renderChunk();
+}
+
+function scheduleProcessForCurrentDir(debounceMs = 150) {
+    if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(async () => {
+        if (directoryHistory.length === 0) return;
+        const currentDir = directoryHistory[directoryHistory.length - 1];
+        if (isRecursiveMode) {
+            await processDirectoryRecursive(currentDir);
+        } else {
+            await processDirectory(currentDir);
+        }
+    }, debounceMs);
+}
