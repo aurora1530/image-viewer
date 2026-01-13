@@ -40,24 +40,168 @@ const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
 const LAZY_LOAD_THRESHOLD = 500; // threshold for enabling lazy loading
 let lazyLoadObserver = null;
 let createdUrls = new Set();
+const ENABLE_DEBUG_LOGS = true; // デバッグ用ログ出力をまとめて制御
 let thumbnailSizeIndex = parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10);
 let sortOrder = 'asc';
 let filterType = 'all';
 let searchQuery = '';
 let isRecursiveMode = false;
 const lastVisitedChild = new WeakMap();
+const directoryCache = new WeakMap(); // ディレクトリごとの項目キャッシュ
+const directoryPreviewCache = new WeakMap(); // ディレクトリのプレビュー画像キャッシュ
+const previewUrls = new Set(); // キャッシュ用 Object URL
 let currentDirHandle = null;
-let cachedItems = [];
-let cachedImageCount = 0;
-let cachedSortOrder = 'asc';
 let searchDebounceTimer = null;
 const RIC = window.requestIdleCallback || function (cb) { return setTimeout(cb, 16); };
 const CIC = window.cancelIdleCallback || clearTimeout;
+
+function isImageFileName(name) {
+    const lower = name.toLowerCase();
+    return imageExtensions.some(ext => lower.endsWith(ext));
+}
+
+function clearTransientUrls() {
+    for (const url of createdUrls) {
+        URL.revokeObjectURL(url);
+    }
+    createdUrls.clear();
+}
 
 function resetSearchQuery() {
     if (searchQuery) {
         searchQuery = '';
         searchInput.value = '';
+    }
+}
+
+async function buildDirectoryCache(dirHandle) {
+    const items = [];
+    let imageCount = 0;
+    try {
+        for await (const entry of dirHandle.values()) {
+            if (entry.kind === 'directory') {
+                items.push({ type: 'directory', handle: entry, name: entry.name, nameLower: entry.name.toLowerCase() });
+            } else if (entry.kind === 'file') {
+                const lowerName = entry.name.toLowerCase();
+                if (isImageFileName(lowerName)) {
+                    items.push({ type: 'image', handle: entry, name: entry.name, nameLower: lowerName });
+                    imageCount++;
+                } else if (videoExtensions.some(ext => lowerName.endsWith(ext))) {
+                    items.push({ type: 'video', handle: entry, name: entry.name, nameLower: lowerName });
+                }
+            }
+        }
+    } catch (e) {
+        console.error(`ディレクトリ取得エラー (${dirHandle.name}):`, e);
+    }
+    return { items, imageCount, sorted: {} };
+}
+
+async function ensureDirectoryCache(dirHandle, { forceRefresh = false } = {}) {
+    let entry = directoryCache.get(dirHandle);
+    if (!entry || forceRefresh) {
+        entry = await buildDirectoryCache(dirHandle);
+        directoryCache.set(dirHandle, entry);
+        // プレビューキャッシュも無効化
+        const prev = directoryPreviewCache.get(dirHandle);
+        if (prev && prev.url) {
+            URL.revokeObjectURL(prev.url);
+            previewUrls.delete(prev.url);
+        }
+        directoryPreviewCache.delete(dirHandle);
+    }
+    return entry;
+}
+
+function invalidateDirectoryCache(dirHandle) {
+    const entry = directoryPreviewCache.get(dirHandle);
+    if (entry && entry.url) {
+        URL.revokeObjectURL(entry.url);
+        previewUrls.delete(entry.url);
+    }
+    directoryCache.delete(dirHandle);
+    directoryPreviewCache.delete(dirHandle);
+}
+
+async function findFirstImageHandle(dirHandle) {
+    const preferredBases = ['__0', 'icon', 'thumbnail'];
+    const preferredNames = new Set(
+        preferredBases.flatMap(base => imageExtensions.map(ext => `${base}${ext}`))
+    );
+
+    // 1) ダイレクトに名前指定で探す（巨大ディレクトリでも O(候補数) で完了）
+    for (const base of preferredBases) {
+        for (const ext of imageExtensions) {
+            const fileName = `${base}${ext}`;
+            try {
+                const fh = await dirHandle.getFileHandle(fileName);
+                if (fh) return fh;
+            } catch (_) {
+                /* ignore missing */
+            }
+        }
+    }
+
+    // まずキャッシュを優先的に見る（並び替えず O(1) でチェック）
+    const cached = directoryCache.get(dirHandle);
+    if (cached && cached.items) {
+        const directPreferred = cached.items.find(i => i.type === 'image' && preferredNames.has(i.nameLower));
+        if (directPreferred) return directPreferred.handle;
+        const directAny = cached.items.find(i => i.type === 'image');
+        if (directAny) return directAny.handle;
+        const firstDir = cached.items.find(i => i.type === 'directory');
+        if (firstDir) return findFirstImageHandle(firstDir.handle);
+    }
+
+    // キャッシュが無い or 不足している場合は実際に走査
+    let firstSubDir = null;
+    let firstImage = null;
+    try {
+        const tLabel = ENABLE_DEBUG_LOGS ? `findFirstImageHandle:${dirHandle.name}-${Date.now()}` : null;
+        if (tLabel) console.time(tLabel);
+        for await (const entry of dirHandle.values()) {
+            if (entry.kind === 'file' && isImageFileName(entry.name)) {
+                const lower = entry.name.toLowerCase();
+                if (preferredNames.has(lower)) {
+                    if (tLabel) console.timeEnd(tLabel);
+                    return entry; // 最優先候補が見つかったら即返す
+                }
+                if (!firstImage) firstImage = entry;
+            }
+            if (!firstSubDir && entry.kind === 'directory') {
+                firstSubDir = entry;
+            }
+        }
+        if (tLabel) console.timeEnd(tLabel);
+    } catch (e) { console.error(`プレビュー用画像探索エラー (${dirHandle.name}):`, e); }
+
+    if (firstImage) return firstImage;
+    if (firstSubDir) return findFirstImageHandle(firstSubDir);
+    return null;
+}
+
+async function getDirectoryPreviewUrl(dirHandle) {
+    const cached = directoryPreviewCache.get(dirHandle);
+    if (cached && cached.url) {
+        if (ENABLE_DEBUG_LOGS) console.log(`[preview cache hit] ${dirHandle.name}`);
+        return cached.url;
+    }
+
+    const handle = await findFirstImageHandle(dirHandle);
+    if (!handle) return null;
+    try {
+        const tLabel = ENABLE_DEBUG_LOGS ? `previewGen:${dirHandle.name}-${Date.now()}` : null;
+        if (tLabel) console.time(tLabel);
+        const file = await handle.getFile();
+        const url = URL.createObjectURL(file);
+        directoryPreviewCache.set(dirHandle, { url });
+        previewUrls.add(url);
+        if (ENABLE_DEBUG_LOGS) console.log(`[preview set] ${dirHandle.name}`);
+        if (tLabel) console.timeEnd(tLabel);
+        return url;
+    } catch (e) {
+        console.error(`プレビューURL生成失敗 (${dirHandle.name}):`, e);
+        return null;
     }
 }
 const sizeOptions = [
@@ -167,7 +311,8 @@ reloadBtn.addEventListener('click', async () => {
         if (isRecursiveMode) {
             await processDirectoryRecursive(currentDir);
         } else {
-            await processDirectory(currentDir);
+            invalidateDirectoryCache(currentDir);
+            await processDirectory(currentDir, { forceRefresh: true });
             scrollToVisitedChild(currentDir);
         }
     }
@@ -250,60 +395,38 @@ document.addEventListener('fullscreenchange', () => {
 
 // --- メインロジック ---
 
-async function processDirectory(dirHandle) {
-    for (const url of createdUrls) {
-        URL.revokeObjectURL(url);
+async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
+    const label = `processDirectory:${dirHandle.name}-${Date.now()}`;
+    if (ENABLE_DEBUG_LOGS) {
+        console.log(`[start] ${label}`);
+        console.time(label);
     }
-    createdUrls.clear();
+    clearTransientUrls();
     if (lazyLoadObserver) {
         lazyLoadObserver.disconnect();
         lazyLoadObserver = null;
     }
 
-    showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
+    showStatus('<div class="loader mx-auto"></div><p class=\"mt-2\">フォルダを読み込んでいます...</p>', 'loading');
     updateThumbnailSize();
     itemList.innerHTML = '';
     updateNavigationUI();
 
-    let items;
-    let imageCount = 0;
     try {
-        if (currentDirHandle === dirHandle && cachedItems.length > 0) {
-            items = cachedItems.map(i => ({ ...i }));
-            imageCount = cachedImageCount;
-        } else {
-            items = [];
-            for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'directory') {
-                    items.push({ type: 'directory', handle: entry, name: entry.name, nameLower: entry.name.toLowerCase() });
-                } else if (entry.kind === 'file') {
-                    const lowerName = entry.name.toLowerCase();
-                    if (imageExtensions.some(ext => lowerName.endsWith(ext))) {
-                        items.push({ type: 'image', handle: entry, name: entry.name, nameLower: lowerName });
-                        imageCount++;
-                    } else if (videoExtensions.some(ext => lowerName.endsWith(ext))) {
-                        items.push({ type: 'video', handle: entry, name: entry.name, nameLower: lowerName });
-                    }
-                }
-            }
-            cachedItems = [...items];
-            cachedImageCount = imageCount;
-            currentDirHandle = dirHandle;
-            cachedSortOrder = null; // force sort below
-        }
-        if (cachedSortOrder !== sortOrder) {
-            items.sort((a, b) => {
+        currentDirHandle = dirHandle;
+        const cacheEntry = await ensureDirectoryCache(dirHandle, { forceRefresh });
+        if (!cacheEntry.sorted[sortOrder]) {
+            const sorted = [...cacheEntry.items].sort((a, b) => {
                 const nameA = (a.nameLower || a.name.toLowerCase());
                 const nameB = (b.nameLower || b.name.toLowerCase());
                 return sortOrder === 'asc'
                     ? nameA.localeCompare(nameB, undefined, { numeric: true })
                     : nameB.localeCompare(nameA, undefined, { numeric: true });
             });
-            if (currentDirHandle === dirHandle) {
-                cachedItems = [...items];
-                cachedSortOrder = sortOrder;
-            }
+            cacheEntry.sorted[sortOrder] = sorted;
         }
+
+        const items = cacheEntry.sorted[sortOrder].map(i => ({ ...i }));
 
         let imgIdx = 0;
         items.forEach(item => {
@@ -332,12 +455,17 @@ async function processDirectory(dirHandle) {
 
         showStatus('', 'clear');
 
-        const useLazy = directoryHistory.length > 1 && imageCount >= LAZY_LOAD_THRESHOLD;
+        const useLazy = directoryHistory.length > 1 && cacheEntry.imageCount >= LAZY_LOAD_THRESHOLD;
         renderItemsInBatches(filteredItems, dirHandle, useLazy);
 
     } catch (err) {
         console.error('ディレクトリ処理エラー:', err);
         showStatus('フォルダの読み込み中にエラーが発生しました。', 'error');
+    } finally {
+        if (ENABLE_DEBUG_LOGS) {
+            console.timeEnd(label);
+            console.log(`[end] ${label}`);
+        }
     }
 }
 
@@ -409,32 +537,14 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, contai
                 thumbnailContainer.insertBefore(video, playIconOverlay);
             } catch(e) { console.error(`ビデオサムネイル生成失敗: ${item.name}`, e); }
         } else if (item.type === 'directory') {
-            let imageForThumbnail = null;
-            const directImages = await getImageFilesFromDirectory(item.handle);
-            if (directImages.length > 0) {
-                imageForThumbnail = directImages[0];
-                const readBtn = document.createElement('button');
-                readBtn.className = 'read-button';
-                readBtn.textContent = '開く';
-                readBtn.onclick = (e) => { e.stopPropagation(); openViewer(item.handle, 0); };
-                thumbnailContainer.appendChild(readBtn);
-            } else {
-                const subSubDirs = [];
-                try {
-                    for await (const entry of item.handle.values()) {
-                        if (entry.kind === 'directory') subSubDirs.push(entry);
-                    }
-                } catch (e) { console.error('サブディレクトリの読み込みに失敗', e); }
-                subSubDirs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-                if (subSubDirs.length > 0) {
-                    const deepImages = await getImageFilesFromDirectory(subSubDirs[0]);
-                    if (deepImages.length > 0) imageForThumbnail = deepImages[0];
-                }
-            }
-            if (imageForThumbnail) {
-                const file = await imageForThumbnail.getFile();
-                const thumbnailUrl = URL.createObjectURL(file);
-                createdUrls.add(thumbnailUrl);
+            const readBtn = document.createElement('button');
+            readBtn.className = 'read-button';
+            readBtn.textContent = '開く';
+            readBtn.onclick = (e) => { e.stopPropagation(); openViewer(item.handle, 0); };
+            thumbnailContainer.appendChild(readBtn);
+
+            const thumbnailUrl = await getDirectoryPreviewUrl(item.handle);
+            if (thumbnailUrl) {
                 const img = document.createElement('img');
                 img.loading = 'lazy';
                 img.decoding = 'async';
@@ -447,7 +557,8 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, contai
         }
     };
 
-    if (lazyLoad) {
+    const shouldLazyLoad = lazyLoad || item.type === 'directory';
+    if (shouldLazyLoad) {
         ensureLazyLoadObserver();
         card._loadThumb = loadThumb;
         lazyLoadObserver.observe(card);
@@ -507,10 +618,12 @@ async function collectImagesRecursively(dirHandle, list = [], basePath = '') {
 }
 
 async function processDirectoryRecursive(dirHandle) {
-    for (const url of createdUrls) {
-        URL.revokeObjectURL(url);
+    const label = `processDirectoryRecursive:${dirHandle.name}-${Date.now()}`;
+    if (ENABLE_DEBUG_LOGS) {
+        console.log(`[start] ${label}`);
+        console.time(label);
     }
-    createdUrls.clear();
+    clearTransientUrls();
     if (lazyLoadObserver) {
         lazyLoadObserver.disconnect();
         lazyLoadObserver = null;
@@ -552,12 +665,29 @@ async function processDirectoryRecursive(dirHandle) {
     showStatus('', 'clear');
     const useLazy = directoryHistory.length > 1 && items.length >= LAZY_LOAD_THRESHOLD;
     renderItemsInBatches(items, null, useLazy, true);
+    if (ENABLE_DEBUG_LOGS) {
+        console.timeEnd(label);
+        console.log(`[end] ${label}`);
+    }
 }
 
 async function openViewer(dirHandle, startIndex) {
     try {
         showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
-        currentImageFiles = await getImageFilesFromDirectory(dirHandle, sortOrder);
+        const cacheEntry = await ensureDirectoryCache(dirHandle);
+        if (!cacheEntry.sorted[sortOrder]) {
+            const sorted = [...cacheEntry.items].sort((a, b) => {
+                const nameA = (a.nameLower || a.name.toLowerCase());
+                const nameB = (b.nameLower || b.name.toLowerCase());
+                return sortOrder === 'asc'
+                    ? nameA.localeCompare(nameB, undefined, { numeric: true })
+                    : nameB.localeCompare(nameA, undefined, { numeric: true });
+            });
+            cacheEntry.sorted[sortOrder] = sorted;
+        }
+        currentImageFiles = cacheEntry.sorted[sortOrder]
+            .filter(i => i.type === 'image')
+            .map(i => i.handle);
         if (currentImageFiles.length === 0) { showStatus('このフォルダには表示できる画像がありません。', 'info'); return; }
         currentImageIndex = startIndex;
         pageOffset = 0;
@@ -803,13 +933,20 @@ window.addEventListener('beforeunload', () => {
         URL.revokeObjectURL(url);
     }
     createdUrls.clear();
+    for (const url of previewUrls) {
+        URL.revokeObjectURL(url);
+    }
+    previewUrls.clear();
 });
 
 // ---- Rendering helpers ----
 function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false) {
+    const label = ENABLE_DEBUG_LOGS ? `render:${dirHandle ? dirHandle.name : 'recursive'}-${Date.now()}` : null;
+    if (label) console.time(label);
     const total = items.length;
     const chunkSize = 100;
     let index = 0;
+    let chunk = 0;
     function renderChunk() {
         const frag = document.createDocumentFragment();
         for (let i = 0; i < chunkSize && index < total; i++, index++) {
@@ -821,8 +958,17 @@ function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false
             }
         }
         itemList.appendChild(frag);
+        chunk++;
+        if (label && chunk % 5 === 0) {
+            console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
+        }
         if (index < total) {
             RIC(renderChunk);
+        } else {
+            if (label) {
+                console.timeEnd(label);
+                console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
+            }
         }
     }
     renderChunk();
