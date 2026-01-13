@@ -235,7 +235,7 @@ selectDirBtn.addEventListener('click', async () => {
         directoryHistory = [dirHandle];
         resetSearchQuery();
         await processDirectory(dirHandle);
-        scrollToVisitedChild(dirHandle);
+        await scrollToVisitedChild(dirHandle);
     } catch (err) {
         if (err.name !== 'AbortError') console.error('ディレクトリ選択エラー:', err);
     }
@@ -248,7 +248,7 @@ upDirBtn.addEventListener('click', async () => {
         rememberVisitedChild(parentDirHandle, current.name);
         resetSearchQuery();
         await processDirectory(parentDirHandle);
-        scrollToVisitedChild(parentDirHandle);
+        await scrollToVisitedChild(parentDirHandle);
     }
 });
 
@@ -313,7 +313,7 @@ reloadBtn.addEventListener('click', async () => {
         } else {
             invalidateDirectoryCache(currentDir);
             await processDirectory(currentDir, { forceRefresh: true });
-            scrollToVisitedChild(currentDir);
+            await scrollToVisitedChild(currentDir);
         }
     }
 });
@@ -325,7 +325,7 @@ recursiveBtn.addEventListener('click', async () => {
         isRecursiveMode = false;
         recursiveBtn.textContent = '全画像一覧';
         await processDirectory(currentDir);
-        scrollToVisitedChild(currentDir);
+        await scrollToVisitedChild(currentDir);
     } else {
         const confirmLoad = confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？');
         if (!confirmLoad) return;
@@ -456,7 +456,7 @@ async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
         showStatus('', 'clear');
 
         const useLazy = directoryHistory.length > 1 && cacheEntry.imageCount >= LAZY_LOAD_THRESHOLD;
-        renderItemsInBatches(filteredItems, dirHandle, useLazy);
+        await renderItemsInBatches(filteredItems, dirHandle, useLazy);
 
     } catch (err) {
         console.error('ディレクトリ処理エラー:', err);
@@ -572,7 +572,7 @@ async function enterDirectory(dirHandle) {
     directoryHistory.push(dirHandle);
     resetSearchQuery();
     await processDirectory(dirHandle);
-    scrollToVisitedChild(dirHandle);
+    await scrollToVisitedChild(dirHandle);
 }
 
 async function getImageFilesFromDirectory(dirHandle, order = 'asc') {
@@ -664,7 +664,7 @@ async function processDirectoryRecursive(dirHandle) {
 
     showStatus('', 'clear');
     const useLazy = directoryHistory.length > 1 && items.length >= LAZY_LOAD_THRESHOLD;
-    renderItemsInBatches(items, null, useLazy, true);
+    await renderItemsInBatches(items, null, useLazy, true);
     if (ENABLE_DEBUG_LOGS) {
         console.timeEnd(label);
         console.log(`[end] ${label}`);
@@ -915,15 +915,23 @@ function rememberVisitedChild(parentHandle, childName) {
     }
 }
 
-function scrollToVisitedChild(handle) {
+async function scrollToVisitedChild(handle) {
     const childName = handle ? lastVisitedChild.get(handle) : null;
     if (!childName) return;
-    const target = Array.from(itemList.querySelectorAll('.directory-card'))
-        .find(card => card.dataset.dirName === childName);
-    if (target) {
-      setTimeout(() => {
-        target.scrollIntoView();
-      }, 100);
+    let tries = 0;
+    const maxTries = 20; // 約1秒 (20 * 50ms)
+    while (tries < maxTries) {
+        const target = Array.from(itemList.querySelectorAll('.directory-card'))
+            .find(card => card.dataset.dirName === childName);
+        if (target) {
+            // レイアウトが安定する前にスクロールしてズレるのを防ぐため、2段階スクロール
+            target.scrollIntoView({ block: 'center' });
+            await new Promise(r => setTimeout(r, 300));
+            target.scrollIntoView({ block: 'center' });
+            return;
+        }
+        await new Promise(r => setTimeout(r, 50));
+        tries++;
     }
 }
 
@@ -941,37 +949,40 @@ window.addEventListener('beforeunload', () => {
 
 // ---- Rendering helpers ----
 function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false) {
-    const label = ENABLE_DEBUG_LOGS ? `render:${dirHandle ? dirHandle.name : 'recursive'}-${Date.now()}` : null;
-    if (label) console.time(label);
-    const total = items.length;
-    const chunkSize = 100;
-    let index = 0;
-    let chunk = 0;
-    function renderChunk() {
-        const frag = document.createDocumentFragment();
-        for (let i = 0; i < chunkSize && index < total; i++, index++) {
-            const it = items[index];
-            if (isRecursiveList) {
-                createItemCard({ type: 'image', handle: it.handle, name: it.name, nameLower: it.name.toLowerCase() }, it.parentHandle, it.imageIndex, useLazy, frag);
+    return new Promise(resolve => {
+        const label = ENABLE_DEBUG_LOGS ? `render:${dirHandle ? dirHandle.name : 'recursive'}-${Date.now()}` : null;
+        if (label) console.time(label);
+        const total = items.length;
+        const chunkSize = 100;
+        let index = 0;
+        let chunk = 0;
+        function renderChunk() {
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < chunkSize && index < total; i++, index++) {
+                const it = items[index];
+                if (isRecursiveList) {
+                    createItemCard({ type: 'image', handle: it.handle, name: it.name, nameLower: it.name.toLowerCase() }, it.parentHandle, it.imageIndex, useLazy, frag);
+                } else {
+                    createItemCard(it, dirHandle, it.imageIndex, useLazy, frag);
+                }
+            }
+            itemList.appendChild(frag);
+            chunk++;
+            if (label && chunk % 5 === 0) {
+                console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
+            }
+            if (index < total) {
+                RIC(renderChunk);
             } else {
-                createItemCard(it, dirHandle, it.imageIndex, useLazy, frag);
+                if (label) {
+                    console.timeEnd(label);
+                    console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
+                }
+                resolve();
             }
         }
-        itemList.appendChild(frag);
-        chunk++;
-        if (label && chunk % 5 === 0) {
-            console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
-        }
-        if (index < total) {
-            RIC(renderChunk);
-        } else {
-            if (label) {
-                console.timeEnd(label);
-                console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
-            }
-        }
-    }
-    renderChunk();
+        renderChunk();
+    });
 }
 
 function scheduleProcessForCurrentDir(debounceMs = 150) {
