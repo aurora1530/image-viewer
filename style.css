@@ -1,63 +1,188 @@
-body {
-    font-family: 'Inter', sans-serif;
-}
-/* スクロールバーのスタイル */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-::-webkit-scrollbar-track {
-    background: #1f2937;
-}
-::-webkit-scrollbar-thumb {
-    background: #4b5563;
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #6b7280;
+/* Mono, brutal minimal contact-sheet aesthetic */
+:root {
+    --bg: #15151b;
+    --panel: #191922;
+    --ink: #f4f4f5;
+    --muted: #a0a0aa;
+    --line: #2b2b33;
+    --accent: #ffffff;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Manrope', system-ui, -apple-system, sans-serif;
 }
 
-/* 一覧表示のレイアウトを調整 */
-#item-list {
-    align-items: stretch; /* グリッド内のアイテムの高さを揃える */
-    padding-bottom: 6rem; /* 下部ツールバーに隠れないよう余白を追加 */
+body.mono-body {
+    background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.05), transparent 38%), radial-gradient(circle at 78% 6%, rgba(255,255,255,0.06), transparent 32%), var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    min-height: 100vh;
+    line-height: 1.6;
+    letter-spacing: 0.01em;
 }
-.item-card { /* 全カードの基本設定 */
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #3a3a40; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #4c4c55; }
+
+.frame {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px 32px 96px;
+}
+
+.hero {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 28px 28px 24px;
+    background: linear-gradient(145deg, rgba(255,255,255,0.02), rgba(0,0,0,0.25));
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    backdrop-filter: blur(4px);
+}
+.hero h1 {
+    font-size: clamp(28px, 4vw, 40px);
+    letter-spacing: -0.02em;
+    margin: 8px 0 6px;
+    text-transform: uppercase;
+}
+.hero p {
+    color: var(--muted);
+    max-width: 720px;
+    font-size: 15px;
+}
+.eyebrow-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    text-transform: uppercase;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+}
+.eyebrow {
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.02);
+}
+.eyebrow.subtle {
+    color: #777782;
+}
+
+.panel {
+    margin-top: 28px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02), 0 10px 40px rgba(0,0,0,0.45);
+    overflow: hidden;
+}
+.panel-top {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+}
+.dir-chip {
+    display: grid;
+    gap: 6px;
+}
+.chip-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8a8a94;
+    font-family: var(--mono);
+}
+.chip-value {
+    font-size: 18px;
+    font-weight: 600;
+}
+.actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.status {
+    min-height: 38px;
+    padding: 12px 20px 4px;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.contact-sheet {
+    display: grid;
+    align-items: stretch;
+    padding: 18px;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.item-card {
     display: flex;
     flex-direction: column;
-    /* 大量項目時の初期描画コストを削減 */
     content-visibility: auto;
-    contain-intrinsic-size: 300px 200px;
+    contain-intrinsic-size: 260px 180px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.35));
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease;
 }
+.item-card:hover {
+    transform: translateY(-4px);
+    border-color: #2d2d35;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+}
+
 .thumbnail-container {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background-color: #374151;
-    flex-grow: 1; /* サムネイルコンテナが余ったスペースを吸収するようにする */
-    /* アイテム単位でレイアウトの影響範囲を限定 */
+    background: #14141a;
+    flex-grow: 1;
     contain: content;
-}
-.media-card { /* 画像・動画カードのスタイル */
-    background-color: transparent;
-    box-shadow: none;
-    border-radius: 0;
+    border-bottom: 1px solid var(--line);
 }
 .thumbnail-container img,
 .thumbnail-container video {
     width: 100%;
     height: 100%;
-    object-fit: cover; /* 画像・動画はコンテナを埋める */
+    object-fit: cover;
 }
-/* ディレクトリのサムネイルは、コンテナ内でアスペクト比を維持 */
 .directory-card .thumbnail-container > img,
 .directory-card .thumbnail-container > svg {
     object-fit: contain;
     max-width: 100%;
     max-height: 100%;
 }
+.dir-title {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 12px 11px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    border-top: 1px solid var(--line);
+}
+.dir-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+    background: rgba(255,255,255,0.03);
+}
+
 #item-list.original-aspect .media-card .thumbnail-container {
     aspect-ratio: auto;
     flex-grow: 0;
@@ -69,35 +194,99 @@ body {
     height: auto;
 }
 
-/* ディレクトリカード内の「開く」ボタン */
+.media-card {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 12px;
+}
+
 .read-button {
     position: absolute;
-    bottom: 10px;
+    bottom: 12px;
     left: 50%;
     transform: translateX(-50%);
-    background-color: rgba(30, 41, 59, 0.8);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 9999px;
-    font-size: 0.875rem;
-    font-weight: 600;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(0,0,0,0.7);
+    color: var(--ink);
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid rgba(255,255,255,0.25);
     opacity: 0;
     transition: opacity 0.2s ease-in-out;
     pointer-events: none;
+    letter-spacing: 0.04em;
 }
 .group:hover .read-button {
     opacity: 1;
     pointer-events: auto;
 }
-/* ビューワーのスタイル */
+
+/* Dock toolbar */
+.dock {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1100px, 96vw);
+    z-index: 40;
+}
+.dock-inner {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: rgba(20,20,28,0.9);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 12px;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.45);
+    backdrop-filter: blur(6px);
+}
+
+.ui-btn, .ui-select, .ui-input {
+    border: 1px solid var(--line);
+    background: #13131a;
+    color: var(--ink);
+    padding: 10px 14px;
+    font-size: 14px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: border-color 0.2s ease, transform 0.15s ease, background 0.2s ease;
+}
+.ui-btn svg { width: 18px; height: 18px; }
+.ui-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.ui-btn:hover { border-color: #2f2f36; transform: translateY(-1px); }
+.ui-btn:active { transform: translateY(0); }
+
+.ui-btn.primary {
+    background: #f4f4f5;
+    color: #0c0c10;
+    border-color: #f4f4f5;
+}
+.ui-btn.primary:hover { background: #fff; }
+
+.ui-btn.ghost {
+    background: rgba(255,255,255,0.04);
+}
+
+.ui-btn.outline {
+    background: transparent;
+    border-style: dashed;
+}
+
+.ui-select, .ui-input {
+    min-width: 140px;
+}
+.ui-input {
+    background: #15151c;
+}
+
+/* Viewer */
 #viewer {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.95);
+    inset: 0;
+    background: rgba(0,0,0,0.97);
     display: none;
     flex-direction: column;
     align-items: center;
@@ -107,7 +296,7 @@ body {
 #viewer-pages {
     display: flex;
     width: 100%;
-    height: calc(100% - 80px);
+    height: calc(100% - 88px);
     justify-content: center;
     align-items: center;
     gap: 0;
@@ -116,64 +305,61 @@ body {
     height: 100%;
     display: flex;
     align-items: center;
+    padding: 10px;
 }
 #viewer-pages .page-container:first-child { justify-content: flex-end; }
 #viewer-pages .page-container:last-child  { justify-content: flex-start; }
-
 .page-container img {
     width: 100%;
     height: 100%;
     object-fit: contain;
     user-select: none;
     -webkit-user-drag: none;
+    filter: drop-shadow(0 12px 30px rgba(0,0,0,0.55));
 }
-/* 単一表示モードのスタイル */
-#viewer-pages.single-view .page-container:first-child {
-    display: none;
-}
-#viewer-pages.single-view .page-container:last-child {
-    width: 100%;
-    justify-content: center;
-}
-/* 全画面表示のスタイル */
-html:fullscreen #viewer {
-    background-color: #000;
-}
-html:fullscreen #viewer-pages {
-    height: 100%;
-}
+#viewer-pages.single-view .page-container:first-child { display: none; }
+#viewer-pages.single-view .page-container:last-child { width: 100%; justify-content: center; }
+
+html:fullscreen #viewer { background-color: #000; }
+html:fullscreen #viewer-pages { height: 100%; }
+
 #viewer-toolbar {
     position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 80px;
-    background-color: rgba(17, 24, 39, 0.8);
+    height: 88px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.8));
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 1rem;
-    padding: 1rem;
+    gap: 12px;
+    padding: 18px 16px;
     z-index: 60;
     opacity: 1;
     transform: translateY(0);
-    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+    transition: opacity 0.25s ease, transform 0.25s ease;
 }
 html:fullscreen #viewer-toolbar.hidden {
     opacity: 0;
     transform: translateY(100%);
     pointer-events: none;
 }
-/* スピナー */
+.page-counter {
+    width: 90px;
+    text-align: center;
+    font-family: var(--mono);
+    letter-spacing: 0.1em;
+    color: var(--ink);
+}
+
+/* Loader */
 .loader {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
+    border: 4px solid rgba(255,255,255,0.08);
+    border-top: 4px solid var(--ink);
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
+    width: 38px;
+    height: 38px;
+    animation: spin 0.8s linear infinite;
 }
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }

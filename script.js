@@ -478,16 +478,16 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, contai
     thumbnailContainer.className = 'thumbnail-container cursor-pointer';
 
     if (item.type === 'directory') {
-        card.classList.add('directory-card', 'bg-gray-800', 'rounded-lg', 'shadow-md', 'overflow-hidden');
+        card.classList.add('directory-card');
         card.dataset.dirName = item.name;
         const title = document.createElement('h3');
-        title.className = 'p-3 text-sm font-semibold text-white flex items-start justify-between flex-wrap gap-y-1';
+        title.className = 'dir-title';
         const titleText = document.createElement('span');
         titleText.textContent = item.name;
         titleText.className = 'break-all';
         title.appendChild(titleText);
         const badge = document.createElement('span');
-        badge.className = 'text-xs bg-gray-600 text-gray-300 px-2 py-1 rounded-full ml-2 self-center';
+        badge.className = 'dir-badge';
         badge.textContent = 'フォルダ';
         title.appendChild(badge);
         card.appendChild(thumbnailContainer);

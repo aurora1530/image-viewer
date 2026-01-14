@@ -5,58 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ローカル画像ビューワー</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="bg-gray-900 text-gray-200">
+<body class="mono-body">
 
-    <div id="main-content" class="w-full p-4 md:p-8 pb-24">
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold text-white mb-2">ローカル画像ビューワー</h1>
-            <p class="text-gray-400">ローカルのフォルダから画像を高速で閲覧します。</p>
-        </header>
-
-        <div class="text-center mb-8 flex justify-center items-center gap-4 flex-wrap">
-            <button id="up-dir-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M10.707 4.293a1 1 0 010 1.414L7.414 9H14a1 1 0 110 2H7.414l3.293 3.293a1 1 0 01-1.414 1.414l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 0z" clip-rule="evenodd" />
-                </svg>
-                上の階層へ
-            </button>
-            <button id="copy-path-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 hidden">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                  <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
-                </svg>
-                パスをコピー
-            </button>
-            <h2 id="current-dir-name" class="text-xl text-gray-400 font-semibold order-first sm:order-none w-full sm:w-auto mb-2 sm:mb-0">フォルダを選択してください</h2>
-            <!-- size and sort controls moved to bottom toolbar -->
-            <button id="select-dir-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105">
-                ルートフォルダを選択
-            </button>
-        </div>
-
-        <div id="status-area" class="text-center my-8"></div>
-
-        <div id="item-list" class="grid">
-            <!-- ディレクトリや画像がここに表示されます -->
+    <div id="main-content" class="frame">
+        <div class="panel">
+            <div class="panel-top">
+                <div class="dir-chip">
+                    <span class="chip-label">現在のフォルダ</span>
+                    <span id="current-dir-name" class="chip-value">フォルダを選択してください</span>
+                </div>
+                <div class="actions">
+                    <button id="up-dir-btn" class="ui-btn ghost hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.707 4.293a1 1 0 010 1.414L7.414 9H14a1 1 0 110 2H7.414l3.293 3.293a1 1 0 01-1.414 1.414l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                        上の階層へ
+                    </button>
+                    <button id="copy-path-btn" class="ui-btn ghost hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" /><path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" /></svg>
+                        パスをコピー
+                    </button>
+                    <button id="select-dir-btn" class="ui-btn primary">
+                        ルートフォルダを選択
+                    </button>
+                </div>
+            </div>
+            <div id="status-area" class="status"></div>
+            <div id="item-list" class="grid contact-sheet"></div>
         </div>
 
         <!-- 一覧表示用ツールバー -->
-        <div id="list-toolbar" class="fixed bottom-0 left-0 w-full bg-gray-800 bg-opacity-90 p-4 flex justify-center items-center gap-4 hidden">
-            <select id="size-select" class="bg-gray-700 text-white rounded-lg px-3 py-2"></select>
-            <select id="filter-select" class="bg-gray-700 text-white rounded-lg px-3 py-2">
-                <option value="all">すべて</option>
-                <option value="directory">ディレクトリ</option>
-                <option value="image">画像</option>
-                <option value="gif">GIF</option>
-                <option value="video">動画</option>
-            </select>
-            <input id="search-input" type="text" placeholder="検索" class="bg-gray-700 text-white rounded-lg px-3 py-2" />
-            <button id="toggle-sort-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg"></button>
-            <button id="reload-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">再読み込み</button>
-            <button id="recursive-btn" class="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-2 px-4 rounded-lg border border-yellow-300">全画像一覧</button>
+        <div id="list-toolbar" class="dock hidden">
+            <div class="dock-inner">
+                <select id="size-select" class="ui-select"></select>
+                <select id="filter-select" class="ui-select">
+                    <option value="all">すべて</option>
+                    <option value="directory">ディレクトリ</option>
+                    <option value="image">画像</option>
+                    <option value="gif">GIF</option>
+                    <option value="video">動画</option>
+                </select>
+                <input id="search-input" type="text" placeholder="検索" class="ui-input" />
+                <button id="toggle-sort-btn" class="ui-btn ghost"></button>
+                <button id="reload-btn" class="ui-btn ghost">再読み込み</button>
+                <button id="recursive-btn" class="ui-btn outline">全画像一覧</button>
+            </div>
         </div>
     </div>
 
@@ -77,18 +71,18 @@
         </div>
 
         <div id="viewer-toolbar">
-            <button id="prev-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">
+            <button id="prev-btn" class="ui-btn ghost">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <button id="toggle-view-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg w-32">単一表示にする</button>
-            <button id="adjust-spread-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">見開き調整</button>
-            <span id="page-counter" class="text-lg font-medium text-white w-24 text-center"></span>
-            <button id="next-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">
+            <button id="toggle-view-btn" class="ui-btn ghost w-32">単一表示にする</button>
+            <button id="adjust-spread-btn" class="ui-btn ghost">見開き調整</button>
+            <span id="page-counter" class="page-counter"></span>
+            <button id="next-btn" class="ui-btn ghost">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
             </button>
-            <button id="fullscreen-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">全画面</button>
-            <button id="copy-image-path-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">パスをコピー</button>
-            <button id="close-viewer-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">閉じる</button>
+            <button id="fullscreen-btn" class="ui-btn ghost">全画面</button>
+            <button id="copy-image-path-btn" class="ui-btn ghost">パスをコピー</button>
+            <button id="close-viewer-btn" class="ui-btn primary">閉じる</button>
         </div>
     </div>
 
