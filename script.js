@@ -371,6 +371,11 @@ document.addEventListener('keydown', (e) => {
     }
 
     if (viewer.style.display === 'none') return;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        closeViewer();
+        return;
+    }
     if (!viewerVideoContainer.classList.contains('hidden')) return;
 
     // 右から左へ読み進める操作は意図されたもの (右矢印: 前のページ, 左矢印: 次のページ)
@@ -378,7 +383,6 @@ document.addEventListener('keydown', (e) => {
     switch (e.key) {
         case 'ArrowLeft': navigatePages(step); break; // 次へ
         case 'ArrowRight': navigatePages(-step); break; // 前へ
-        case 'Escape': closeViewer(); break;
     }
 });
 
