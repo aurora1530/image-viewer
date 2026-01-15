@@ -27,6 +27,8 @@ const recursiveBtn = document.getElementById('recursive-btn');
 const viewerPages = document.getElementById('viewer-pages');
 const viewerVideoContainer = document.getElementById('viewer-video-container');
 const viewerVideo = document.getElementById('viewer-video');
+const favoriteFirstBtn = document.getElementById('favorite-first-btn');
+const favoriteOnlyBtn = document.getElementById('favorite-only-btn');
 
 // グローバル変数
 let directoryHistory = [];
@@ -37,6 +39,7 @@ let isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
 let toolbarHideTimer = null;
 const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', ".heic"];
 const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
+const CONFIG_FILENAME = '.image-viewr.json';
 const LAZY_LOAD_THRESHOLD = 500; // threshold for enabling lazy loading
 let lazyLoadObserver = null;
 let createdUrls = new Set();
@@ -46,6 +49,8 @@ let sortOrder = 'asc';
 let filterType = 'all';
 let searchQuery = '';
 let isRecursiveMode = false;
+let favoriteFirst = false;
+let favoriteOnly = false;
 const lastVisitedChild = new WeakMap();
 const directoryCache = new WeakMap(); // ディレクトリごとの項目キャッシュ
 const directoryPreviewCache = new WeakMap(); // ディレクトリのプレビュー画像キャッシュ
@@ -72,6 +77,117 @@ function resetSearchQuery() {
         searchQuery = '';
         searchInput.value = '';
     }
+}
+
+function normalizeConfig(raw) {
+    const base = { version: 1, favorites: [] };
+    if (!raw || typeof raw !== 'object') return base;
+    const favorites = Array.isArray(raw.favorites) ? raw.favorites : [];
+    return { ...raw, version: 1, favorites };
+}
+
+function buildFavoriteKey(type, path) {
+    return `${type}:${path}`;
+}
+
+function normalizeFavoriteEntry(entry) {
+    if (typeof entry === 'string') {
+        if (entry.includes(':')) return entry;
+        return buildFavoriteKey('file', entry);
+    }
+    if (entry && typeof entry === 'object') {
+        const type = entry.type === 'directory' ? 'directory' : 'file';
+        if (typeof entry.path === 'string' && entry.path.length > 0) {
+            return buildFavoriteKey(type, entry.path);
+        }
+    }
+    return null;
+}
+
+function makeFavoriteSet(config) {
+    const set = new Set();
+    if (!config || !Array.isArray(config.favorites)) return set;
+    config.favorites.forEach(entry => {
+        const key = normalizeFavoriteEntry(entry);
+        if (key) set.add(key);
+    });
+    return set;
+}
+
+function getFavoriteKeyForItem(item) {
+    if (!item) return null;
+    if (item.type === 'directory') return buildFavoriteKey('directory', item.name);
+    if (item.type === 'image' || item.type === 'video') return buildFavoriteKey('file', item.name);
+    return null;
+}
+
+async function readDirectoryConfig(dirHandle) {
+    try {
+        const fileHandle = await dirHandle.getFileHandle(CONFIG_FILENAME, { create: true });
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        if (!text) return normalizeConfig(null);
+        const json = JSON.parse(text);
+        return normalizeConfig(json);
+    } catch (e) {
+        console.error(`コンフィグ読み込みエラー (${dirHandle.name}):`, e);
+        return normalizeConfig(null);
+    }
+}
+
+async function writeDirectoryConfig(dirHandle, config) {
+    try {
+        const fileHandle = await dirHandle.getFileHandle(CONFIG_FILENAME, { create: true });
+        const writable = await fileHandle.createWritable();
+        const safeConfig = normalizeConfig(config);
+        const payload = JSON.stringify(safeConfig, null, 2);
+        await writable.write(payload);
+        await writable.close();
+    } catch (e) {
+        console.error(`コンフィグ保存エラー (${dirHandle.name}):`, e);
+        showStatus('コンフィグの保存に失敗しました。', 'error');
+    }
+}
+
+async function toggleFavoriteEntry(dirHandle, entry) {
+    const config = await readDirectoryConfig(dirHandle);
+    const favorites = Array.isArray(config.favorites) ? config.favorites.slice() : [];
+    const key = normalizeFavoriteEntry(entry);
+    if (!key) return false;
+    const index = favorites.findIndex(item => normalizeFavoriteEntry(item) === key);
+    if (index >= 0) {
+        favorites.splice(index, 1);
+        config.favorites = favorites;
+        await writeDirectoryConfig(dirHandle, config);
+        return false;
+    }
+    favorites.push(entry);
+    config.favorites = favorites;
+    await writeDirectoryConfig(dirHandle, config);
+    return true;
+}
+
+function sortByFavorite(items) {
+    return items
+        .map((item, index) => ({ item, index }))
+        .sort((a, b) => {
+            if (a.item.isFavorite === b.item.isFavorite) return a.index - b.index;
+            return a.item.isFavorite ? -1 : 1;
+        })
+        .map(entry => entry.item);
+}
+
+function setFavoriteButtonState(button, isActive) {
+    button.classList.toggle('active', !!isActive);
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+}
+
+function updateFavoriteControlsUI() {
+    if (!favoriteFirstBtn || !favoriteOnlyBtn) return;
+    favoriteFirstBtn.classList.toggle('is-active', favoriteFirst);
+    favoriteOnlyBtn.classList.toggle('is-active', favoriteOnly);
+    favoriteFirstBtn.textContent = favoriteFirst ? 'お気に入り優先: ON' : 'お気に入り優先: OFF';
+    favoriteOnlyBtn.textContent = favoriteOnly ? 'お気に入りのみ: ON' : 'お気に入りのみ: OFF';
 }
 
 async function buildDirectoryCache(dirHandle) {
@@ -335,6 +451,18 @@ recursiveBtn.addEventListener('click', async () => {
     }
 });
 
+favoriteFirstBtn.addEventListener('click', () => {
+    favoriteFirst = !favoriteFirst;
+    updateFavoriteControlsUI();
+    scheduleProcessForCurrentDir(0);
+});
+
+favoriteOnlyBtn.addEventListener('click', () => {
+    favoriteOnly = !favoriteOnly;
+    updateFavoriteControlsUI();
+    scheduleProcessForCurrentDir(0);
+});
+
 closeViewerBtn.addEventListener('click', closeViewer);
 toggleViewBtn.addEventListener('click', () => {
     isSinglePageView = !isSinglePageView;
@@ -419,6 +547,8 @@ async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
     try {
         currentDirHandle = dirHandle;
         const cacheEntry = await ensureDirectoryCache(dirHandle, { forceRefresh });
+        const config = await readDirectoryConfig(dirHandle);
+        const favoriteSet = makeFavoriteSet(config);
         if (!cacheEntry.sorted[sortOrder]) {
             const sorted = [...cacheEntry.items].sort((a, b) => {
                 const nameA = (a.nameLower || a.name.toLowerCase());
@@ -435,6 +565,8 @@ async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
         let imgIdx = 0;
         items.forEach(item => {
             item.imageIndex = item.type === 'image' ? imgIdx++ : -1;
+            const key = getFavoriteKeyForItem(item);
+            item.isFavorite = key ? favoriteSet.has(key) : false;
         });
 
         let filteredItems = items;
@@ -450,6 +582,14 @@ async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
 
         if (searchQuery) {
             filteredItems = filteredItems.filter(i => (i.nameLower || i.name.toLowerCase()).includes(searchQuery));
+        }
+
+        if (favoriteOnly) {
+            filteredItems = filteredItems.filter(i => i.isFavorite);
+        }
+
+        if (favoriteFirst) {
+            filteredItems = sortByFavorite(filteredItems);
         }
 
         if (filteredItems.length === 0) {
@@ -509,6 +649,25 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, contai
     }
 
     (container || itemList).appendChild(card);
+
+    if (parentHandle) {
+        const favoriteBtn = document.createElement('button');
+        favoriteBtn.className = 'favorite-btn';
+        favoriteBtn.type = 'button';
+        favoriteBtn.setAttribute('aria-label', 'お気に入り');
+        favoriteBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 6 4 4 6.5 4c1.74 0 3.41 1.01 4.22 2.62h2.56C14.09 5.01 15.76 4 17.5 4 20 4 22 6 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+        setFavoriteButtonState(favoriteBtn, !!item.isFavorite);
+        favoriteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const entryType = item.type === 'directory' ? 'directory' : 'file';
+            const nextState = await toggleFavoriteEntry(parentHandle, { type: entryType, path: item.name });
+            setFavoriteButtonState(favoriteBtn, nextState);
+            if (favoriteOnly || favoriteFirst) {
+                scheduleProcessForCurrentDir(0);
+            }
+        });
+        thumbnailContainer.appendChild(favoriteBtn);
+    }
 
     const loadThumb = async () => {
         if (card.dataset.loaded) return;
@@ -639,6 +798,18 @@ async function processDirectoryRecursive(dirHandle) {
     updateNavigationUI();
 
     let items = await collectImagesRecursively(dirHandle);
+    const uniqueDirs = new Set(items.map(item => item.parentHandle));
+    const favoriteMap = new WeakMap();
+    await Promise.all(Array.from(uniqueDirs).map(async (handle) => {
+        if (!handle) return;
+        const config = await readDirectoryConfig(handle);
+        favoriteMap.set(handle, makeFavoriteSet(config));
+    }));
+    items.forEach(item => {
+        const set = favoriteMap.get(item.parentHandle);
+        const key = buildFavoriteKey('file', item.name);
+        item.isFavorite = set ? set.has(key) : false;
+    });
     items.sort((a, b) => {
         const pathA = a.path.toLowerCase();
         const pathB = b.path.toLowerCase();
@@ -659,6 +830,14 @@ async function processDirectoryRecursive(dirHandle) {
 
     if (searchQuery) {
         items = items.filter(i => i.name.toLowerCase().includes(searchQuery));
+    }
+
+    if (favoriteOnly) {
+        items = items.filter(i => i.isFavorite);
+    }
+
+    if (favoriteFirst) {
+        items = sortByFavorite(items);
     }
 
     if (items.length === 0) {
@@ -874,6 +1053,7 @@ function updateNavigationUI() {
         recursiveBtn.textContent = '全画像一覧';
     }
     updateSortButtonUI();
+    updateFavoriteControlsUI();
 }
 
 function updateThumbnailSize() {
@@ -896,6 +1076,7 @@ function updateSortButtonUI() {
 populateSizeSelect();
 updateThumbnailSize();
 updateSortButtonUI();
+updateFavoriteControlsUI();
 filterSelect.value = filterType;
 
 function ensureLazyLoadObserver() {
