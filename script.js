@@ -52,6 +52,7 @@ let isRecursiveMode = false;
 let favoriteFirst = false;
 let favoriteOnly = false;
 let currentDisplayImageList = [];
+let configWriteTimer = null;
 const lastVisitedChild = new WeakMap();
 const directoryCache = new WeakMap(); // ディレクトリごとの項目キャッシュ
 const directoryPreviewCache = new WeakMap(); // ディレクトリのプレビュー画像キャッシュ
@@ -84,7 +85,8 @@ function normalizeConfig(raw) {
     const base = { version: 1, favorites: [] };
     if (!raw || typeof raw !== 'object') return base;
     const favorites = Array.isArray(raw.favorites) ? raw.favorites : [];
-    return { ...raw, version: 1, favorites };
+    const settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
+    return { ...raw, version: 1, favorites, settings };
 }
 
 function buildFavoriteKey(type, path) {
@@ -189,6 +191,53 @@ function updateFavoriteControlsUI() {
     favoriteOnlyBtn.classList.toggle('is-active', favoriteOnly);
     favoriteFirstBtn.textContent = favoriteFirst ? 'お気に入り優先: ON' : 'お気に入り優先: OFF';
     favoriteOnlyBtn.textContent = favoriteOnly ? 'お気に入りのみ: ON' : 'お気に入りのみ: OFF';
+}
+
+function getCurrentSettingsSnapshot() {
+    return {
+        thumbnailSizeIndex,
+        sortOrder,
+        filterType,
+        favoriteFirst,
+        favoriteOnly
+    };
+}
+
+function applySettingsFromConfig(config) {
+    if (!config || !config.settings) return;
+    const settings = config.settings;
+    if (Number.isInteger(settings.thumbnailSizeIndex)) {
+        thumbnailSizeIndex = settings.thumbnailSizeIndex;
+    }
+    if (settings.sortOrder === 'asc' || settings.sortOrder === 'desc') {
+        sortOrder = settings.sortOrder;
+    }
+    if (typeof settings.filterType === 'string') {
+        filterType = settings.filterType;
+    }
+    if (typeof settings.favoriteFirst === 'boolean') {
+        favoriteFirst = settings.favoriteFirst;
+    }
+    if (typeof settings.favoriteOnly === 'boolean') {
+        favoriteOnly = settings.favoriteOnly;
+    }
+    updateThumbnailSize();
+    filterSelect.value = Array.from(filterSelect.options).some(opt => opt.value === filterType)
+        ? filterType
+        : 'all';
+    filterType = filterSelect.value;
+    updateSortButtonUI();
+    updateFavoriteControlsUI();
+}
+
+function scheduleSaveCurrentDirectoryConfig() {
+    if (configWriteTimer) clearTimeout(configWriteTimer);
+    configWriteTimer = setTimeout(async () => {
+        if (!currentDirHandle) return;
+        const config = await readDirectoryConfig(currentDirHandle);
+        config.settings = { ...config.settings, ...getCurrentSettingsSnapshot() };
+        await writeDirectoryConfig(currentDirHandle, config);
+    }, 250);
 }
 
 async function buildDirectoryCache(dirHandle) {
@@ -405,10 +454,12 @@ sizeSelect.addEventListener('change', () => {
     thumbnailSizeIndex = parseInt(sizeSelect.value, 10);
     localStorage.setItem('thumbnailSizeIndex', thumbnailSizeIndex.toString());
     updateThumbnailSize();
+    scheduleSaveCurrentDirectoryConfig();
 });
 
 filterSelect.addEventListener('change', async () => {
     filterType = filterSelect.value;
+    scheduleSaveCurrentDirectoryConfig();
     scheduleProcessForCurrentDir(0);
 });
 
@@ -419,6 +470,7 @@ searchInput.addEventListener('input', () => {
 
 toggleSortBtn.addEventListener('click', async () => {
     sortOrder = (sortOrder === 'asc') ? 'desc' : 'asc';
+    scheduleSaveCurrentDirectoryConfig();
     scheduleProcessForCurrentDir(0);
 });
 
@@ -429,7 +481,7 @@ reloadBtn.addEventListener('click', async () => {
             await processDirectoryRecursive(currentDir);
         } else {
             invalidateDirectoryCache(currentDir);
-            await processDirectory(currentDir, { forceRefresh: true });
+            await processDirectory(currentDir, { forceRefresh: true, useConfig: false });
             await scrollToVisitedChild(currentDir);
         }
     }
@@ -455,12 +507,14 @@ recursiveBtn.addEventListener('click', async () => {
 favoriteFirstBtn.addEventListener('click', () => {
     favoriteFirst = !favoriteFirst;
     updateFavoriteControlsUI();
+    scheduleSaveCurrentDirectoryConfig();
     scheduleProcessForCurrentDir(0);
 });
 
 favoriteOnlyBtn.addEventListener('click', () => {
     favoriteOnly = !favoriteOnly;
     updateFavoriteControlsUI();
+    scheduleSaveCurrentDirectoryConfig();
     scheduleProcessForCurrentDir(0);
 });
 
@@ -528,7 +582,7 @@ document.addEventListener('fullscreenchange', () => {
 
 // --- メインロジック ---
 
-async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
+async function processDirectory(dirHandle, { forceRefresh = false, useConfig = true } = {}) {
     const label = `processDirectory:${dirHandle.name}-${Date.now()}`;
     if (ENABLE_DEBUG_LOGS) {
         console.log(`[start] ${label}`);
@@ -549,6 +603,9 @@ async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
         currentDirHandle = dirHandle;
         const cacheEntry = await ensureDirectoryCache(dirHandle, { forceRefresh });
         const config = await readDirectoryConfig(dirHandle);
+        if (useConfig) {
+            applySettingsFromConfig(config);
+        }
         const favoriteSet = makeFavoriteSet(config);
         if (!cacheEntry.sorted[sortOrder]) {
             const sorted = [...cacheEntry.items].sort((a, b) => {
@@ -1204,7 +1261,7 @@ function scheduleProcessForCurrentDir(debounceMs = 150) {
         if (isRecursiveMode) {
             await processDirectoryRecursive(currentDir);
         } else {
-            await processDirectory(currentDir);
+            await processDirectory(currentDir, { useConfig: false });
         }
     }, debounceMs);
 }
