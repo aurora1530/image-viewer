@@ -51,6 +51,7 @@ let searchQuery = '';
 let isRecursiveMode = false;
 let favoriteFirst = false;
 let favoriteOnly = false;
+let currentDisplayImageList = [];
 const lastVisitedChild = new WeakMap();
 const directoryCache = new WeakMap(); // ディレクトリごとの項目キャッシュ
 const directoryPreviewCache = new WeakMap(); // ディレクトリのプレビュー画像キャッシュ
@@ -592,6 +593,20 @@ async function processDirectory(dirHandle, { forceRefresh = false } = {}) {
             filteredItems = sortByFavorite(filteredItems);
         }
 
+        currentDisplayImageList = filteredItems
+            .filter(i => i.type === 'image')
+            .map(i => i.handle);
+
+        const displayIndexMap = new WeakMap();
+        currentDisplayImageList.forEach((handle, index) => {
+            displayIndexMap.set(handle, index);
+        });
+        filteredItems.forEach(item => {
+            if (item.type === 'image') {
+                item.displayIndex = displayIndexMap.get(item.handle);
+            }
+        });
+
         if (filteredItems.length === 0) {
             showStatus('表示できるアイテムがありません。', 'info');
             return;
@@ -642,7 +657,11 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, contai
         card.classList.add('media-card');
         card.appendChild(thumbnailContainer);
         if (item.type === 'image') {
-            card.addEventListener('click', () => openViewer(parentHandle, imageIndex));
+            const startIndex = Number.isInteger(item.displayIndex) ? item.displayIndex : imageIndex;
+            const overrideList = currentDisplayImageList && currentDisplayImageList.length > 0
+                ? currentDisplayImageList
+                : null;
+            card.addEventListener('click', () => openViewer(parentHandle, startIndex, overrideList));
         } else {
             card.addEventListener('click', () => openVideoPlayer(item.handle));
         }
@@ -796,6 +815,7 @@ async function processDirectoryRecursive(dirHandle) {
     updateThumbnailSize();
     itemList.innerHTML = '';
     updateNavigationUI();
+    currentDisplayImageList = [];
 
     let items = await collectImagesRecursively(dirHandle);
     const uniqueDirs = new Set(items.map(item => item.parentHandle));
@@ -854,23 +874,27 @@ async function processDirectoryRecursive(dirHandle) {
     }
 }
 
-async function openViewer(dirHandle, startIndex) {
+async function openViewer(dirHandle, startIndex, overrideImageList = null) {
     try {
         showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
-        const cacheEntry = await ensureDirectoryCache(dirHandle);
-        if (!cacheEntry.sorted[sortOrder]) {
-            const sorted = [...cacheEntry.items].sort((a, b) => {
-                const nameA = (a.nameLower || a.name.toLowerCase());
-                const nameB = (b.nameLower || b.name.toLowerCase());
-                return sortOrder === 'asc'
-                    ? nameA.localeCompare(nameB, undefined, { numeric: true })
-                    : nameB.localeCompare(nameA, undefined, { numeric: true });
-            });
-            cacheEntry.sorted[sortOrder] = sorted;
+        if (Array.isArray(overrideImageList) && overrideImageList.length > 0) {
+            currentImageFiles = overrideImageList.slice();
+        } else {
+            const cacheEntry = await ensureDirectoryCache(dirHandle);
+            if (!cacheEntry.sorted[sortOrder]) {
+                const sorted = [...cacheEntry.items].sort((a, b) => {
+                    const nameA = (a.nameLower || a.name.toLowerCase());
+                    const nameB = (b.nameLower || b.name.toLowerCase());
+                    return sortOrder === 'asc'
+                        ? nameA.localeCompare(nameB, undefined, { numeric: true })
+                        : nameB.localeCompare(nameA, undefined, { numeric: true });
+                });
+                cacheEntry.sorted[sortOrder] = sorted;
+            }
+            currentImageFiles = cacheEntry.sorted[sortOrder]
+                .filter(i => i.type === 'image')
+                .map(i => i.handle);
         }
-        currentImageFiles = cacheEntry.sorted[sortOrder]
-            .filter(i => i.type === 'image')
-            .map(i => i.handle);
         if (currentImageFiles.length === 0) { showStatus('このフォルダには表示できる画像がありません。', 'info'); return; }
         currentImageIndex = startIndex;
         pageOffset = 0;
