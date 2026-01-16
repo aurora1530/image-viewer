@@ -1,6 +1,7 @@
 // @ts-nocheck
 import './style.css';
 import { CONFIG, DOM, state } from './state';
+import { createGallery } from './gallery';
 import {
 	buildFavoriteKey,
 	isImageFileName,
@@ -607,7 +608,7 @@ async function processDirectory(dirHandle, { forceRefresh = false, useConfig = t
 
 		const useLazy = directoryHistory.length > 1 && cacheEntry.imageCount >= LAZY_LOAD_THRESHOLD;
 		const dirPath = dirPathSegments.join('/');
-		await renderItemsInBatches(filteredItems, dirHandle, useLazy, false, dirPath);
+		await gallery.renderItemsInBatches(filteredItems, dirHandle, useLazy, false, dirPath);
 
 	} catch (err) {
 		console.error('ディレクトリ処理エラー:', err);
@@ -621,132 +622,6 @@ async function processDirectory(dirHandle, { forceRefresh = false, useConfig = t
 }
 
 
-function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, container = null, parentPath = '') {
-	const card = document.createElement('div');
-	card.className = 'group item-card';
-
-	const thumbnailContainer = document.createElement('div');
-	thumbnailContainer.className = 'thumbnail-container cursor-pointer';
-
-	if (item.type === 'directory') {
-		card.classList.add('directory-card');
-		card.dataset.dirName = item.name;
-		const title = document.createElement('h3');
-		title.className = 'dir-title';
-		const titleText = document.createElement('span');
-		titleText.textContent = item.name;
-		titleText.className = 'break-all';
-		title.appendChild(titleText);
-		const badge = document.createElement('span');
-		badge.className = 'dir-badge';
-		badge.textContent = 'フォルダ';
-		title.appendChild(badge);
-		card.appendChild(thumbnailContainer);
-		card.appendChild(title);
-		thumbnailContainer.addEventListener('click', () => enterDirectory(item.handle));
-		title.addEventListener('click', (e) => { if (e.target !== badge) enterDirectory(item.handle); });
-	} else {
-		card.classList.add('media-card');
-		card.appendChild(thumbnailContainer);
-		if (item.type === 'image') {
-			const startIndex = Number.isInteger(item.displayIndex) ? item.displayIndex : imageIndex;
-			const overrideList = currentDisplayImageList && currentDisplayImageList.length > 0
-				? currentDisplayImageList
-				: null;
-			card.addEventListener('click', () => openViewer(parentHandle, startIndex, overrideList));
-		} else {
-			card.addEventListener('click', () => openVideoPlayer(item.handle));
-		}
-	}
-
-	(container || itemList).appendChild(card);
-
-	if (parentHandle) {
-		const favoriteBtn = document.createElement('button');
-		favoriteBtn.className = 'favorite-btn';
-		favoriteBtn.type = 'button';
-		favoriteBtn.setAttribute('aria-label', 'お気に入り');
-		favoriteBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 6 4 4 6.5 4c1.74 0 3.41 1.01 4.22 2.62h2.56C14.09 5.01 15.76 4 17.5 4 20 4 22 6 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
-		setFavoriteButtonState(favoriteBtn, !!item.isFavorite);
-		favoriteBtn.addEventListener('click', async (e) => {
-			e.stopPropagation();
-			const entryType = item.type === 'directory' ? 'directory' : 'file';
-			const dirPathSegments = normalizeDirPathSegments(parentPath);
-			const rootHandle = getRootDirHandle();
-			const nextState = await toggleFavoriteEntry(
-				rootHandle,
-				dirPathSegments,
-				{ type: entryType, path: item.name },
-				(message) => showStatus(message, 'error')
-			);
-			setFavoriteButtonState(favoriteBtn, nextState);
-			if (favoriteOnly || favoriteFirst) {
-				scheduleProcessForCurrentDir(0);
-			}
-		});
-		thumbnailContainer.appendChild(favoriteBtn);
-	}
-
-	const loadThumb = async () => {
-		if (card.dataset.loaded) return;
-		card.dataset.loaded = '1';
-		if (item.type === 'image') {
-			try {
-				const file = await item.handle.getFile();
-				const thumbnailUrl = URL.createObjectURL(file);
-				createdUrls.add(thumbnailUrl);
-				const img = document.createElement('img');
-				img.loading = 'lazy';
-				img.decoding = 'async';
-				img.src = thumbnailUrl;
-				img.alt = item.name;
-				thumbnailContainer.appendChild(img);
-			} catch(e) { console.error(`サムネイル生成失敗: ${item.name}`, e); }
-		} else if (item.type === 'video') {
-			const playIconOverlay = document.createElement('div');
-			playIconOverlay.className = 'absolute inset-0 flex items-center justify-center pointer-events-none z-10';
-			playIconOverlay.innerHTML = `<svg class="w-16 h-16 text-white opacity-70 group-hover:opacity-90 transition-opacity" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
-			thumbnailContainer.appendChild(playIconOverlay);
-			try {
-				const file = await item.handle.getFile();
-				const videoUrl = URL.createObjectURL(file);
-				createdUrls.add(videoUrl);
-				const video = document.createElement('video');
-				video.src = videoUrl + '#t=0.5';
-				video.muted = true;
-				video.preload = 'metadata';
-				thumbnailContainer.insertBefore(video, playIconOverlay);
-			} catch(e) { console.error(`ビデオサムネイル生成失敗: ${item.name}`, e); }
-		} else if (item.type === 'directory') {
-			const readBtn = document.createElement('button');
-			readBtn.className = 'read-button';
-			readBtn.textContent = '開く';
-			readBtn.onclick = (e) => { e.stopPropagation(); openViewer(item.handle, 0); };
-			thumbnailContainer.appendChild(readBtn);
-
-			const thumbnailUrl = await getDirectoryPreviewUrl(item.handle);
-			if (thumbnailUrl) {
-				const img = document.createElement('img');
-				img.loading = 'lazy';
-				img.decoding = 'async';
-				img.src = thumbnailUrl;
-				img.alt = `Thumbnail for ${item.name}`;
-				thumbnailContainer.insertBefore(img, thumbnailContainer.firstChild);
-			} else {
-				thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>`;
-			}
-		}
-	};
-
-	const shouldLazyLoad = lazyLoad || item.type === 'directory';
-	if (shouldLazyLoad) {
-		ensureLazyLoadObserver();
-		card._loadThumb = loadThumb;
-		lazyLoadObserver.observe(card);
-	} else {
-		loadThumb();
-	}
-}
 async function enterDirectory(dirHandle) {
 	const current = directoryHistory[directoryHistory.length - 1];
 	rememberVisitedChild(current, dirHandle.name);
@@ -869,7 +744,7 @@ async function processDirectoryRecursive(dirHandle) {
 
 	showStatus('', 'clear');
 	const useLazy = directoryHistory.length > 1 && items.length >= LAZY_LOAD_THRESHOLD;
-	await renderItemsInBatches(items, null, useLazy, true);
+	await gallery.renderItemsInBatches(items, null, useLazy, true);
 	if (ENABLE_DEBUG_LOGS) {
 		console.timeEnd(label);
 		console.log(`[end] ${label}`);
@@ -1120,6 +995,28 @@ function ensureLazyLoadObserver() {
 	}
 }
 
+const gallery = createGallery({
+	itemList,
+	createdUrls,
+	RIC,
+	enableDebugLogs: ENABLE_DEBUG_LOGS,
+	ensureLazyLoadObserver,
+	getLazyLoadObserver: () => lazyLoadObserver,
+	getCurrentDisplayImageList: () => currentDisplayImageList,
+	openViewer,
+	openVideoPlayer,
+	enterDirectory,
+	getDirectoryPreviewUrl,
+	setFavoriteButtonState,
+	toggleFavoriteEntry,
+	getRootDirHandle,
+	normalizeDirPathSegments,
+	scheduleProcessForCurrentDir,
+	getFavoriteFirst: () => favoriteFirst,
+	getFavoriteOnly: () => favoriteOnly,
+	showStatus
+});
+
 function rememberVisitedChild(parentHandle, childName) {
 	if (parentHandle && childName) {
 		lastVisitedChild.set(parentHandle, childName);
@@ -1157,44 +1054,6 @@ window.addEventListener('beforeunload', () => {
 	}
 	previewUrls.clear();
 });
-
-// ---- Rendering helpers ----
-function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false, parentPath = '') {
-	return new Promise(resolve => {
-		const label = ENABLE_DEBUG_LOGS ? `render:${dirHandle ? dirHandle.name : 'recursive'}-${Date.now()}` : null;
-		if (label) console.time(label);
-		const total = items.length;
-		const chunkSize = 100;
-		let index = 0;
-		let chunk = 0;
-		function renderChunk() {
-			const frag = document.createDocumentFragment();
-			for (let i = 0; i < chunkSize && index < total; i++, index++) {
-				const it = items[index];
-				if (isRecursiveList) {
-					createItemCard({ type: 'image', handle: it.handle, name: it.name, nameLower: it.name.toLowerCase() }, it.parentHandle, it.imageIndex, useLazy, frag, it.parentPath);
-				} else {
-					createItemCard(it, dirHandle, it.imageIndex, useLazy, frag, parentPath);
-				}
-			}
-			itemList.appendChild(frag);
-			chunk++;
-			if (label && chunk % 5 === 0) {
-				console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
-			}
-			if (index < total) {
-				RIC(renderChunk);
-			} else {
-				if (label) {
-					console.timeEnd(label);
-					console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
-				}
-				resolve();
-			}
-		}
-		renderChunk();
-	});
-}
 
 function scheduleProcessForCurrentDir(debounceMs = 150) {
 	if (searchDebounceTimer) {
