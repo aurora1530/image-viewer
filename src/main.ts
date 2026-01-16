@@ -2,6 +2,7 @@
 import './style.css';
 import { CONFIG, DOM, state } from './state';
 import { createGallery } from './gallery';
+import { createViewer } from './viewer';
 import {
 	buildFavoriteKey,
 	isImageFileName,
@@ -450,26 +451,26 @@ favoriteOnlyBtn.addEventListener('click', () => {
 	scheduleProcessForCurrentDir(0);
 });
 
-closeViewerBtn.addEventListener('click', closeViewer);
+closeViewerBtn.addEventListener('click', () => viewerController.closeViewer());
 toggleViewBtn.addEventListener('click', () => {
 	isSinglePageView = !isSinglePageView;
 	localStorage.setItem('isSinglePageView', isSinglePageView ? '1' : '0');
 	updateViewModeUI();
-	displayPages();
+	viewerController.displayPages();
 });
 adjustSpreadBtn.addEventListener('click', () => {
 	pageOffset = 1 - pageOffset;
-	displayPages();
+	viewerController.displayPages();
 });
 
 // ★変更点: ページ送りボタンの方向をR-to-Lに戻す
 nextBtn.addEventListener('click', () => {
 	const step = isSinglePageView ? 1 : 2;
-	navigatePages(-step);
+	viewerController.navigatePages(-step);
 });
 prevBtn.addEventListener('click', () => {
 	const step = isSinglePageView ? 1 : 2;
-	navigatePages(step);
+	viewerController.navigatePages(step);
 });
 
 fullscreenBtn.addEventListener('click', toggleFullscreen);
@@ -478,7 +479,7 @@ document.addEventListener('keydown', (e) => {
 	if (e.altKey && e.key === 'ArrowLeft') {
 		e.preventDefault();
 		if (viewer.style.display !== 'none') {
-			closeViewer();
+			viewerController.closeViewer();
 		} else if (directoryHistory.length > 1) {
 			upDirBtn.click();
 		}
@@ -488,7 +489,7 @@ document.addEventListener('keydown', (e) => {
 	if (viewer.style.display === 'none') return;
 	if (e.key === 'Escape') {
 		e.preventDefault();
-		closeViewer();
+		viewerController.closeViewer();
 		return;
 	}
 	if (!viewerVideoContainer.classList.contains('hidden')) return;
@@ -496,8 +497,8 @@ document.addEventListener('keydown', (e) => {
 	// 右から左へ読み進める操作は意図されたもの (右矢印: 前のページ, 左矢印: 次のページ)
 	const step = isSinglePageView ? 1 : 2;
 	switch (e.key) {
-		case 'ArrowLeft': navigatePages(step); break; // 次へ
-		case 'ArrowRight': navigatePages(-step); break; // 前へ
+		case 'ArrowLeft': viewerController.navigatePages(step); break; // 次へ
+		case 'ArrowRight': viewerController.navigatePages(-step); break; // 前へ
 	}
 });
 
@@ -751,87 +752,6 @@ async function processDirectoryRecursive(dirHandle) {
 	}
 }
 
-async function openViewer(dirHandle, startIndex, overrideImageList = null) {
-	try {
-		showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
-		if (Array.isArray(overrideImageList) && overrideImageList.length > 0) {
-			currentImageFiles = overrideImageList.slice();
-		} else {
-			const cacheEntry = await ensureDirectoryCache(dirHandle);
-			if (!cacheEntry.sorted[sortOrder]) {
-				const sorted = [...cacheEntry.items].sort((a, b) => {
-					const nameA = (a.nameLower || a.name.toLowerCase());
-					const nameB = (b.nameLower || b.name.toLowerCase());
-					return sortOrder === 'asc'
-						? nameA.localeCompare(nameB, undefined, { numeric: true })
-						: nameB.localeCompare(nameA, undefined, { numeric: true });
-				});
-				cacheEntry.sorted[sortOrder] = sorted;
-			}
-			currentImageFiles = cacheEntry.sorted[sortOrder]
-				.filter(i => i.type === 'image')
-				.map(i => i.handle);
-		}
-		if (currentImageFiles.length === 0) { showStatus('このフォルダには表示できる画像がありません。', 'info'); return; }
-		currentImageIndex = startIndex;
-		pageOffset = 0;
-		isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
-		viewer.style.display = 'flex';
-		viewerPages.style.display = 'flex';
-		viewerVideoContainer.classList.add('hidden');
-		viewerToolbar.style.display = 'flex';
-		listToolbar.style.display = 'none';
-		document.body.style.overflow = 'hidden';
-		updateViewModeUI();
-		displayPages();
-		showStatus('', 'clear');
-	} catch (err) {
-		console.error('ビューワー起動エラー:', err);
-		showStatus('画像の読み込みに失敗しました。', 'error');
-		closeViewer();
-	}
-}
-
-async function openVideoPlayer(videoHandle) {
-	try {
-		viewer.style.display = 'flex';
-		viewerPages.style.display = 'none';
-		viewerVideoContainer.classList.remove('hidden');
-		viewerToolbar.style.display = 'none';
-		listToolbar.style.display = 'none';
-		document.body.style.overflow = 'hidden';
-		const file = await videoHandle.getFile();
-		const url = URL.createObjectURL(file);
-		createdUrls.add(url);
-		viewerVideo.src = url;
-		viewerVideo.play();
-	} catch (err) {
-		console.error("動画再生エラー:", err);
-		showStatus('動画の再生に失敗しました。', 'error');
-		closeViewer();
-	}
-}
-
-function closeViewer() {
-	viewer.style.display = 'none';
-	listToolbar.style.display = '';
-	document.body.style.overflow = 'auto';
-	if (leftPageImg.dataset.url) URL.revokeObjectURL(leftPageImg.dataset.url);
-	if (rightPageImg.dataset.url) URL.revokeObjectURL(rightPageImg.dataset.url);
-	createdUrls.delete(leftPageImg.dataset.url);
-	createdUrls.delete(rightPageImg.dataset.url);
-	leftPageImg.src = ''; rightPageImg.src = '';
-	leftPageImg.dataset.url = ''; rightPageImg.dataset.url = '';
-	currentImageFiles = [];
-	if (viewerVideo.src) {
-		viewerVideo.pause();
-		URL.revokeObjectURL(viewerVideo.src);
-		createdUrls.delete(viewerVideo.src);
-		viewerVideo.src = '';
-	}
-	if (document.fullscreenElement) document.exitFullscreen();
-}
-
 function updateViewModeUI() {
 	if (isSinglePageView) {
 		toggleViewBtn.textContent = '見開きに戻す';
@@ -839,78 +759,6 @@ function updateViewModeUI() {
 	} else {
 		toggleViewBtn.textContent = '単一表示にする';
 		adjustSpreadBtn.style.display = 'inline-block';
-	}
-}
-
-async function displayPages() {
-	viewerPages.classList.toggle('single-view', isSinglePageView);
-	const total = currentImageFiles.length;
-	if (isSinglePageView) {
-		await Promise.all([
-			displayImage(rightPageImg, currentImageIndex),
-			displayImage(leftPageImg, -1)
-		]);
-		pageCounter.textContent = `${currentImageIndex + 1} / ${total}`;
-	} else {
-		let baseIndex = currentImageIndex;
-		if (baseIndex % 2 !== 0 && baseIndex > 0) baseIndex--;
-		const rightPageIndex = baseIndex - pageOffset;
-		const leftPageIndex = baseIndex + 1 - pageOffset;
-		await Promise.all([
-			displayImage(rightPageImg, rightPageIndex),
-			displayImage(leftPageImg, leftPageIndex)
-		]);
-		const rightPageNum = rightPageIndex >= 0 && rightPageIndex < total ? rightPageIndex + 1 : '-';
-		const leftPageNum = leftPageIndex >= 0 && leftPageIndex < total ? leftPageIndex + 1 : '-';
-		pageCounter.textContent = `${leftPageNum} - ${rightPageNum} / ${total}`;
-	}
-}
-
-async function displayImage(imgElement, index) {
-	if (imgElement.dataset.url) {
-		URL.revokeObjectURL(imgElement.dataset.url);
-		createdUrls.delete(imgElement.dataset.url);
-		imgElement.dataset.url = '';
-	}
-	if (index >= 0 && index < currentImageFiles.length) {
-		try {
-			const file = await currentImageFiles[index].getFile();
-			const url = URL.createObjectURL(file);
-			createdUrls.add(url);
-			imgElement.src = url;
-			imgElement.dataset.url = url;
-			imgElement.style.visibility = 'visible';
-		} catch (err) {
-			console.error(`画像表示エラー (index: ${index}):`, err);
-			imgElement.src = '';
-			imgElement.style.visibility = 'hidden';
-		}
-	} else {
-		imgElement.src = '';
-		imgElement.style.visibility = 'hidden';
-	}
-}
-
-function navigatePages(direction) {
-	const total = currentImageFiles.length;
-	if (total <= 1) return;
-
-	let newIndex = currentImageIndex + direction;
-
-	if (newIndex >= total) {
-		newIndex = 0;
-	} else if (newIndex < 0) {
-		if (isSinglePageView) {
-			newIndex = total - 1;
-		} else {
-			let lastSpreadIndex = (total % 2 === 0) ? total - 2 : total - 1;
-			newIndex = lastSpreadIndex < 0 ? 0 : lastSpreadIndex;
-		}
-	}
-
-	if (newIndex !== currentImageIndex) {
-		currentImageIndex = newIndex;
-		displayPages();
 	}
 }
 
@@ -995,6 +843,31 @@ function ensureLazyLoadObserver() {
 	}
 }
 
+const viewerController = createViewer({
+	viewer,
+	viewerPages,
+	viewerVideoContainer,
+	viewerToolbar,
+	listToolbar,
+	leftPageImg,
+	rightPageImg,
+	viewerVideo,
+	pageCounter,
+	createdUrls,
+	getCurrentImageFiles: () => currentImageFiles,
+	setCurrentImageFiles: (files) => { currentImageFiles = files; },
+	getCurrentImageIndex: () => currentImageIndex,
+	setCurrentImageIndex: (index) => { currentImageIndex = index; },
+	getPageOffset: () => pageOffset,
+	setPageOffset: (offset) => { pageOffset = offset; },
+	getSortOrder: () => sortOrder,
+	getIsSinglePageView: () => isSinglePageView,
+	setIsSinglePageView: (value) => { isSinglePageView = value; },
+	updateViewModeUI,
+	showStatus,
+	ensureDirectoryCache
+});
+
 const gallery = createGallery({
 	itemList,
 	createdUrls,
@@ -1003,8 +876,8 @@ const gallery = createGallery({
 	ensureLazyLoadObserver,
 	getLazyLoadObserver: () => lazyLoadObserver,
 	getCurrentDisplayImageList: () => currentDisplayImageList,
-	openViewer,
-	openVideoPlayer,
+	openViewer: viewerController.openViewer,
+	openVideoPlayer: viewerController.openVideoPlayer,
 	enterDirectory,
 	getDirectoryPreviewUrl,
 	setFavoriteButtonState,
