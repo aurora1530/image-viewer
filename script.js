@@ -39,7 +39,7 @@ let isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
 let toolbarHideTimer = null;
 const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', ".heic"];
 const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
-const CONFIG_FILENAME = '.image-viewr.json';
+const CONFIG_FILENAME = '.image-viewer.json';
 const LAZY_LOAD_THRESHOLD = 500; // threshold for enabling lazy loading
 let lazyLoadObserver = null;
 let createdUrls = new Set();
