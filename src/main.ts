@@ -6,9 +6,17 @@ import {
 	isImageFileName,
 	joinRelativePath,
 	normalizeDirPathSegments,
-	normalizeFavoriteEntry,
 	sortByFavorite
 } from './utils';
+import {
+	ensureConfigNode,
+	getConfigNode,
+	getFavoriteKeyForItem,
+	makeFavoriteSet,
+	readRootConfig,
+	toggleFavoriteEntry,
+	writeRootConfig
+} from './storage';
 
 // DOM要素の取得
 const {
@@ -90,20 +98,6 @@ function resetSearchQuery() {
 	}
 }
 
-function ensureConfigNode(raw) {
-	const node = raw && typeof raw === 'object' ? raw : {};
-	if (!Array.isArray(node.favorites)) node.favorites = [];
-	if (!node.settings || typeof node.settings !== 'object') node.settings = {};
-	if (!node.directories || typeof node.directories !== 'object') node.directories = {};
-	return node;
-}
-
-function normalizeRootConfig(raw) {
-	const node = ensureConfigNode(raw && typeof raw === 'object' ? { ...raw } : {});
-	node.version = 2;
-	return node;
-}
-
 function getRootDirHandle() {
 	return directoryHistory.length > 0 ? directoryHistory[0] : null;
 }
@@ -111,89 +105,6 @@ function getRootDirHandle() {
 function getCurrentDirPathSegments() {
 	if (directoryHistory.length <= 1) return [];
 	return directoryHistory.slice(1).map(handle => handle.name);
-}
-
-function getConfigNode(rootConfig, pathSegments, { create = false } = {}) {
-	let node = ensureConfigNode(rootConfig);
-	const segments = normalizeDirPathSegments(pathSegments);
-	for (const segment of segments) {
-		if (!node.directories[segment]) {
-			if (!create) return null;
-			node.directories[segment] = ensureConfigNode({});
-		}
-		node = ensureConfigNode(node.directories[segment]);
-	}
-	return node;
-}
-
-function makeFavoriteSet(config) {
-	const set = new Set();
-	if (!config || !Array.isArray(config.favorites)) return set;
-	config.favorites.forEach(entry => {
-		const key = normalizeFavoriteEntry(entry);
-		if (key) set.add(key);
-	});
-	return set;
-}
-
-function getFavoriteKeyForItem(item) {
-	if (!item) return null;
-	if (item.type === 'directory') return buildFavoriteKey('directory', item.name);
-	if (item.type === 'image' || item.type === 'video') return buildFavoriteKey('file', item.name);
-	return null;
-}
-
-async function readRootConfig(rootHandle) {
-	try {
-		if (!rootHandle) return normalizeRootConfig(null);
-		const fileHandle = await rootHandle.getFileHandle(CONFIG_FILENAME);
-		const file = await fileHandle.getFile();
-		const text = await file.text();
-		if (!text) return normalizeRootConfig(null);
-		const json = JSON.parse(text);
-		return normalizeRootConfig(json);
-	} catch (e) {
-		if (ENABLE_DEBUG_LOGS) {
-			console.warn('ルートコンフィグ読み込みエラー:', e);
-		}
-		return normalizeRootConfig(null);
-	}
-}
-
-async function writeRootConfig(rootHandle, config) {
-	try {
-		if (!rootHandle) return;
-		const fileHandle = await rootHandle.getFileHandle(CONFIG_FILENAME, { create: true });
-		const writable = await fileHandle.createWritable();
-		const safeConfig = normalizeRootConfig(config);
-		const payload = JSON.stringify(safeConfig, null, 2);
-		await writable.write(payload);
-		await writable.close();
-	} catch (e) {
-		console.error('ルートコンフィグ保存エラー:', e);
-		showStatus('コンフィグの保存に失敗しました。', 'error');
-	}
-}
-
-async function toggleFavoriteEntry(dirPathSegments, entry) {
-	const rootHandle = getRootDirHandle();
-	if (!rootHandle) return false;
-	const rootConfig = await readRootConfig(rootHandle);
-	const config = getConfigNode(rootConfig, dirPathSegments, { create: true });
-	const favorites = Array.isArray(config.favorites) ? config.favorites.slice() : [];
-	const key = normalizeFavoriteEntry(entry);
-	if (!key) return false;
-	const index = favorites.findIndex(item => normalizeFavoriteEntry(item) === key);
-	if (index >= 0) {
-		favorites.splice(index, 1);
-		config.favorites = favorites;
-		await writeRootConfig(rootHandle, rootConfig);
-		return false;
-	}
-	favorites.push(entry);
-	config.favorites = favorites;
-	await writeRootConfig(rootHandle, rootConfig);
-	return true;
 }
 
 function setFavoriteButtonState(button, isActive) {
@@ -256,7 +167,7 @@ function scheduleSaveCurrentDirectoryConfig() {
 		const dirPathSegments = getCurrentDirPathSegments();
 		const config = getConfigNode(rootConfig, dirPathSegments, { create: true });
 		config.settings = { ...config.settings, ...getCurrentSettingsSnapshot() };
-		await writeRootConfig(rootHandle, rootConfig);
+		await writeRootConfig(rootHandle, rootConfig, (message) => showStatus(message, 'error'));
 	}, 250);
 }
 
@@ -761,7 +672,13 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, contai
 			e.stopPropagation();
 			const entryType = item.type === 'directory' ? 'directory' : 'file';
 			const dirPathSegments = normalizeDirPathSegments(parentPath);
-			const nextState = await toggleFavoriteEntry(dirPathSegments, { type: entryType, path: item.name });
+			const rootHandle = getRootDirHandle();
+			const nextState = await toggleFavoriteEntry(
+				rootHandle,
+				dirPathSegments,
+				{ type: entryType, path: item.name },
+				(message) => showStatus(message, 'error')
+			);
 			setFavoriteButtonState(favoriteBtn, nextState);
 			if (favoriteOnly || favoriteFirst) {
 				scheduleProcessForCurrentDir(0);
