@@ -5,31 +5,71 @@ import {
   normalizeFavoriteEntry
 } from './utils';
 
-type FavoriteEntry = string | { type?: string; path?: string };
+export type FavoriteEntry = string | { type?: string; path?: string };
 
-type ConfigNode = {
+export type ConfigNode = {
   favorites: FavoriteEntry[];
   settings: Record<string, unknown>;
   directories: Record<string, ConfigNode>;
   version?: number;
 };
 
+type FavoriteKeyItem = {
+  type: 'directory' | 'image' | 'video';
+  name: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isFavoriteEntry = (value: unknown): value is FavoriteEntry => {
+  if (typeof value === 'string') return true;
+  if (!isRecord(value)) return false;
+  const typeValue = value.type;
+  const pathValue = value.path;
+  const typeOk = typeValue === undefined || typeof typeValue === 'string';
+  const pathOk = pathValue === undefined || typeof pathValue === 'string';
+  return typeOk && pathOk;
+};
+
 /**
  * コンフィグノードの形を保証し、欠損フィールドを初期化する。
  */
 export function ensureConfigNode(raw: unknown): ConfigNode {
-  const node = raw && typeof raw === 'object' ? (raw as Partial<ConfigNode>) : {};
-  if (!Array.isArray(node.favorites)) node.favorites = [];
-  if (!node.settings || typeof node.settings !== 'object') node.settings = {};
-  if (!node.directories || typeof node.directories !== 'object') node.directories = {};
-  return node as ConfigNode;
+  const node: ConfigNode = {
+    favorites: [],
+    settings: {},
+    directories: {}
+  };
+  if (!isRecord(raw)) return node;
+
+  const rawFavorites = raw.favorites;
+  if (Array.isArray(rawFavorites)) {
+    node.favorites = rawFavorites.filter(isFavoriteEntry);
+  }
+  const rawSettings = raw.settings;
+  if (isRecord(rawSettings)) {
+    node.settings = rawSettings;
+  }
+  const rawDirectories = raw.directories;
+  if (isRecord(rawDirectories)) {
+    const dirs: Record<string, ConfigNode> = {};
+    for (const [key, value] of Object.entries(rawDirectories)) {
+      dirs[key] = ensureConfigNode(value);
+    }
+    node.directories = dirs;
+  }
+  if (typeof raw.version === 'number') {
+    node.version = raw.version;
+  }
+  return node;
 }
 
 /**
  * ルート設定を正規化し、バージョン情報を付与する。
  */
 export function normalizeRootConfig(raw: unknown): ConfigNode {
-  const node = ensureConfigNode(raw && typeof raw === 'object' ? { ...(raw as object) } : {});
+  const node = ensureConfigNode(isRecord(raw) ? { ...raw } : {});
   node.version = 2;
   return node;
 }
@@ -58,7 +98,7 @@ export function getConfigNode(
 /**
  * ルートディレクトリ内の設定ファイルを読み取る。
  */
-export async function readRootConfig(rootHandle: any): Promise<ConfigNode> {
+export async function readRootConfig(rootHandle: FileSystemDirectoryHandle | null): Promise<ConfigNode> {
   try {
     if (!rootHandle) return normalizeRootConfig(null);
     const fileHandle = await rootHandle.getFileHandle(CONFIG.CONFIG_FILENAME);
@@ -79,7 +119,7 @@ export async function readRootConfig(rootHandle: any): Promise<ConfigNode> {
  * ルート設定を保存する。
  */
 export async function writeRootConfig(
-  rootHandle: any,
+  rootHandle: FileSystemDirectoryHandle | null,
   config: ConfigNode,
   onError?: (message: string, error?: unknown) => void
 ): Promise<void> {
@@ -113,7 +153,7 @@ export function makeFavoriteSet(config: ConfigNode | null): Set<string> {
 /**
  * アイテムからお気に入りキーを生成する。
  */
-export function getFavoriteKeyForItem(item: any): string | null {
+export function getFavoriteKeyForItem(item: FavoriteKeyItem | null | undefined): string | null {
   if (!item) return null;
   if (item.type === 'directory') return buildFavoriteKey('directory', item.name);
   if (item.type === 'image' || item.type === 'video') return buildFavoriteKey('file', item.name);
@@ -124,7 +164,7 @@ export function getFavoriteKeyForItem(item: any): string | null {
  * お気に入りの追加・削除をトグルする。
  */
 export async function toggleFavoriteEntry(
-  rootHandle: any,
+  rootHandle: FileSystemDirectoryHandle | null,
   dirPathSegments: unknown,
   entry: FavoriteEntry,
   onError?: (message: string, error?: unknown) => void

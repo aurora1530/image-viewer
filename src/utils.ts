@@ -30,11 +30,12 @@ export function normalizeFavoriteEntry(entry: unknown): string | null {
     if (entry.includes(':')) return entry;
     return buildFavoriteKey('file', entry);
   }
-  if (entry && typeof entry === 'object') {
-    const maybe = entry as { type?: string; path?: string };
-    const type = maybe.type === 'directory' ? 'directory' : 'file';
-    if (typeof maybe.path === 'string' && maybe.path.length > 0) {
-      return buildFavoriteKey(type, maybe.path);
+  if (isRecord(entry)) {
+    const typeValue = entry.type;
+    const pathValue = entry.path;
+    const type = typeValue === 'directory' ? 'directory' : 'file';
+    if (typeof pathValue === 'string' && pathValue.length > 0) {
+      return buildFavoriteKey(type, pathValue);
     }
   }
   return null;
@@ -59,3 +60,6 @@ export function sortByFavorite<T extends { isFavorite?: boolean }>(items: T[]): 
 export function joinRelativePath(basePath: string, name: string): string {
   return basePath ? `${basePath}/${name}` : name;
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;

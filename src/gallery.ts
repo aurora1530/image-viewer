@@ -1,4 +1,4 @@
-type LazyLoadCard = HTMLDivElement & { _loadThumb?: () => void };
+import type { StatusType } from './ui';
 
 type MediaType = 'image' | 'video';
 
@@ -60,7 +60,7 @@ type GalleryDeps = {
 	scheduleProcessForCurrentDir: (debounceMs: number) => void;
 	getFavoriteFirst: () => boolean;
 	getFavoriteOnly: () => boolean;
-	showStatus: (message: string, type: string) => void;
+	showStatus: (message: string, type: StatusType) => void;
 };
 
 export function createGallery(deps: GalleryDeps) {
@@ -87,7 +87,7 @@ export function createGallery(deps: GalleryDeps) {
 	} = deps;
 
 	function createItemCard(item: Item, parentHandle: FileSystemDirectoryHandle | null, imageIndex: number, lazyLoad = false, container: ParentNode | null = null, parentPath = '') {
-		const card = document.createElement('div') as LazyLoadCard;
+		const card = document.createElement('div');
 		card.className = 'group item-card';
 
 		const thumbnailContainer = document.createElement('div');
@@ -218,9 +218,9 @@ export function createGallery(deps: GalleryDeps) {
 		}
 	}
 
-	function renderItemsInBatches(items: Item[] | RecursiveItem[], dirHandle: FileSystemDirectoryHandle | null, useLazy: boolean, isRecursiveList = false, parentPath = '') {
+	function renderItemsInBatches(items: Item[], dirHandle: FileSystemDirectoryHandle | null, useLazy: boolean, parentPath = '') {
 		return new Promise<void>(resolve => {
-			const label = enableDebugLogs ? `render:${dirHandle ? dirHandle.name : 'recursive'}-${Date.now()}` : null;
+			const label = enableDebugLogs ? `render:${dirHandle ? dirHandle.name : 'list'}-${Date.now()}` : null;
 			if (label) console.time(label);
 			const total = items.length;
 			const chunkSize = 100;
@@ -230,19 +230,47 @@ export function createGallery(deps: GalleryDeps) {
 				const frag = document.createDocumentFragment();
 				for (let i = 0; i < chunkSize && index < total; i++, index++) {
 					const it = items[index];
-					if (isRecursiveList) {
-						const rec = it as RecursiveItem;
-						createItemCard(
-							{ type: 'image', handle: rec.handle, name: rec.name, nameLower: rec.name.toLowerCase() },
-							rec.parentHandle,
-							rec.imageIndex,
-							useLazy,
-							frag,
-							rec.parentPath
-						);
-					} else {
-						createItemCard(it as Item, dirHandle, (it as Item).imageIndex ?? 0, useLazy, frag, parentPath);
+					createItemCard(it, dirHandle, it.imageIndex ?? 0, useLazy, frag, parentPath);
+				}
+				itemList.appendChild(frag);
+				chunk++;
+				if (label && chunk % 5 === 0) {
+					console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
+				}
+				if (index < total) {
+					RIC(renderChunk);
+				} else {
+					if (label) {
+						console.timeEnd(label);
+						console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
 					}
+					resolve();
+				}
+			}
+			renderChunk();
+		});
+	}
+
+	function renderRecursiveItemsInBatches(items: RecursiveItem[], useLazy: boolean) {
+		return new Promise<void>(resolve => {
+			const label = enableDebugLogs ? `render:recursive-${Date.now()}` : null;
+			if (label) console.time(label);
+			const total = items.length;
+			const chunkSize = 100;
+			let index = 0;
+			let chunk = 0;
+			function renderChunk() {
+				const frag = document.createDocumentFragment();
+				for (let i = 0; i < chunkSize && index < total; i++, index++) {
+					const rec = items[index];
+					createItemCard(
+						{ type: 'image', handle: rec.handle, name: rec.name, nameLower: rec.name.toLowerCase() },
+						rec.parentHandle,
+						rec.imageIndex,
+						useLazy,
+						frag,
+						rec.parentPath
+					);
 				}
 				itemList.appendChild(frag);
 				chunk++;
@@ -265,6 +293,7 @@ export function createGallery(deps: GalleryDeps) {
 
 	return {
 		createItemCard,
-		renderItemsInBatches
+		renderItemsInBatches,
+		renderRecursiveItemsInBatches
 	};
 }

@@ -1,15 +1,12 @@
-type CacheItem = {
-	type: 'image' | 'video' | 'directory';
-	handle: FileSystemFileHandle | FileSystemDirectoryHandle;
-	name: string;
-	nameLower?: string;
-};
+import type {
+	DirectoryCacheEntry,
+	DirectoryCacheImageItem,
+	DirectoryCacheItem
+} from './state';
+import type { StatusType } from './ui';
 
-type CacheEntry = {
-	items: CacheItem[];
-	imageCount: number;
-	sorted: Record<'asc' | 'desc', CacheItem[]>;
-};
+type CacheItem = DirectoryCacheItem;
+type CacheEntry = DirectoryCacheEntry;
 
 type ViewerDeps = {
 	viewer: HTMLElement;
@@ -32,7 +29,7 @@ type ViewerDeps = {
 	getIsSinglePageView: () => boolean;
 	setIsSinglePageView: (value: boolean) => void;
 	updateViewModeUI: () => void;
-	showStatus: (message: string, type: string) => void;
+	showStatus: (message: string, type: StatusType) => void;
 	ensureDirectoryCache: (dirHandle: FileSystemDirectoryHandle) => Promise<CacheEntry>;
 };
 
@@ -62,8 +59,8 @@ export function createViewer(deps: ViewerDeps) {
 		ensureDirectoryCache
 	} = deps;
 
-	function isImageItem(item: CacheItem): item is CacheItem & { type: 'image'; handle: FileSystemFileHandle } {
-		return item.type === 'image' && (item.handle as FileSystemHandle).kind === 'file';
+	function isImageItem(item: CacheItem): item is DirectoryCacheImageItem {
+		return item.type === 'image';
 	}
 
 	async function openViewer(dirHandle: FileSystemDirectoryHandle, startIndex: number, overrideImageList: FileSystemFileHandle[] | null = null) {
@@ -73,18 +70,20 @@ export function createViewer(deps: ViewerDeps) {
 				setCurrentImageFiles(overrideImageList.slice());
 			} else {
 				const cacheEntry = await ensureDirectoryCache(dirHandle);
-				if (!cacheEntry.sorted[getSortOrder()]) {
+				const sortKey = getSortOrder();
+				if (!cacheEntry.sorted[sortKey]) {
 					const sorted = [...cacheEntry.items].sort((a, b) => {
 						const nameA = (a.nameLower || a.name.toLowerCase());
 						const nameB = (b.nameLower || b.name.toLowerCase());
-						return getSortOrder() === 'asc'
+						return sortKey === 'asc'
 							? nameA.localeCompare(nameB, undefined, { numeric: true })
 							: nameB.localeCompare(nameA, undefined, { numeric: true });
 					});
-					cacheEntry.sorted[getSortOrder()] = sorted;
+					cacheEntry.sorted[sortKey] = sorted;
 				}
+				const sortedItems = cacheEntry.sorted[sortKey] ?? [];
 				setCurrentImageFiles(
-					cacheEntry.sorted[getSortOrder()]
+					sortedItems
 						.filter(isImageItem)
 						.map((i) => i.handle)
 				);
