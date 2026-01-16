@@ -81,12 +81,46 @@ function resetSearchQuery() {
     }
 }
 
-function normalizeConfig(raw) {
-    const base = { version: 1, favorites: [] };
-    if (!raw || typeof raw !== 'object') return base;
-    const favorites = Array.isArray(raw.favorites) ? raw.favorites : [];
-    const settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
-    return { ...raw, version: 1, favorites, settings };
+function ensureConfigNode(raw) {
+    const node = raw && typeof raw === 'object' ? raw : {};
+    if (!Array.isArray(node.favorites)) node.favorites = [];
+    if (!node.settings || typeof node.settings !== 'object') node.settings = {};
+    if (!node.directories || typeof node.directories !== 'object') node.directories = {};
+    return node;
+}
+
+function normalizeRootConfig(raw) {
+    const node = ensureConfigNode(raw && typeof raw === 'object' ? { ...raw } : {});
+    node.version = 2;
+    return node;
+}
+
+function getRootDirHandle() {
+    return directoryHistory.length > 0 ? directoryHistory[0] : null;
+}
+
+function getCurrentDirPathSegments() {
+    if (directoryHistory.length <= 1) return [];
+    return directoryHistory.slice(1).map(handle => handle.name);
+}
+
+function normalizeDirPathSegments(path) {
+    if (!path) return [];
+    if (Array.isArray(path)) return path.filter(Boolean);
+    return String(path).split('/').filter(Boolean);
+}
+
+function getConfigNode(rootConfig, pathSegments, { create = false } = {}) {
+    let node = ensureConfigNode(rootConfig);
+    const segments = normalizeDirPathSegments(pathSegments);
+    for (const segment of segments) {
+        if (!node.directories[segment]) {
+            if (!create) return null;
+            node.directories[segment] = ensureConfigNode({});
+        }
+        node = ensureConfigNode(node.directories[segment]);
+    }
+    return node;
 }
 
 function buildFavoriteKey(type, path) {
@@ -124,36 +158,43 @@ function getFavoriteKeyForItem(item) {
     return null;
 }
 
-async function readDirectoryConfig(dirHandle) {
+async function readRootConfig(rootHandle) {
     try {
-        const fileHandle = await dirHandle.getFileHandle(CONFIG_FILENAME, { create: true });
+        if (!rootHandle) return normalizeRootConfig(null);
+        const fileHandle = await rootHandle.getFileHandle(CONFIG_FILENAME);
         const file = await fileHandle.getFile();
         const text = await file.text();
-        if (!text) return normalizeConfig(null);
+        if (!text) return normalizeRootConfig(null);
         const json = JSON.parse(text);
-        return normalizeConfig(json);
+        return normalizeRootConfig(json);
     } catch (e) {
-        console.error(`コンフィグ読み込みエラー (${dirHandle.name}):`, e);
-        return normalizeConfig(null);
+        if (ENABLE_DEBUG_LOGS) {
+            console.warn('ルートコンフィグ読み込みエラー:', e);
+        }
+        return normalizeRootConfig(null);
     }
 }
 
-async function writeDirectoryConfig(dirHandle, config) {
+async function writeRootConfig(rootHandle, config) {
     try {
-        const fileHandle = await dirHandle.getFileHandle(CONFIG_FILENAME, { create: true });
+        if (!rootHandle) return;
+        const fileHandle = await rootHandle.getFileHandle(CONFIG_FILENAME, { create: true });
         const writable = await fileHandle.createWritable();
-        const safeConfig = normalizeConfig(config);
+        const safeConfig = normalizeRootConfig(config);
         const payload = JSON.stringify(safeConfig, null, 2);
         await writable.write(payload);
         await writable.close();
     } catch (e) {
-        console.error(`コンフィグ保存エラー (${dirHandle.name}):`, e);
+        console.error('ルートコンフィグ保存エラー:', e);
         showStatus('コンフィグの保存に失敗しました。', 'error');
     }
 }
 
-async function toggleFavoriteEntry(dirHandle, entry) {
-    const config = await readDirectoryConfig(dirHandle);
+async function toggleFavoriteEntry(dirPathSegments, entry) {
+    const rootHandle = getRootDirHandle();
+    if (!rootHandle) return false;
+    const rootConfig = await readRootConfig(rootHandle);
+    const config = getConfigNode(rootConfig, dirPathSegments, { create: true });
     const favorites = Array.isArray(config.favorites) ? config.favorites.slice() : [];
     const key = normalizeFavoriteEntry(entry);
     if (!key) return false;
@@ -161,12 +202,12 @@ async function toggleFavoriteEntry(dirHandle, entry) {
     if (index >= 0) {
         favorites.splice(index, 1);
         config.favorites = favorites;
-        await writeDirectoryConfig(dirHandle, config);
+        await writeRootConfig(rootHandle, rootConfig);
         return false;
     }
     favorites.push(entry);
     config.favorites = favorites;
-    await writeDirectoryConfig(dirHandle, config);
+    await writeRootConfig(rootHandle, rootConfig);
     return true;
 }
 
@@ -234,9 +275,13 @@ function scheduleSaveCurrentDirectoryConfig() {
     if (configWriteTimer) clearTimeout(configWriteTimer);
     configWriteTimer = setTimeout(async () => {
         if (!currentDirHandle) return;
-        const config = await readDirectoryConfig(currentDirHandle);
+        const rootHandle = getRootDirHandle();
+        if (!rootHandle) return;
+        const rootConfig = await readRootConfig(rootHandle);
+        const dirPathSegments = getCurrentDirPathSegments();
+        const config = getConfigNode(rootConfig, dirPathSegments, { create: true });
         config.settings = { ...config.settings, ...getCurrentSettingsSnapshot() };
-        await writeDirectoryConfig(currentDirHandle, config);
+        await writeRootConfig(rootHandle, rootConfig);
     }, 250);
 }
 
@@ -602,7 +647,10 @@ async function processDirectory(dirHandle, { forceRefresh = false, useConfig = t
     try {
         currentDirHandle = dirHandle;
         const cacheEntry = await ensureDirectoryCache(dirHandle, { forceRefresh });
-        const config = await readDirectoryConfig(dirHandle);
+        const rootHandle = getRootDirHandle();
+        const rootConfig = await readRootConfig(rootHandle);
+        const dirPathSegments = getCurrentDirPathSegments();
+        const config = getConfigNode(rootConfig, dirPathSegments, { create: false }) || ensureConfigNode({});
         if (useConfig) {
             applySettingsFromConfig(config);
         }
@@ -672,7 +720,8 @@ async function processDirectory(dirHandle, { forceRefresh = false, useConfig = t
         showStatus('', 'clear');
 
         const useLazy = directoryHistory.length > 1 && cacheEntry.imageCount >= LAZY_LOAD_THRESHOLD;
-        await renderItemsInBatches(filteredItems, dirHandle, useLazy);
+        const dirPath = dirPathSegments.join('/');
+        await renderItemsInBatches(filteredItems, dirHandle, useLazy, false, dirPath);
 
     } catch (err) {
         console.error('ディレクトリ処理エラー:', err);
@@ -686,7 +735,7 @@ async function processDirectory(dirHandle, { forceRefresh = false, useConfig = t
 }
 
 
-function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, container = null) {
+function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, container = null, parentPath = '') {
     const card = document.createElement('div');
     card.className = 'group item-card';
 
@@ -736,7 +785,8 @@ function createItemCard(item, parentHandle, imageIndex, lazyLoad = false, contai
         favoriteBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const entryType = item.type === 'directory' ? 'directory' : 'file';
-            const nextState = await toggleFavoriteEntry(parentHandle, { type: entryType, path: item.name });
+            const dirPathSegments = normalizeDirPathSegments(parentPath);
+            const nextState = await toggleFavoriteEntry(dirPathSegments, { type: entryType, path: item.name });
             setFavoriteButtonState(favoriteBtn, nextState);
             if (favoriteOnly || favoriteFirst) {
                 scheduleProcessForCurrentDir(0);
@@ -835,6 +885,10 @@ async function getImageFilesFromDirectory(dirHandle, order = 'asc') {
     return imageFiles;
 }
 
+function joinRelativePath(basePath, name) {
+    return basePath ? `${basePath}/${name}` : name;
+}
+
 async function collectImagesRecursively(dirHandle, list = [], basePath = '') {
     const images = await getImageFilesFromDirectory(dirHandle);
     images.forEach((img, idx) => {
@@ -843,13 +897,14 @@ async function collectImagesRecursively(dirHandle, list = [], basePath = '') {
             name: img.name,
             parentHandle: dirHandle,
             imageIndex: idx,
-            path: `${basePath}/${img.name}`
+            parentPath: basePath,
+            path: joinRelativePath(basePath, img.name)
         });
     });
     try {
         for await (const entry of dirHandle.values()) {
             if (entry.kind === 'directory') {
-                await collectImagesRecursively(entry, list, `${basePath}/${entry.name}`);
+                await collectImagesRecursively(entry, list, joinRelativePath(basePath, entry.name));
             }
         }
     } catch (e) { console.error('再帰的な画像取得に失敗', e); }
@@ -874,16 +929,18 @@ async function processDirectoryRecursive(dirHandle) {
     updateNavigationUI();
     currentDisplayImageList = [];
 
-    let items = await collectImagesRecursively(dirHandle);
-    const uniqueDirs = new Set(items.map(item => item.parentHandle));
-    const favoriteMap = new WeakMap();
-    await Promise.all(Array.from(uniqueDirs).map(async (handle) => {
-        if (!handle) return;
-        const config = await readDirectoryConfig(handle);
-        favoriteMap.set(handle, makeFavoriteSet(config));
-    }));
+    const currentBasePath = getCurrentDirPathSegments().join('/');
+    let items = await collectImagesRecursively(dirHandle, [], currentBasePath);
+    const rootHandle = getRootDirHandle();
+    const rootConfig = await readRootConfig(rootHandle);
+    const uniquePaths = new Set(items.map(item => item.parentPath));
+    const favoriteMap = new Map();
+    uniquePaths.forEach(path => {
+        const config = getConfigNode(rootConfig, path, { create: false }) || ensureConfigNode({});
+        favoriteMap.set(path, makeFavoriteSet(config));
+    });
     items.forEach(item => {
-        const set = favoriteMap.get(item.parentHandle);
+        const set = favoriteMap.get(item.parentPath);
         const key = buildFavoriteKey('file', item.name);
         item.isFavorite = set ? set.has(key) : false;
     });
@@ -1214,7 +1271,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 // ---- Rendering helpers ----
-function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false) {
+function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false, parentPath = '') {
     return new Promise(resolve => {
         const label = ENABLE_DEBUG_LOGS ? `render:${dirHandle ? dirHandle.name : 'recursive'}-${Date.now()}` : null;
         if (label) console.time(label);
@@ -1227,9 +1284,9 @@ function renderItemsInBatches(items, dirHandle, useLazy, isRecursiveList = false
             for (let i = 0; i < chunkSize && index < total; i++, index++) {
                 const it = items[index];
                 if (isRecursiveList) {
-                    createItemCard({ type: 'image', handle: it.handle, name: it.name, nameLower: it.name.toLowerCase() }, it.parentHandle, it.imageIndex, useLazy, frag);
+                    createItemCard({ type: 'image', handle: it.handle, name: it.name, nameLower: it.name.toLowerCase() }, it.parentHandle, it.imageIndex, useLazy, frag, it.parentPath);
                 } else {
-                    createItemCard(it, dirHandle, it.imageIndex, useLazy, frag);
+                    createItemCard(it, dirHandle, it.imageIndex, useLazy, frag, parentPath);
                 }
             }
             itemList.appendChild(frag);
