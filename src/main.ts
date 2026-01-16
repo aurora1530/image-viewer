@@ -1,6 +1,14 @@
 // @ts-nocheck
 import './style.css';
 import { CONFIG, DOM, state } from './state';
+import {
+	buildFavoriteKey,
+	isImageFileName,
+	joinRelativePath,
+	normalizeDirPathSegments,
+	normalizeFavoriteEntry,
+	sortByFavorite
+} from './utils';
 
 // DOM要素の取得
 const {
@@ -68,11 +76,6 @@ let searchDebounceTimer = state.searchDebounceTimer;
 const RIC = state.RIC;
 const CIC = state.CIC;
 
-function isImageFileName(name) {
-	const lower = name.toLowerCase();
-	return imageExtensions.some(ext => lower.endsWith(ext));
-}
-
 function clearTransientUrls() {
 	for (const url of createdUrls) {
 		URL.revokeObjectURL(url);
@@ -110,12 +113,6 @@ function getCurrentDirPathSegments() {
 	return directoryHistory.slice(1).map(handle => handle.name);
 }
 
-function normalizeDirPathSegments(path) {
-	if (!path) return [];
-	if (Array.isArray(path)) return path.filter(Boolean);
-	return String(path).split('/').filter(Boolean);
-}
-
 function getConfigNode(rootConfig, pathSegments, { create = false } = {}) {
 	let node = ensureConfigNode(rootConfig);
 	const segments = normalizeDirPathSegments(pathSegments);
@@ -127,24 +124,6 @@ function getConfigNode(rootConfig, pathSegments, { create = false } = {}) {
 		node = ensureConfigNode(node.directories[segment]);
 	}
 	return node;
-}
-
-function buildFavoriteKey(type, path) {
-	return `${type}:${path}`;
-}
-
-function normalizeFavoriteEntry(entry) {
-	if (typeof entry === 'string') {
-		if (entry.includes(':')) return entry;
-		return buildFavoriteKey('file', entry);
-	}
-	if (entry && typeof entry === 'object') {
-		const type = entry.type === 'directory' ? 'directory' : 'file';
-		if (typeof entry.path === 'string' && entry.path.length > 0) {
-			return buildFavoriteKey(type, entry.path);
-		}
-	}
-	return null;
 }
 
 function makeFavoriteSet(config) {
@@ -215,16 +194,6 @@ async function toggleFavoriteEntry(dirPathSegments, entry) {
 	config.favorites = favorites;
 	await writeRootConfig(rootHandle, rootConfig);
 	return true;
-}
-
-function sortByFavorite(items) {
-	return items
-		.map((item, index) => ({ item, index }))
-		.sort((a, b) => {
-			if (a.item.isFavorite === b.item.isFavorite) return a.index - b.index;
-			return a.item.isFavorite ? -1 : 1;
-		})
-		.map(entry => entry.item);
 }
 
 function setFavoriteButtonState(button, isActive) {
@@ -300,7 +269,7 @@ async function buildDirectoryCache(dirHandle) {
 				items.push({ type: 'directory', handle: entry, name: entry.name, nameLower: entry.name.toLowerCase() });
 			} else if (entry.kind === 'file') {
 				const lowerName = entry.name.toLowerCase();
-				if (isImageFileName(lowerName)) {
+				if (isImageFileName(lowerName, imageExtensions)) {
 					items.push({ type: 'image', handle: entry, name: entry.name, nameLower: lowerName });
 					imageCount++;
 				} else if (videoExtensions.some(ext => lowerName.endsWith(ext))) {
@@ -377,7 +346,7 @@ async function findFirstImageHandle(dirHandle) {
 		const tLabel = ENABLE_DEBUG_LOGS ? `findFirstImageHandle:${dirHandle.name}-${Date.now()}` : null;
 		if (tLabel) console.time(tLabel);
 		for await (const entry of dirHandle.values()) {
-			if (entry.kind === 'file' && isImageFileName(entry.name)) {
+			if (entry.kind === 'file' && isImageFileName(entry.name, imageExtensions)) {
 				const lower = entry.name.toLowerCase();
 				if (preferredNames.has(lower)) {
 					if (tLabel) console.timeEnd(tLabel);
@@ -874,7 +843,7 @@ async function getImageFilesFromDirectory(dirHandle, order = 'asc') {
 	const imageFiles = [];
 	try {
 		for await (const entry of dirHandle.values()) {
-			if (entry.kind === 'file' && imageExtensions.some(ext => entry.name.toLowerCase().endsWith(ext))) {
+			if (entry.kind === 'file' && isImageFileName(entry.name, imageExtensions)) {
 				imageFiles.push(entry);
 			}
 		}
@@ -889,10 +858,6 @@ async function getImageFilesFromDirectory(dirHandle, order = 'asc') {
 		});
 	} catch (e) { console.error(`ディレクトリ内の画像取得エラー (${dirHandle.name}):`, e); }
 	return imageFiles;
-}
-
-function joinRelativePath(basePath, name) {
-	return basePath ? `${basePath}/${name}` : name;
 }
 
 async function collectImagesRecursively(dirHandle, list = [], basePath = '') {
