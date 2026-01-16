@@ -75,6 +75,11 @@ function applySettingsFromConfig(config: ConfigNode | null) {
 	const nextSize = settings.thumbnailSizeIndex;
 	if (typeof nextSize === 'number' && Number.isInteger(nextSize)) {
 		state.thumbnailSizeIndex = nextSize;
+	} else if (typeof nextSize === 'string') {
+		const parsedSize = parseInt(nextSize, 10);
+		if (Number.isInteger(parsedSize)) {
+			state.thumbnailSizeIndex = parsedSize;
+		}
 	}
 	if (settings.sortOrder === 'asc' || settings.sortOrder === 'desc') {
 		state.sortOrder = settings.sortOrder;

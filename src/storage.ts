@@ -36,40 +36,41 @@ const isFavoriteEntry = (value: unknown): value is FavoriteEntry => {
  * コンフィグノードの形を保証し、欠損フィールドを初期化する。
  */
 export function ensureConfigNode(raw: unknown): ConfigNode {
-  const node: ConfigNode = {
-    favorites: [],
-    settings: {},
-    directories: {}
-  };
-  if (!isRecord(raw)) return node;
+  if (!isRecord(raw)) {
+    return {
+      favorites: [],
+      settings: {},
+      directories: {}
+    };
+  }
 
   const rawFavorites = raw.favorites;
-  if (Array.isArray(rawFavorites)) {
-    node.favorites = rawFavorites.filter(isFavoriteEntry);
-  }
+  raw.favorites = Array.isArray(rawFavorites)
+    ? rawFavorites.filter(isFavoriteEntry)
+    : [];
+
   const rawSettings = raw.settings;
-  if (isRecord(rawSettings)) {
-    node.settings = rawSettings;
-  }
+  raw.settings = isRecord(rawSettings) ? rawSettings : {};
+
   const rawDirectories = raw.directories;
-  if (isRecord(rawDirectories)) {
-    const dirs: Record<string, ConfigNode> = {};
-    for (const [key, value] of Object.entries(rawDirectories)) {
-      dirs[key] = ensureConfigNode(value);
-    }
-    node.directories = dirs;
+  const directoriesRaw: Record<string, unknown> = isRecord(rawDirectories) ? rawDirectories : {};
+  const directories: Record<string, ConfigNode> = {};
+  for (const [key, value] of Object.entries(directoriesRaw)) {
+    directories[key] = ensureConfigNode(value);
   }
-  if (typeof raw.version === 'number') {
-    node.version = raw.version;
+  raw.directories = directories;
+
+  if (typeof raw.version !== 'number') {
+    delete raw.version;
   }
-  return node;
+  return raw as ConfigNode;
 }
 
 /**
  * ルート設定を正規化し、バージョン情報を付与する。
  */
 export function normalizeRootConfig(raw: unknown): ConfigNode {
-  const node = ensureConfigNode(isRecord(raw) ? { ...raw } : {});
+  const node = ensureConfigNode(raw);
   node.version = 2;
   return node;
 }
