@@ -3,6 +3,7 @@ import './style.css';
 import { CONFIG, DOM, state } from './state';
 import { createGallery } from './gallery';
 import { createViewer } from './viewer';
+import { createToolbar } from './toolbar';
 import {
 	buildFavoriteKey,
 	isImageFileName,
@@ -109,19 +110,6 @@ function getCurrentDirPathSegments() {
 	return directoryHistory.slice(1).map(handle => handle.name);
 }
 
-function setFavoriteButtonState(button, isActive) {
-	button.classList.toggle('active', !!isActive);
-	button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-}
-
-function updateFavoriteControlsUI() {
-	if (!favoriteFirstBtn || !favoriteOnlyBtn) return;
-	favoriteFirstBtn.classList.toggle('is-active', favoriteFirst);
-	favoriteOnlyBtn.classList.toggle('is-active', favoriteOnly);
-	favoriteFirstBtn.textContent = favoriteFirst ? 'お気に入り優先: ON' : 'お気に入り優先: OFF';
-	favoriteOnlyBtn.textContent = favoriteOnly ? 'お気に入りのみ: ON' : 'お気に入りのみ: OFF';
-}
-
 function getCurrentSettingsSnapshot() {
 	return {
 		thumbnailSizeIndex,
@@ -155,8 +143,8 @@ function applySettingsFromConfig(config) {
 		? filterType
 		: 'all';
 	filterType = filterSelect.value;
-	updateSortButtonUI();
-	updateFavoriteControlsUI();
+	toolbar.updateSortButtonUI();
+	toolbar.updateFavoriteControlsUI();
 }
 
 function scheduleSaveCurrentDirectoryConfig() {
@@ -439,14 +427,14 @@ recursiveBtn.addEventListener('click', async () => {
 
 favoriteFirstBtn.addEventListener('click', () => {
 	favoriteFirst = !favoriteFirst;
-	updateFavoriteControlsUI();
+	toolbar.updateFavoriteControlsUI();
 	scheduleSaveCurrentDirectoryConfig();
 	scheduleProcessForCurrentDir(0);
 });
 
 favoriteOnlyBtn.addEventListener('click', () => {
 	favoriteOnly = !favoriteOnly;
-	updateFavoriteControlsUI();
+	toolbar.updateFavoriteControlsUI();
 	scheduleSaveCurrentDirectoryConfig();
 	scheduleProcessForCurrentDir(0);
 });
@@ -504,10 +492,10 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('fullscreenchange', () => {
 	if (document.fullscreenElement) {
-		viewer.addEventListener('mousemove', resetToolbarTimer);
-		resetToolbarTimer();
+		viewer.addEventListener('mousemove', toolbar.resetToolbarTimer);
+		toolbar.resetToolbarTimer();
 	} else {
-		viewer.removeEventListener('mousemove', resetToolbarTimer);
+		viewer.removeEventListener('mousemove', toolbar.resetToolbarTimer);
 		clearTimeout(toolbarHideTimer);
 		viewerToolbar.classList.remove('hidden');
 	}
@@ -530,7 +518,7 @@ async function processDirectory(dirHandle, { forceRefresh = false, useConfig = t
 	showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
 	updateThumbnailSize();
 	itemList.innerHTML = '';
-	updateNavigationUI();
+	toolbar.updateNavigationUI();
 
 	try {
 		currentDirHandle = dirHandle;
@@ -690,7 +678,7 @@ async function processDirectoryRecursive(dirHandle) {
 	showStatus('<div class="loader mx-auto"></div><p class="mt-2">フォルダを読み込んでいます...</p>', 'loading');
 	updateThumbnailSize();
 	itemList.innerHTML = '';
-	updateNavigationUI();
+	toolbar.updateNavigationUI();
 	currentDisplayImageList = [];
 
 	const currentBasePath = getCurrentDirPathSegments().join('/');
@@ -781,52 +769,12 @@ function toggleFullscreen() {
 	}
 }
 
-function resetToolbarTimer() {
-	clearTimeout(toolbarHideTimer);
-	viewerToolbar.classList.remove('hidden');
-	toolbarHideTimer = setTimeout(() => viewerToolbar.classList.add('hidden'), 2000);
-}
-
-function updateNavigationUI() {
-	const isNotRoot = directoryHistory.length > 1;
-	upDirBtn.classList.toggle('hidden', !isNotRoot);
-	const hasHistory = directoryHistory.length > 0;
-	copyPathBtn.classList.toggle('hidden', !hasHistory);
-	listToolbar.classList.toggle('hidden', !hasHistory);
-	if (hasHistory) {
-		currentDirName.textContent = directoryHistory[directoryHistory.length - 1].name;
-		recursiveBtn.textContent = isRecursiveMode ? '戻る' : '全画像一覧';
-	} else {
-		currentDirName.textContent = 'フォルダを選択してください';
-		isRecursiveMode = false;
-		recursiveBtn.textContent = '全画像一覧';
-	}
-	updateSortButtonUI();
-	updateFavoriteControlsUI();
-}
-
 function updateThumbnailSize() {
 	const size = sizeOptions[thumbnailSizeIndex];
 	itemList.className = 'grid ' + size.classes;
 	itemList.classList.toggle('original-aspect', size.originalAspect);
 	sizeSelect.value = thumbnailSizeIndex;
 }
-
-function updateSortButtonUI() {
-	const iconUp = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>`;
-	const iconDown = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block -mt-1 mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
-	if (sortOrder === 'asc') {
-		toggleSortBtn.innerHTML = `${iconUp} 名前: 昇順`;
-	} else {
-		toggleSortBtn.innerHTML = `${iconDown} 名前: 降順`;
-	}
-}
-
-populateSizeSelect();
-updateThumbnailSize();
-updateSortButtonUI();
-updateFavoriteControlsUI();
-filterSelect.value = filterType;
 
 function ensureLazyLoadObserver() {
 	if (!lazyLoadObserver) {
@@ -842,6 +790,33 @@ function ensureLazyLoadObserver() {
 		}, { rootMargin: '200px' });
 	}
 }
+
+const toolbar = createToolbar({
+	upDirBtn,
+	copyPathBtn,
+	listToolbar,
+	currentDirName,
+	recursiveBtn,
+	toggleSortBtn,
+	favoriteFirstBtn,
+	favoriteOnlyBtn,
+	viewerToolbar,
+	getDirectoryHistoryLength: () => directoryHistory.length,
+	getCurrentDirName: () => directoryHistory.length > 0 ? directoryHistory[directoryHistory.length - 1].name : '',
+	getIsRecursiveMode: () => isRecursiveMode,
+	setIsRecursiveMode: (value) => { isRecursiveMode = value; },
+	getSortOrder: () => sortOrder,
+	getFavoriteFirst: () => favoriteFirst,
+	getFavoriteOnly: () => favoriteOnly,
+	setToolbarHideTimer: (id) => { toolbarHideTimer = id; },
+	getToolbarHideTimer: () => toolbarHideTimer
+});
+
+populateSizeSelect();
+updateThumbnailSize();
+toolbar.updateSortButtonUI();
+toolbar.updateFavoriteControlsUI();
+filterSelect.value = filterType;
 
 const viewerController = createViewer({
 	viewer,
@@ -880,7 +855,7 @@ const gallery = createGallery({
 	openVideoPlayer: viewerController.openVideoPlayer,
 	enterDirectory,
 	getDirectoryPreviewUrl,
-	setFavoriteButtonState,
+	setFavoriteButtonState: toolbar.setFavoriteButtonState,
 	toggleFavoriteEntry,
 	getRootDirHandle,
 	normalizeDirPathSegments,
