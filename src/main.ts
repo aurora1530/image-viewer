@@ -1,69 +1,72 @@
 // @ts-nocheck
 import './style.css';
+import { CONFIG, DOM, state } from './state';
 
 // DOM要素の取得
-const selectDirBtn = document.getElementById('select-dir-btn');
-const itemList = document.getElementById('item-list');
-const statusArea = document.getElementById('status-area');
-const viewer = document.getElementById('viewer');
-const leftPageImg = document.getElementById('left-page');
-const rightPageImg = document.getElementById('right-page');
-const closeViewerBtn = document.getElementById('close-viewer-btn');
-const adjustSpreadBtn = document.getElementById('adjust-spread-btn');
-const prevBtn = document.getElementById('prev-btn');
-const nextBtn = document.getElementById('next-btn');
-const fullscreenBtn = document.getElementById('fullscreen-btn');
-const copyImagePathBtn = document.getElementById('copy-image-path-btn');
-const pageCounter = document.getElementById('page-counter');
-const toggleViewBtn = document.getElementById('toggle-view-btn');
-const viewerToolbar = document.getElementById('viewer-toolbar');
-const upDirBtn = document.getElementById('up-dir-btn');
-const currentDirName = document.getElementById('current-dir-name');
-const copyPathBtn = document.getElementById('copy-path-btn');
-const sizeSelect = document.getElementById('size-select');
-const filterSelect = document.getElementById('filter-select');
-const searchInput = document.getElementById('search-input');
-const listToolbar = document.getElementById('list-toolbar');
-const toggleSortBtn = document.getElementById('toggle-sort-btn');
-const reloadBtn = document.getElementById('reload-btn');
-const recursiveBtn = document.getElementById('recursive-btn');
-const viewerPages = document.getElementById('viewer-pages');
-const viewerVideoContainer = document.getElementById('viewer-video-container');
-const viewerVideo = document.getElementById('viewer-video');
-const favoriteFirstBtn = document.getElementById('favorite-first-btn');
-const favoriteOnlyBtn = document.getElementById('favorite-only-btn');
+const {
+	selectDirBtn,
+	itemList,
+	statusArea,
+	viewer,
+	leftPageImg,
+	rightPageImg,
+	closeViewerBtn,
+	adjustSpreadBtn,
+	prevBtn,
+	nextBtn,
+	fullscreenBtn,
+	copyImagePathBtn,
+	pageCounter,
+	toggleViewBtn,
+	viewerToolbar,
+	upDirBtn,
+	currentDirName,
+	copyPathBtn,
+	sizeSelect,
+	filterSelect,
+	searchInput,
+	listToolbar,
+	toggleSortBtn,
+	reloadBtn,
+	recursiveBtn,
+	viewerPages,
+	viewerVideoContainer,
+	viewerVideo,
+	favoriteFirstBtn,
+	favoriteOnlyBtn
+} = DOM;
 
 // グローバル変数
-let directoryHistory = [];
-let currentImageFiles = [];
-let currentImageIndex = 0;
-let pageOffset = 0;
-let isSinglePageView = localStorage.getItem('isSinglePageView') === '1';
-let toolbarHideTimer = null;
-const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', ".heic"];
-const videoExtensions = ['.mp4', '.webm', '.mov', '.ogg'];
-const CONFIG_FILENAME = '.image-viewer.json';
-const LAZY_LOAD_THRESHOLD = 500; // threshold for enabling lazy loading
-let lazyLoadObserver = null;
-let createdUrls = new Set();
-const ENABLE_DEBUG_LOGS = true; // デバッグ用ログ出力をまとめて制御
-let thumbnailSizeIndex = parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10);
-let sortOrder = 'asc';
-let filterType = 'all';
-let searchQuery = '';
-let isRecursiveMode = false;
-let favoriteFirst = false;
-let favoriteOnly = false;
-let currentDisplayImageList = [];
-let configWriteTimer = null;
-const lastVisitedChild = new WeakMap();
-const directoryCache = new WeakMap(); // ディレクトリごとの項目キャッシュ
-const directoryPreviewCache = new WeakMap(); // ディレクトリのプレビュー画像キャッシュ
-const previewUrls = new Set(); // キャッシュ用 Object URL
-let currentDirHandle = null;
-let searchDebounceTimer = null;
-const RIC = window.requestIdleCallback || function (cb) { return setTimeout(cb, 16); };
-const CIC = window.cancelIdleCallback || clearTimeout;
+let directoryHistory = state.directoryHistory;
+let currentImageFiles = state.currentImageFiles;
+let currentImageIndex = state.currentImageIndex;
+let pageOffset = state.pageOffset;
+let isSinglePageView = state.isSinglePageView;
+let toolbarHideTimer = state.toolbarHideTimer;
+const imageExtensions = CONFIG.IMAGE_EXTENSIONS;
+const videoExtensions = CONFIG.VIDEO_EXTENSIONS;
+const CONFIG_FILENAME = CONFIG.CONFIG_FILENAME;
+const LAZY_LOAD_THRESHOLD = CONFIG.LAZY_LOAD_THRESHOLD; // threshold for enabling lazy loading
+let lazyLoadObserver = state.lazyLoadObserver;
+let createdUrls = state.createdUrls;
+const ENABLE_DEBUG_LOGS = CONFIG.ENABLE_DEBUG_LOGS; // デバッグ用ログ出力をまとめて制御
+let thumbnailSizeIndex = state.thumbnailSizeIndex;
+let sortOrder = state.sortOrder;
+let filterType = state.filterType;
+let searchQuery = state.searchQuery;
+let isRecursiveMode = state.isRecursiveMode;
+let favoriteFirst = state.favoriteFirst;
+let favoriteOnly = state.favoriteOnly;
+let currentDisplayImageList = state.currentDisplayImageList;
+let configWriteTimer = state.configWriteTimer;
+const lastVisitedChild = state.lastVisitedChild;
+const directoryCache = state.directoryCache; // ディレクトリごとの項目キャッシュ
+const directoryPreviewCache = state.directoryPreviewCache; // ディレクトリのプレビュー画像キャッシュ
+const previewUrls = state.previewUrls; // キャッシュ用 Object URL
+let currentDirHandle = state.currentDirHandle;
+let searchDebounceTimer = state.searchDebounceTimer;
+const RIC = state.RIC;
+const CIC = state.CIC;
 
 function isImageFileName(name) {
 	const lower = name.toLowerCase();
