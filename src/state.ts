@@ -124,6 +124,7 @@ type State = {
   currentImageFiles: FileSystemFileHandle[];
   currentImageIndex: number;
   pageOffset: number;
+  renderToken: number;
   isSinglePageView: boolean;
   toolbarHideTimer: ReturnType<typeof setTimeout> | null;
   lazyLoadObserver: IntersectionObserver | null;
@@ -152,6 +153,7 @@ export const state: State = {
   currentImageFiles: [],
   currentImageIndex: 0,
   pageOffset: 0,
+  renderToken: 0,
   isSinglePageView: localStorage.getItem('isSinglePageView') === '1',
   toolbarHideTimer: null,
   lazyLoadObserver: null,

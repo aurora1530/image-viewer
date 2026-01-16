@@ -323,6 +323,7 @@ async function processDirectory(
 	dirHandle: FileSystemDirectoryHandle,
 	{ forceRefresh = false, useConfig = true }: { forceRefresh?: boolean; useConfig?: boolean } = {}
 ) {
+	const renderToken = ++state.renderToken;
 	const label = `processDirectory:${dirHandle.name}-${Date.now()}`;
 	if (CONFIG.ENABLE_DEBUG_LOGS) {
 		console.log(`[start] ${label}`);
@@ -417,7 +418,7 @@ async function processDirectory(
 
 		const useLazy = state.directoryHistory.length > 1 && cacheEntry.imageCount >= CONFIG.LAZY_LOAD_THRESHOLD;
 		const dirPath = dirPathSegments.join('/');
-		await gallery.renderItemsInBatches(filteredItems, dirHandle, useLazy, dirPath);
+		await gallery.renderItemsInBatches(filteredItems, dirHandle, useLazy, dirPath, renderToken);
 
 	} catch (err) {
 		console.error('ディレクトリ処理エラー:', err);
@@ -443,6 +444,7 @@ async function enterDirectory(dirHandle: FileSystemDirectoryHandle) {
 // ディレクトリ探索はdirectoryTraversal.tsへ移動
 
 async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
+	const renderToken = ++state.renderToken;
 	const label = `processDirectoryRecursive:${dirHandle.name}-${Date.now()}`;
 	if (CONFIG.ENABLE_DEBUG_LOGS) {
 		console.log(`[start] ${label}`);
@@ -512,7 +514,7 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 
 	showStatus('', 'clear');
 	const useLazy = state.directoryHistory.length > 1 && items.length >= CONFIG.LAZY_LOAD_THRESHOLD;
-	await gallery.renderRecursiveItemsInBatches(items, useLazy);
+	await gallery.renderRecursiveItemsInBatches(items, useLazy, renderToken);
 	if (CONFIG.ENABLE_DEBUG_LOGS) {
 		console.timeEnd(label);
 		console.log(`[end] ${label}`);
@@ -607,6 +609,7 @@ const gallery = createGallery({
 	scheduleProcessForCurrentDir,
 	getFavoriteFirst: () => state.favoriteFirst,
 	getFavoriteOnly: () => state.favoriteOnly,
+	getRenderToken: () => state.renderToken,
 	showStatus
 });
 

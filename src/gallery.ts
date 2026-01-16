@@ -60,6 +60,7 @@ type GalleryDeps = {
 	scheduleProcessForCurrentDir: (debounceMs: number) => void;
 	getFavoriteFirst: () => boolean;
 	getFavoriteOnly: () => boolean;
+	getRenderToken: () => number;
 	showStatus: (message: string, type: StatusType) => void;
 };
 
@@ -83,6 +84,7 @@ export function createGallery(deps: GalleryDeps) {
 		scheduleProcessForCurrentDir,
 		getFavoriteFirst,
 		getFavoriteOnly,
+		getRenderToken,
 		showStatus
 	} = deps;
 
@@ -218,7 +220,7 @@ export function createGallery(deps: GalleryDeps) {
 		}
 	}
 
-	function renderItemsInBatches(items: Item[], dirHandle: FileSystemDirectoryHandle | null, useLazy: boolean, parentPath = '') {
+	function renderItemsInBatches(items: Item[], dirHandle: FileSystemDirectoryHandle | null, useLazy: boolean, parentPath = '', renderToken = getRenderToken()) {
 		return new Promise<void>(resolve => {
 			const label = enableDebugLogs ? `render:${dirHandle ? dirHandle.name : 'list'}-${Date.now()}` : null;
 			if (label) console.time(label);
@@ -227,10 +229,20 @@ export function createGallery(deps: GalleryDeps) {
 			let index = 0;
 			let chunk = 0;
 			function renderChunk() {
+				if (renderToken !== getRenderToken()) {
+					if (label) console.timeEnd(label);
+					resolve();
+					return;
+				}
 				const frag = document.createDocumentFragment();
 				for (let i = 0; i < chunkSize && index < total; i++, index++) {
 					const it = items[index];
 					createItemCard(it, dirHandle, it.imageIndex ?? 0, useLazy, frag, parentPath);
+				}
+				if (renderToken !== getRenderToken()) {
+					if (label) console.timeEnd(label);
+					resolve();
+					return;
 				}
 				itemList.appendChild(frag);
 				chunk++;
@@ -251,7 +263,7 @@ export function createGallery(deps: GalleryDeps) {
 		});
 	}
 
-	function renderRecursiveItemsInBatches(items: RecursiveItem[], useLazy: boolean) {
+	function renderRecursiveItemsInBatches(items: RecursiveItem[], useLazy: boolean, renderToken = getRenderToken()) {
 		return new Promise<void>(resolve => {
 			const label = enableDebugLogs ? `render:recursive-${Date.now()}` : null;
 			if (label) console.time(label);
@@ -260,6 +272,11 @@ export function createGallery(deps: GalleryDeps) {
 			let index = 0;
 			let chunk = 0;
 			function renderChunk() {
+				if (renderToken !== getRenderToken()) {
+					if (label) console.timeEnd(label);
+					resolve();
+					return;
+				}
 				const frag = document.createDocumentFragment();
 				for (let i = 0; i < chunkSize && index < total; i++, index++) {
 					const rec = items[index];
@@ -271,6 +288,11 @@ export function createGallery(deps: GalleryDeps) {
 						frag,
 						rec.parentPath
 					);
+				}
+				if (renderToken !== getRenderToken()) {
+					if (label) console.timeEnd(label);
+					resolve();
+					return;
 				}
 				itemList.appendChild(frag);
 				chunk++;
