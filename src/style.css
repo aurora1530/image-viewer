@@ -26,7 +26,7 @@ body.mono-body {
 ::-webkit-scrollbar-thumb:hover { background: #4c4c55; }
 
 .frame {
-    max-width: 1400px;
+    /* max-width: 1400px; */
     margin: 0 auto;
     padding: 40px 32px 96px;
 }
