@@ -1,6 +1,7 @@
 type ToolbarDeps = {
 	upDirBtn: HTMLElement;
 	copyPathBtn: HTMLElement;
+	reloadBtn: HTMLElement;
 	listToolbar: HTMLElement;
 	currentDirName: HTMLElement;
 	recursiveBtn: HTMLButtonElement;
@@ -23,6 +24,7 @@ export function createToolbar(deps: ToolbarDeps) {
 	const {
 		upDirBtn,
 		copyPathBtn,
+		reloadBtn,
 		listToolbar,
 		currentDirName,
 		recursiveBtn,
@@ -68,6 +70,8 @@ export function createToolbar(deps: ToolbarDeps) {
 		upDirBtn.classList.toggle('hidden', !isNotRoot);
 		const hasHistory = getDirectoryHistoryLength() > 0;
 		copyPathBtn.classList.toggle('hidden', !hasHistory);
+		reloadBtn.classList.toggle('hidden', !hasHistory);
+		recursiveBtn.classList.toggle('hidden', !hasHistory);
 		listToolbar.classList.toggle('hidden', !hasHistory);
 		if (hasHistory) {
 			currentDirName.textContent = getCurrentDirName();

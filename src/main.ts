@@ -541,6 +541,7 @@ function ensureLazyLoadObserver() {
 const toolbar = createToolbar({
 	upDirBtn: DOM.upDirBtn,
 	copyPathBtn: DOM.copyPathBtn,
+	reloadBtn: DOM.reloadBtn,
 	listToolbar: DOM.listToolbar,
 	currentDirName: DOM.currentDirName,
 	recursiveBtn: DOM.recursiveBtn,
