@@ -119,6 +119,7 @@ export function createViewer(deps: ViewerDeps) {
 			const file = await videoHandle.getFile();
 			const url = URL.createObjectURL(file);
 			createdUrls.add(url);
+			viewerVideo.loop = true;
 			viewerVideo.src = url;
 			viewerVideo.play();
 		} catch (err) {
