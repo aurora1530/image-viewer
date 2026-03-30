@@ -107,8 +107,7 @@ export const DOM = {
   viewerPages: getRequiredElement('viewer-pages', isDiv),
   viewerVideoContainer: getRequiredElement('viewer-video-container', isDiv),
   viewerVideo: getRequiredElement('viewer-video', isVideo),
-  favoriteFirstBtn: getRequiredElement('favorite-first-btn', isButton),
-  favoriteOnlyBtn: getRequiredElement('favorite-only-btn', isButton)
+  favoriteModeSelect: getRequiredElement('favorite-mode-select', isSelect)
 };
 
 export const CONFIG = {

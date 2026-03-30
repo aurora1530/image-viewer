@@ -6,8 +6,7 @@ type ToolbarDeps = {
 	currentDirName: HTMLElement;
 	recursiveBtn: HTMLButtonElement;
 	toggleSortBtn: HTMLButtonElement;
-	favoriteFirstBtn: HTMLButtonElement;
-	favoriteOnlyBtn: HTMLButtonElement;
+	favoriteModeSelect: HTMLSelectElement;
 	viewerToolbar: HTMLElement;
 	getDirectoryHistoryLength: () => number;
 	getCurrentDirName: () => string;
@@ -29,8 +28,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		currentDirName,
 		recursiveBtn,
 		toggleSortBtn,
-		favoriteFirstBtn,
-		favoriteOnlyBtn,
+		favoriteModeSelect,
 		viewerToolbar,
 		getDirectoryHistoryLength,
 		getCurrentDirName,
@@ -49,10 +47,15 @@ export function createToolbar(deps: ToolbarDeps) {
 	}
 
 	function updateFavoriteControlsUI() {
-		favoriteFirstBtn.classList.toggle('is-active', getFavoriteFirst());
-		favoriteOnlyBtn.classList.toggle('is-active', getFavoriteOnly());
-		favoriteFirstBtn.textContent = getFavoriteFirst() ? 'お気に入り優先: ON' : 'お気に入り優先: OFF';
-		favoriteOnlyBtn.textContent = getFavoriteOnly() ? 'お気に入りのみ: ON' : 'お気に入りのみ: OFF';
+		if (getFavoriteOnly()) {
+			favoriteModeSelect.value = 'only';
+			return;
+		}
+		if (getFavoriteFirst()) {
+			favoriteModeSelect.value = 'first';
+			return;
+		}
+		favoriteModeSelect.value = 'off';
 	}
 
 	function updateSortButtonUI() {

@@ -48,8 +48,11 @@
                     <option value="gif">GIF</option>
                     <option value="video">動画</option>
                 </select>
-                <button id="favorite-first-btn" class="ui-btn ghost">お気に入り優先: OFF</button>
-                <button id="favorite-only-btn" class="ui-btn ghost">お気に入りのみ: OFF</button>
+                <select id="favorite-mode-select" class="ui-select" aria-label="お気に入り">
+                    <option value="off">お気に入り: 無効</option>
+                    <option value="first">お気に入り: 優先</option>
+                    <option value="only">お気に入り: のみ</option>
+                </select>
                 <input id="search-input" type="text" placeholder="検索" class="ui-input" />
                 <button id="toggle-sort-btn" class="ui-btn ghost"></button>
             </div>

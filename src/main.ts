@@ -69,6 +69,21 @@ function getCurrentSettingsSnapshot() {
 	};
 }
 
+function normalizeFavoriteMode() {
+	if (state.favoriteOnly) {
+		state.favoriteFirst = false;
+		return;
+	}
+	if (state.favoriteFirst) {
+		state.favoriteOnly = false;
+	}
+}
+
+function setFavoriteMode(mode: 'off' | 'first' | 'only') {
+	state.favoriteFirst = mode === 'first';
+	state.favoriteOnly = mode === 'only';
+}
+
 function applySettingsFromConfig(config: ConfigNode | null) {
 	if (!config || !config.settings) return;
 	const settings = config.settings;
@@ -94,6 +109,7 @@ function applySettingsFromConfig(config: ConfigNode | null) {
 	if (typeof settings.favoriteOnly === 'boolean') {
 		state.favoriteOnly = settings.favoriteOnly;
 	}
+	normalizeFavoriteMode();
 	updateThumbnailSize();
 	DOM.filterSelect.value = Array.from(DOM.filterSelect.options).some(opt => opt.value === state.filterType)
 		? state.filterType
@@ -239,15 +255,11 @@ DOM.recursiveBtn.addEventListener('click', async () => {
 	}
 });
 
-DOM.favoriteFirstBtn.addEventListener('click', () => {
-	state.favoriteFirst = !state.favoriteFirst;
-	toolbar.updateFavoriteControlsUI();
-	scheduleSaveCurrentDirectoryConfig();
-	scheduleProcessForCurrentDir(0);
-});
-
-DOM.favoriteOnlyBtn.addEventListener('click', () => {
-	state.favoriteOnly = !state.favoriteOnly;
+DOM.favoriteModeSelect.addEventListener('change', () => {
+	const mode = DOM.favoriteModeSelect.value === 'first' || DOM.favoriteModeSelect.value === 'only'
+		? DOM.favoriteModeSelect.value
+		: 'off';
+	setFavoriteMode(mode);
 	toolbar.updateFavoriteControlsUI();
 	scheduleSaveCurrentDirectoryConfig();
 	scheduleProcessForCurrentDir(0);
@@ -546,8 +558,7 @@ const toolbar = createToolbar({
 	currentDirName: DOM.currentDirName,
 	recursiveBtn: DOM.recursiveBtn,
 	toggleSortBtn: DOM.toggleSortBtn,
-	favoriteFirstBtn: DOM.favoriteFirstBtn,
-	favoriteOnlyBtn: DOM.favoriteOnlyBtn,
+	favoriteModeSelect: DOM.favoriteModeSelect,
 	viewerToolbar: DOM.viewerToolbar,
 	getDirectoryHistoryLength: () => state.directoryHistory.length,
 	getCurrentDirName: () => state.directoryHistory.length > 0 ? state.directoryHistory[state.directoryHistory.length - 1].name : '',
