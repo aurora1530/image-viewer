@@ -5,6 +5,7 @@ type ToolbarDeps = {
 	listToolbar: HTMLElement;
 	currentDirName: HTMLElement;
 	recursiveBtn: HTMLButtonElement;
+	favoriteListBtn: HTMLButtonElement;
 	toggleSortBtn: HTMLButtonElement;
 	favoriteModeSelect: HTMLSelectElement;
 	hiddenModeBtn: HTMLButtonElement;
@@ -13,6 +14,7 @@ type ToolbarDeps = {
 	getDirectoryHistoryLength: () => number;
 	getCurrentDirName: () => string;
 	getIsRecursiveMode: () => boolean;
+	getIsFavoriteListMode: () => boolean;
 	setIsRecursiveMode: (value: boolean) => void;
 	getSortOrder: () => 'asc' | 'desc';
 	getFavoriteFirst: () => boolean;
@@ -31,6 +33,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		listToolbar,
 		currentDirName,
 		recursiveBtn,
+		favoriteListBtn,
 		toggleSortBtn,
 		favoriteModeSelect,
 		hiddenModeBtn,
@@ -39,6 +42,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		getDirectoryHistoryLength,
 		getCurrentDirName,
 		getIsRecursiveMode,
+		getIsFavoriteListMode,
 		setIsRecursiveMode,
 		getSortOrder,
 		getFavoriteFirst,
@@ -55,6 +59,10 @@ export function createToolbar(deps: ToolbarDeps) {
 	}
 
 	function updateFavoriteControlsUI() {
+		favoriteModeSelect.disabled = getIsFavoriteListMode();
+		favoriteModeSelect.title = getIsFavoriteListMode()
+			? 'お気に入り一覧では使用できません'
+			: '';
 		if (getFavoriteOnly()) {
 			favoriteModeSelect.value = 'only';
 			return;
@@ -83,15 +91,20 @@ export function createToolbar(deps: ToolbarDeps) {
 		copyPathBtn.classList.toggle('hidden', !hasHistory);
 		reloadBtn.classList.toggle('hidden', !hasHistory);
 		recursiveBtn.classList.toggle('hidden', !hasHistory);
+		favoriteListBtn.classList.toggle('hidden', !hasHistory);
 		listToolbar.classList.toggle('hidden', !hasHistory);
 		if (hasHistory) {
 			currentDirName.textContent = getCurrentDirName();
 			recursiveBtn.textContent = getIsRecursiveMode() ? '戻る' : '全画像一覧';
+			favoriteListBtn.textContent = getIsFavoriteListMode() ? '戻る' : 'お気に入り一覧';
 		} else {
 			currentDirName.textContent = 'フォルダを選択してください';
 			setIsRecursiveMode(false);
 			recursiveBtn.textContent = '全画像一覧';
+			favoriteListBtn.textContent = 'お気に入り一覧';
 		}
+		recursiveBtn.classList.toggle('is-active', getIsRecursiveMode());
+		favoriteListBtn.classList.toggle('is-active', getIsFavoriteListMode());
 		updateSortButtonUI();
 		updateFavoriteControlsUI();
 		hiddenModeBtn.textContent = getIsHiddenMode() ? '戻る' : '非表示一覧';

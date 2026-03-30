@@ -6,10 +6,12 @@ import { createViewer } from './viewer';
 import { createToolbar } from './toolbar';
 import {
 	buildFavoriteKey,
+	isImageFileName,
 	normalizeDirPathSegments,
 	sortByFavorite
 } from './utils';
 import {
+	collectFavoriteFilesFromConfig,
 	ensureConfigNode,
 	getConfigNode,
 	getFavoriteKeyForItem,
@@ -62,6 +64,17 @@ function getCurrentDirPathSegments() {
 	return state.directoryHistory.slice(1).map(handle => handle.name);
 }
 
+function isSupportedVideoFileName(name: string) {
+	const lower = name.toLowerCase();
+	return CONFIG.VIDEO_EXTENSIONS.some(ext => lower.endsWith(ext));
+}
+
+function getFavoriteListMediaType(name: string): 'image' | 'video' | null {
+	if (isImageFileName(name, CONFIG.IMAGE_EXTENSIONS)) return 'image';
+	if (isSupportedVideoFileName(name)) return 'video';
+	return null;
+}
+
 function getCurrentSettingsSnapshot() {
 	return {
 		thumbnailSizeIndex: state.thumbnailSizeIndex,
@@ -85,6 +98,21 @@ function normalizeFavoriteMode() {
 function setFavoriteMode(mode: 'off' | 'first' | 'only') {
 	state.favoriteFirst = mode === 'first';
 	state.favoriteOnly = mode === 'only';
+}
+
+async function renderActiveDirectoryView(
+	dirHandle: FileSystemDirectoryHandle,
+	options: { forceRefresh?: boolean; useConfig?: boolean } = {}
+) {
+	if (state.isFavoriteListMode) {
+		await processFavoriteList();
+		return;
+	}
+	if (state.isRecursiveMode) {
+		await processDirectoryRecursive(dirHandle);
+		return;
+	}
+	await processDirectory(dirHandle, options);
 }
 
 function updateUiDockReveal(clientY: number) {
@@ -166,7 +194,7 @@ DOM.selectDirBtn.addEventListener('click', async () => {
 		const dirHandle = await window.showDirectoryPicker();
 		state.directoryHistory = [dirHandle];
 		resetSearchQuery();
-		await processDirectory(dirHandle);
+		await renderActiveDirectoryView(dirHandle);
 		await scrollToVisitedChild(dirHandle);
 	} catch (err) {
 		if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -182,7 +210,7 @@ DOM.upDirBtn.addEventListener('click', async () => {
 			rememberVisitedChild(parentDirHandle, current.name);
 		}
 		resetSearchQuery();
-		await processDirectory(parentDirHandle);
+		await renderActiveDirectoryView(parentDirHandle);
 		await scrollToVisitedChild(parentDirHandle);
 	}
 });
@@ -247,13 +275,9 @@ DOM.toggleSortBtn.addEventListener('click', async () => {
 DOM.reloadBtn.addEventListener('click', async () => {
 	if (state.directoryHistory.length > 0) {
 		const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
-		if (state.isRecursiveMode) {
-			await processDirectoryRecursive(currentDir);
-		} else {
-			invalidateDirectoryCache(currentDir);
-			await processDirectory(currentDir, { forceRefresh: true, useConfig: false });
-			await scrollToVisitedChild(currentDir);
-		}
+		invalidateDirectoryCache(currentDir);
+		await renderActiveDirectoryView(currentDir, { forceRefresh: true, useConfig: false });
+		await scrollToVisitedChild(currentDir);
 	}
 });
 
@@ -262,26 +286,56 @@ DOM.recursiveBtn.addEventListener('click', async () => {
 	const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
 	if (state.isRecursiveMode) {
 		state.isRecursiveMode = false;
-		DOM.recursiveBtn.textContent = '全画像一覧';
+		toolbar.updateNavigationUI();
 		await processDirectory(currentDir);
 		await scrollToVisitedChild(currentDir);
 	} else {
+		if (state.isFavoriteListMode) {
+			state.isFavoriteListMode = false;
+		}
 		if (state.isHiddenMode) {
 			state.isHiddenMode = false;
-			toolbar.updateNavigationUI();
 		}
+		toolbar.updateNavigationUI();
 		const confirmLoad = confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？');
 		if (!confirmLoad) return;
 		state.isRecursiveMode = true;
-		DOM.recursiveBtn.textContent = '戻る';
+		toolbar.updateNavigationUI();
 		await processDirectoryRecursive(currentDir);
 	}
+});
+
+DOM.favoriteListBtn.addEventListener('click', async () => {
+	if (state.directoryHistory.length === 0) return;
+	const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
+	if (state.isFavoriteListMode) {
+		state.isFavoriteListMode = false;
+		toolbar.updateNavigationUI();
+		await processDirectory(currentDir);
+		await scrollToVisitedChild(currentDir);
+		return;
+	}
+	if (state.isRecursiveMode) {
+		state.isRecursiveMode = false;
+	}
+	if (state.isHiddenMode) {
+		state.isHiddenMode = false;
+	}
+	toolbar.updateNavigationUI();
+	const confirmLoad = confirm('ルート設定の .image-viewer.json からお気に入りファイルをすべて読み込みます。続行しますか？');
+	if (!confirmLoad) return;
+	state.isFavoriteListMode = true;
+	toolbar.updateNavigationUI();
+	await processFavoriteList();
 });
 
 DOM.hiddenModeBtn.addEventListener('click', async () => {
 	if (state.directoryHistory.length === 0) return;
 	if (state.isRecursiveMode) {
 		state.isRecursiveMode = false;
+	}
+	if (state.isFavoriteListMode) {
+		state.isFavoriteListMode = false;
 	}
 	state.isHiddenMode = !state.isHiddenMode;
 	toolbar.updateNavigationUI();
@@ -608,6 +662,107 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 	}
 }
 
+async function processFavoriteList() {
+	const renderToken = ++state.renderToken;
+	const label = `processFavoriteList:${Date.now()}`;
+	if (CONFIG.ENABLE_DEBUG_LOGS) {
+		console.log(`[start] ${label}`);
+		console.time(label);
+	}
+	clearTransientUrls();
+	if (state.lazyLoadObserver) {
+		state.lazyLoadObserver.disconnect();
+		state.lazyLoadObserver = null;
+	}
+
+	showStatus('<div class="loader mx-auto"></div><p class="mt-2">お気に入りを読み込んでいます...</p>', 'loading');
+	updateThumbnailSize();
+	DOM.itemList.innerHTML = '';
+	toolbar.updateNavigationUI();
+	state.currentDisplayImageList = [];
+
+	try {
+		const rootHandle = getRootDirHandle();
+		const rootConfig = await readRootConfig(rootHandle);
+		const favoriteEntries = await collectFavoriteFilesFromConfig(rootHandle, rootConfig);
+		let imageIndex = 0;
+		let items = favoriteEntries
+			.map(entry => {
+				const type = getFavoriteListMediaType(entry.name);
+				if (!type) return null;
+				return {
+					type,
+					handle: entry.handle,
+					name: entry.name,
+					parentHandle: entry.parentHandle,
+					imageIndex: type === 'image' ? imageIndex++ : -1,
+					parentPath: entry.parentPath,
+					path: entry.path,
+					isFavorite: true,
+					isHidden: entry.isHidden,
+					displayIndex: undefined,
+					nameLower: entry.name.toLowerCase()
+				};
+			})
+			.filter((item): item is NonNullable<typeof item> => item !== null);
+
+		items.sort((a, b) => {
+			const pathA = a.path.toLowerCase();
+			const pathB = b.path.toLowerCase();
+			return state.sortOrder === 'asc'
+				? pathA.localeCompare(pathB, undefined, { numeric: true })
+				: pathB.localeCompare(pathA, undefined, { numeric: true });
+		});
+
+		if (state.filterType === 'gif') {
+			items = items.filter(i => i.type === 'image' && i.nameLower.endsWith('.gif'));
+		} else if (state.filterType === 'image') {
+			items = items.filter(i => i.type === 'image');
+		} else if (state.filterType === 'video') {
+			items = items.filter(i => i.type === 'video');
+		} else if (state.filterType === 'directory') {
+			items = [];
+		}
+
+		if (state.searchQuery) {
+			items = items.filter(i => i.nameLower.includes(state.searchQuery));
+		}
+
+		items = items.filter(i => state.isHiddenMode ? i.isHidden : !i.isHidden);
+
+		state.currentDisplayImageList = items
+			.filter(i => i.type === 'image')
+			.map(i => i.handle);
+
+		const displayIndexMap = new WeakMap();
+		state.currentDisplayImageList.forEach((handle, index) => {
+			displayIndexMap.set(handle, index);
+		});
+		items.forEach(item => {
+			if (item.type === 'image') {
+				item.displayIndex = displayIndexMap.get(item.handle);
+			}
+		});
+
+		if (items.length === 0) {
+			showStatus('お気に入りに登録された表示可能なファイルがありません。', 'info');
+			return;
+		}
+
+		showStatus('', 'clear');
+		const useLazy = items.length >= CONFIG.LAZY_LOAD_THRESHOLD;
+		await gallery.renderCollectedMediaInBatches(items, useLazy, renderToken);
+	} catch (err) {
+		console.error('お気に入り一覧の処理エラー:', err);
+		showStatus('お気に入り一覧の読み込み中にエラーが発生しました。', 'error');
+	} finally {
+		if (CONFIG.ENABLE_DEBUG_LOGS) {
+			console.timeEnd(label);
+			console.log(`[end] ${label}`);
+		}
+	}
+}
+
 // UIユーティリティはui.tsへ移動
 
 function ensureLazyLoadObserver() {
@@ -632,6 +787,7 @@ const toolbar = createToolbar({
 	listToolbar: DOM.listToolbar,
 	currentDirName: DOM.currentDirName,
 	recursiveBtn: DOM.recursiveBtn,
+	favoriteListBtn: DOM.favoriteListBtn,
 	toggleSortBtn: DOM.toggleSortBtn,
 	favoriteModeSelect: DOM.favoriteModeSelect,
 	hiddenModeBtn: DOM.hiddenModeBtn,
@@ -640,6 +796,7 @@ const toolbar = createToolbar({
 	getDirectoryHistoryLength: () => state.directoryHistory.length,
 	getCurrentDirName: () => state.directoryHistory.length > 0 ? state.directoryHistory[state.directoryHistory.length - 1].name : '',
 	getIsRecursiveMode: () => state.isRecursiveMode,
+	getIsFavoriteListMode: () => state.isFavoriteListMode,
 	setIsRecursiveMode: (value) => { state.isRecursiveMode = value; },
 	getSortOrder: () => state.sortOrder,
 	getFavoriteFirst: () => state.favoriteFirst,
@@ -711,6 +868,7 @@ const gallery = createGallery({
 	scheduleProcessForCurrentDir,
 	getFavoriteFirst: () => state.favoriteFirst,
 	getFavoriteOnly: () => state.favoriteOnly,
+	getIsFavoriteListMode: () => state.isFavoriteListMode,
 	getIsHiddenMode: () => state.isHiddenMode,
 	getRenderToken: () => state.renderToken,
 	showStatus
@@ -761,10 +919,6 @@ function scheduleProcessForCurrentDir(debounceMs = 150) {
 	state.searchDebounceTimer = setTimeout(async () => {
 		if (state.directoryHistory.length === 0) return;
 		const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
-		if (state.isRecursiveMode) {
-			await processDirectoryRecursive(currentDir);
-		} else {
-			await processDirectory(currentDir, { useConfig: false });
-		}
+		await renderActiveDirectoryView(currentDir, { useConfig: false });
 	}, debounceMs);
 }

@@ -1,6 +1,7 @@
 import { CONFIG } from './state';
 import {
   buildFavoriteKey,
+  joinRelativePath,
   normalizeDirPathSegments,
   normalizeConfigEntry,
   normalizeFavoriteEntry
@@ -16,6 +17,15 @@ export type ConfigNode = {
   settings: Record<string, unknown>;
   directories: Record<string, ConfigNode>;
   version?: number;
+};
+
+export type FavoriteFileHandleEntry = {
+  handle: FileSystemFileHandle;
+  parentHandle: FileSystemDirectoryHandle;
+  name: string;
+  parentPath: string;
+  path: string;
+  isHidden: boolean;
 };
 
 type FavoriteKeyItem = {
@@ -182,6 +192,65 @@ export function getFavoriteKeyForItem(item: FavoriteKeyItem | null | undefined):
   if (item.type === 'directory') return buildFavoriteKey('directory', item.name);
   if (item.type === 'image' || item.type === 'video') return buildFavoriteKey('file', item.name);
   return null;
+}
+
+async function collectFavoriteFilesFromNode(
+  dirHandle: FileSystemDirectoryHandle,
+  node: ConfigNode,
+  parentPath: string,
+  list: FavoriteFileHandleEntry[]
+): Promise<void> {
+  const hiddenSet = makeHiddenSet(node);
+  for (const entry of node.favorites) {
+    const key = normalizeFavoriteEntry(entry);
+    if (!key || !key.startsWith('file:')) continue;
+    const fileName = key.slice('file:'.length);
+    if (!fileName) continue;
+    try {
+      const fileHandle = await dirHandle.getFileHandle(fileName);
+      list.push({
+        handle: fileHandle,
+        parentHandle: dirHandle,
+        name: fileName,
+        parentPath,
+        path: joinRelativePath(parentPath, fileName),
+        isHidden: hiddenSet.has(key)
+      });
+    } catch (e) {
+      if (CONFIG.ENABLE_DEBUG_LOGS) {
+        console.warn(`お気に入りファイルを読み込めませんでした: ${joinRelativePath(parentPath, fileName)}`, e);
+      }
+    }
+  }
+
+  for (const [dirName, childNode] of Object.entries(node.directories)) {
+    try {
+      const childHandle = await dirHandle.getDirectoryHandle(dirName);
+      await collectFavoriteFilesFromNode(
+        childHandle,
+        ensureConfigNode(childNode),
+        joinRelativePath(parentPath, dirName),
+        list
+      );
+    } catch (e) {
+      if (CONFIG.ENABLE_DEBUG_LOGS) {
+        console.warn(`お気に入りディレクトリを読み込めませんでした: ${joinRelativePath(parentPath, dirName)}`, e);
+      }
+    }
+  }
+}
+
+/**
+ * ルート設定からお気に入りファイルのハンドル一覧を収集する。
+ */
+export async function collectFavoriteFilesFromConfig(
+  rootHandle: FileSystemDirectoryHandle | null,
+  rootConfig: ConfigNode | null
+): Promise<FavoriteFileHandleEntry[]> {
+  if (!rootHandle || !rootConfig) return [];
+  const list: FavoriteFileHandleEntry[] = [];
+  await collectFavoriteFilesFromNode(rootHandle, ensureConfigNode(rootConfig), '', list);
+  return list;
 }
 
 /**

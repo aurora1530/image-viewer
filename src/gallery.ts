@@ -39,6 +39,20 @@ type RecursiveItem = {
 	nameLower?: string;
 };
 
+type CollectedMediaItem = {
+	type: MediaType;
+	handle: FileSystemFileHandle;
+	name: string;
+	parentHandle: FileSystemDirectoryHandle;
+	imageIndex: number;
+	parentPath: string;
+	path: string;
+	isFavorite?: boolean;
+	isHidden?: boolean;
+	displayIndex?: number;
+	nameLower?: string;
+};
+
 type GalleryDeps = {
 	itemList: HTMLElement;
 	createdUrls: Set<string>;
@@ -71,6 +85,7 @@ type GalleryDeps = {
 	scheduleProcessForCurrentDir: (debounceMs: number) => void;
 	getFavoriteFirst: () => boolean;
 	getFavoriteOnly: () => boolean;
+	getIsFavoriteListMode: () => boolean;
 	getIsHiddenMode: () => boolean;
 	getRenderToken: () => number;
 	showStatus: (message: string, type: StatusType) => void;
@@ -99,6 +114,7 @@ export function createGallery(deps: GalleryDeps) {
 		scheduleProcessForCurrentDir,
 		getFavoriteFirst,
 		getFavoriteOnly,
+		getIsFavoriteListMode,
 		getIsHiddenMode,
 		getRenderToken,
 		showStatus
@@ -204,8 +220,9 @@ export function createGallery(deps: GalleryDeps) {
 					{ type: entryType, path: item.name },
 					(message) => showStatus(message, 'error')
 				);
+				item.isFavorite = nextState;
 				setFavoriteButtonState(favoriteBtn, nextState);
-				if (getFavoriteOnly() || getFavoriteFirst()) {
+				if (getFavoriteOnly() || getFavoriteFirst() || getIsFavoriteListMode()) {
 					scheduleProcessForCurrentDir(0);
 				}
 			});
@@ -380,9 +397,69 @@ export function createGallery(deps: GalleryDeps) {
 		});
 	}
 
+	function renderCollectedMediaInBatches(items: CollectedMediaItem[], useLazy: boolean, renderToken = getRenderToken()) {
+		return new Promise<void>(resolve => {
+			const label = enableDebugLogs ? `render:collected-${Date.now()}` : null;
+			if (label) console.time(label);
+			const total = items.length;
+			const chunkSize = 100;
+			let index = 0;
+			let chunk = 0;
+			function renderChunk() {
+				if (renderToken !== getRenderToken()) {
+					if (label) console.timeEnd(label);
+					resolve();
+					return;
+				}
+				const frag = document.createDocumentFragment();
+				for (let i = 0; i < chunkSize && index < total; i++, index++) {
+					const rec = items[index];
+					createItemCard(
+						{
+							type: rec.type,
+							handle: rec.handle,
+							name: rec.name,
+							nameLower: rec.nameLower ?? rec.name.toLowerCase(),
+							isFavorite: rec.isFavorite,
+							isHidden: rec.isHidden,
+							displayIndex: rec.displayIndex,
+							imageIndex: rec.imageIndex
+						},
+						rec.parentHandle,
+						rec.imageIndex,
+						useLazy,
+						frag,
+						rec.parentPath
+					);
+				}
+				if (renderToken !== getRenderToken()) {
+					if (label) console.timeEnd(label);
+					resolve();
+					return;
+				}
+				itemList.appendChild(frag);
+				chunk++;
+				if (label && chunk % 5 === 0) {
+					console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
+				}
+				if (index < total) {
+					RIC(renderChunk);
+				} else {
+					if (label) {
+						console.timeEnd(label);
+						console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
+					}
+					resolve();
+				}
+			}
+			renderChunk();
+		});
+	}
+
 	return {
 		createItemCard,
 		renderItemsInBatches,
-		renderRecursiveItemsInBatches
+		renderRecursiveItemsInBatches,
+		renderCollectedMediaInBatches
 	};
 }

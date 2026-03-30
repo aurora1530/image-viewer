@@ -107,6 +107,7 @@ export const DOM = {
   toggleSortBtn: getRequiredElement('toggle-sort-btn', isButton),
   reloadBtn: getRequiredElement('reload-btn', isButton),
   recursiveBtn: getRequiredElement('recursive-btn', isButton),
+  favoriteListBtn: getRequiredElement('favorite-list-btn', isButton),
   viewerPages: getRequiredElement('viewer-pages', isDiv),
   viewerVideoContainer: getRequiredElement('viewer-video-container', isDiv),
   viewerVideo: getRequiredElement('viewer-video', isVideo),
@@ -138,6 +139,7 @@ type State = {
   filterType: FilterType;
   searchQuery: string;
   isRecursiveMode: boolean;
+  isFavoriteListMode: boolean;
   favoriteFirst: boolean;
   favoriteOnly: boolean;
   isHiddenMode: boolean;
@@ -170,6 +172,7 @@ export const state: State = {
   filterType: 'all',
   searchQuery: '',
   isRecursiveMode: false,
+  isFavoriteListMode: false,
   favoriteFirst: false,
   favoriteOnly: false,
   isHiddenMode: false,

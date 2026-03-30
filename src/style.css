@@ -346,6 +346,14 @@ body.ui-hidden-mode .dock:not(.hidden):focus-within {
 .ui-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
 .ui-btn:hover { border-color: #2f2f36; transform: translateY(-1px); }
 .ui-btn:active { transform: translateY(0); }
+.ui-btn:disabled, .ui-select:disabled, .ui-input:disabled {
+    opacity: 0.52;
+    cursor: not-allowed;
+}
+.ui-btn:disabled:hover, .ui-select:disabled:hover, .ui-input:disabled:hover {
+    transform: none;
+    border-color: var(--line);
+}
 
 .ui-btn.primary {
     background: #f4f4f5;
