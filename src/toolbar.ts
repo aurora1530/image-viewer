@@ -7,6 +7,7 @@ type ToolbarDeps = {
 	recursiveBtn: HTMLButtonElement;
 	toggleSortBtn: HTMLButtonElement;
 	favoriteModeSelect: HTMLSelectElement;
+	uiVisibilityBtn: HTMLButtonElement;
 	viewerToolbar: HTMLElement;
 	getDirectoryHistoryLength: () => number;
 	getCurrentDirName: () => string;
@@ -15,6 +16,7 @@ type ToolbarDeps = {
 	getSortOrder: () => 'asc' | 'desc';
 	getFavoriteFirst: () => boolean;
 	getFavoriteOnly: () => boolean;
+	getIsUiHidden: () => boolean;
 	setToolbarHideTimer: (id: number | null) => void;
 	getToolbarHideTimer: () => number | null;
 };
@@ -29,6 +31,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		recursiveBtn,
 		toggleSortBtn,
 		favoriteModeSelect,
+		uiVisibilityBtn,
 		viewerToolbar,
 		getDirectoryHistoryLength,
 		getCurrentDirName,
@@ -37,6 +40,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		getSortOrder,
 		getFavoriteFirst,
 		getFavoriteOnly,
+		getIsUiHidden,
 		setToolbarHideTimer,
 		getToolbarHideTimer
 	} = deps;
@@ -86,6 +90,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		}
 		updateSortButtonUI();
 		updateFavoriteControlsUI();
+		uiVisibilityBtn.textContent = getIsUiHidden() ? 'UI表示' : 'UI非表示';
 	}
 
 	function resetToolbarTimer() {

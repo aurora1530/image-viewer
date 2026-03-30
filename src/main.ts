@@ -30,6 +30,7 @@ import {
 	showStatus,
 	toggleFullscreen,
 	updateThumbnailSize,
+	updateUiVisibilityUI,
 	updateViewModeUI
 } from './ui';
 
@@ -82,6 +83,22 @@ function normalizeFavoriteMode() {
 function setFavoriteMode(mode: 'off' | 'first' | 'only') {
 	state.favoriteFirst = mode === 'first';
 	state.favoriteOnly = mode === 'only';
+}
+
+function updateUiDockReveal(clientY: number) {
+	if (!state.isUiHidden) {
+		if (state.isUiDockRevealed) {
+			state.isUiDockRevealed = false;
+			updateUiVisibilityUI();
+		}
+		return;
+	}
+	const revealThreshold = Math.max(window.innerHeight - 120, 0);
+	const nextReveal = clientY >= revealThreshold;
+	if (state.isUiDockRevealed !== nextReveal) {
+		state.isUiDockRevealed = nextReveal;
+		updateUiVisibilityUI();
+	}
 }
 
 function applySettingsFromConfig(config: ConfigNode | null) {
@@ -265,6 +282,14 @@ DOM.favoriteModeSelect.addEventListener('change', () => {
 	scheduleProcessForCurrentDir(0);
 });
 
+DOM.uiVisibilityBtn.addEventListener('click', () => {
+	state.isUiHidden = !state.isUiHidden;
+	state.isUiDockRevealed = false;
+	localStorage.setItem('isUiHidden', state.isUiHidden ? '1' : '0');
+	updateUiVisibilityUI();
+	toolbar.updateNavigationUI();
+});
+
 DOM.closeViewerBtn.addEventListener('click', () => viewerController.closeViewer());
 DOM.toggleViewBtn.addEventListener('click', () => {
 	state.isSinglePageView = !state.isSinglePageView;
@@ -327,6 +352,30 @@ document.addEventListener('fullscreenchange', () => {
 		}
 		DOM.viewerToolbar.classList.remove('hidden');
 	}
+});
+
+document.addEventListener('mousemove', (e) => {
+	updateUiDockReveal(e.clientY);
+});
+
+document.addEventListener('mouseleave', () => {
+	if (!state.isUiHidden || !state.isUiDockRevealed) return;
+	state.isUiDockRevealed = false;
+	updateUiVisibilityUI();
+});
+
+DOM.listToolbar.addEventListener('focusin', () => {
+	if (!state.isUiHidden || state.isUiDockRevealed) return;
+	state.isUiDockRevealed = true;
+	updateUiVisibilityUI();
+});
+
+DOM.listToolbar.addEventListener('focusout', () => {
+	const activeElement = document.activeElement;
+	if (!state.isUiHidden) return;
+	if (activeElement instanceof Node && DOM.listToolbar.contains(activeElement)) return;
+	state.isUiDockRevealed = false;
+	updateUiVisibilityUI();
 });
 
 // --- メインロジック ---
@@ -559,6 +608,7 @@ const toolbar = createToolbar({
 	recursiveBtn: DOM.recursiveBtn,
 	toggleSortBtn: DOM.toggleSortBtn,
 	favoriteModeSelect: DOM.favoriteModeSelect,
+	uiVisibilityBtn: DOM.uiVisibilityBtn,
 	viewerToolbar: DOM.viewerToolbar,
 	getDirectoryHistoryLength: () => state.directoryHistory.length,
 	getCurrentDirName: () => state.directoryHistory.length > 0 ? state.directoryHistory[state.directoryHistory.length - 1].name : '',
@@ -567,12 +617,14 @@ const toolbar = createToolbar({
 	getSortOrder: () => state.sortOrder,
 	getFavoriteFirst: () => state.favoriteFirst,
 	getFavoriteOnly: () => state.favoriteOnly,
+	getIsUiHidden: () => state.isUiHidden,
 	setToolbarHideTimer: (id) => { state.toolbarHideTimer = id; },
 	getToolbarHideTimer: () => state.toolbarHideTimer
 });
 
 populateSizeSelect();
 updateThumbnailSize();
+updateUiVisibilityUI();
 toolbar.updateSortButtonUI();
 toolbar.updateFavoriteControlsUI();
 DOM.filterSelect.value = state.filterType;

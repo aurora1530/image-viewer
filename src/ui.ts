@@ -29,9 +29,16 @@ export function populateSizeSelect(): void {
 
 export function updateThumbnailSize(): void {
 	const size = sizeOptions[state.thumbnailSizeIndex];
-	DOM.itemList.className = 'grid ' + size.classes;
+	DOM.itemList.className = 'grid contact-sheet ' + size.classes;
 	DOM.itemList.classList.toggle('original-aspect', size.originalAspect);
 	DOM.sizeSelect.value = String(state.thumbnailSizeIndex);
+}
+
+export function updateUiVisibilityUI(): void {
+	document.body.classList.toggle('ui-hidden-mode', state.isUiHidden);
+	document.body.classList.toggle('ui-dock-revealed', state.isUiHidden && state.isUiDockRevealed);
+	DOM.uiVisibilityBtn.textContent = state.isUiHidden ? 'UI表示' : 'UI非表示';
+	DOM.uiVisibilityBtn.setAttribute('aria-pressed', state.isUiHidden ? 'true' : 'false');
 }
 
 export function updateViewModeUI(): void {

@@ -107,7 +107,8 @@ export const DOM = {
   viewerPages: getRequiredElement('viewer-pages', isDiv),
   viewerVideoContainer: getRequiredElement('viewer-video-container', isDiv),
   viewerVideo: getRequiredElement('viewer-video', isVideo),
-  favoriteModeSelect: getRequiredElement('favorite-mode-select', isSelect)
+  favoriteModeSelect: getRequiredElement('favorite-mode-select', isSelect),
+  uiVisibilityBtn: getRequiredElement('ui-visibility-btn', isButton)
 };
 
 export const CONFIG = {
@@ -135,6 +136,8 @@ type State = {
   isRecursiveMode: boolean;
   favoriteFirst: boolean;
   favoriteOnly: boolean;
+  isUiHidden: boolean;
+  isUiDockRevealed: boolean;
   currentDisplayImageList: FileSystemFileHandle[];
   configWriteTimer: ReturnType<typeof setTimeout> | null;
   lastVisitedChild: WeakMap<FileSystemDirectoryHandle, string>;
@@ -164,6 +167,8 @@ export const state: State = {
   isRecursiveMode: false,
   favoriteFirst: false,
   favoriteOnly: false,
+  isUiHidden: localStorage.getItem('isUiHidden') === '1',
+  isUiDockRevealed: false,
   currentDisplayImageList: [],
   configWriteTimer: null,
   lastVisitedChild: new WeakMap<FileSystemDirectoryHandle, string>(),
