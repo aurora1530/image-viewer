@@ -9,6 +9,7 @@ type DirectoryItem = {
 	nameLower?: string;
 	displayIndex?: number;
 	isFavorite?: boolean;
+	isHidden?: boolean;
 	imageIndex?: number;
 };
 
@@ -19,6 +20,7 @@ type MediaItem = {
 	nameLower?: string;
 	displayIndex?: number;
 	isFavorite?: boolean;
+	isHidden?: boolean;
 	imageIndex?: number;
 };
 
@@ -32,6 +34,7 @@ type RecursiveItem = {
 	parentPath: string;
 	path: string;
 	isFavorite?: boolean;
+	isHidden?: boolean;
 	displayIndex?: number;
 	nameLower?: string;
 };
@@ -44,12 +47,20 @@ type GalleryDeps = {
 	ensureLazyLoadObserver: () => void;
 	getLazyLoadObserver: () => IntersectionObserver | null;
 	getCurrentDisplayImageList: () => FileSystemFileHandle[];
+	setCurrentDisplayImageList: (list: FileSystemFileHandle[]) => void;
 	openViewer: (handle: FileSystemDirectoryHandle, startIndex: number, overrideList?: FileSystemFileHandle[] | null) => void;
 	openVideoPlayer: (handle: FileSystemFileHandle) => void;
 	enterDirectory: (handle: FileSystemDirectoryHandle) => Promise<void>;
 	getDirectoryPreviewUrl: (handle: FileSystemDirectoryHandle) => Promise<string | null>;
 	setFavoriteButtonState: (button: HTMLButtonElement, isActive: boolean) => void;
+	setHiddenButtonState: (button: HTMLButtonElement, isHidden: boolean, isHiddenMode: boolean) => void;
 	toggleFavoriteEntry: (
+		rootHandle: FileSystemDirectoryHandle | null,
+		dirPathSegments: unknown,
+		entry: { type: string; path: string },
+		onError: (message: string) => void
+	) => Promise<boolean>;
+	toggleHiddenEntry: (
 		rootHandle: FileSystemDirectoryHandle | null,
 		dirPathSegments: unknown,
 		entry: { type: string; path: string },
@@ -60,6 +71,7 @@ type GalleryDeps = {
 	scheduleProcessForCurrentDir: (debounceMs: number) => void;
 	getFavoriteFirst: () => boolean;
 	getFavoriteOnly: () => boolean;
+	getIsHiddenMode: () => boolean;
 	getRenderToken: () => number;
 	showStatus: (message: string, type: StatusType) => void;
 };
@@ -73,20 +85,37 @@ export function createGallery(deps: GalleryDeps) {
 		ensureLazyLoadObserver,
 		getLazyLoadObserver,
 		getCurrentDisplayImageList,
+		setCurrentDisplayImageList,
 		openViewer,
 		openVideoPlayer,
 		enterDirectory,
 		getDirectoryPreviewUrl,
 		setFavoriteButtonState,
+		setHiddenButtonState,
 		toggleFavoriteEntry,
+		toggleHiddenEntry,
 		getRootDirHandle,
 		normalizeDirPathSegments,
 		scheduleProcessForCurrentDir,
 		getFavoriteFirst,
 		getFavoriteOnly,
+		getIsHiddenMode,
 		getRenderToken,
 		showStatus
 	} = deps;
+
+	function removeCardFromCurrentView(card: HTMLDivElement, item: Item) {
+		if (item.type === 'image') {
+			const nextList = getCurrentDisplayImageList().filter(handle => handle !== item.handle);
+			setCurrentDisplayImageList(nextList);
+		}
+		card.remove();
+		if (itemList.querySelector('.item-card')) {
+			showStatus('', 'clear');
+			return;
+		}
+		showStatus('表示できるアイテムがありません。', 'info');
+	}
 
 	function createItemCard(item: Item, parentHandle: FileSystemDirectoryHandle | null, imageIndex: number, lazyLoad = false, container: ParentNode | null = null, parentPath = '') {
 		const card = document.createElement('div');
@@ -116,13 +145,14 @@ export function createGallery(deps: GalleryDeps) {
 			card.classList.add('media-card');
 			card.appendChild(thumbnailContainer);
 			if (item.type === 'image') {
-				const displayList = getCurrentDisplayImageList();
-				const startIndex = typeof item.displayIndex === 'number' ? item.displayIndex : imageIndex;
-				const overrideList = displayList && displayList.length > 0
-					? displayList
-					: null;
 				card.addEventListener('click', () => {
 					if (!parentHandle) return;
+					const displayList = getCurrentDisplayImageList();
+					const resolvedIndex = displayList.findIndex(handle => handle === item.handle);
+					const startIndex = resolvedIndex >= 0
+						? resolvedIndex
+						: (typeof item.displayIndex === 'number' ? item.displayIndex : imageIndex);
+					const overrideList = displayList.length > 0 ? displayList : null;
 					openViewer(parentHandle, startIndex, overrideList);
 				});
 			} else {
@@ -133,6 +163,30 @@ export function createGallery(deps: GalleryDeps) {
 		(container || itemList).appendChild(card);
 
 		if (parentHandle) {
+			const canToggleHidden = parentPath.length > 0;
+			if (canToggleHidden) {
+				const hiddenBtn = document.createElement('button');
+				hiddenBtn.className = 'hidden-toggle-btn';
+				hiddenBtn.type = 'button';
+				setHiddenButtonState(hiddenBtn, !!item.isHidden, getIsHiddenMode());
+				hiddenBtn.addEventListener('click', async (e) => {
+					e.stopPropagation();
+					const entryType = item.type === 'directory' ? 'directory' : 'file';
+					const dirPathSegments = normalizeDirPathSegments(parentPath);
+					const rootHandle = getRootDirHandle();
+					const nextState = await toggleHiddenEntry(
+						rootHandle,
+						dirPathSegments,
+						{ type: entryType, path: item.name },
+						(message) => showStatus(message, 'error')
+					);
+					item.isHidden = nextState;
+					setHiddenButtonState(hiddenBtn, nextState, getIsHiddenMode());
+					removeCardFromCurrentView(card, item);
+				});
+				thumbnailContainer.appendChild(hiddenBtn);
+			}
+
 			const favoriteBtn = document.createElement('button');
 			favoriteBtn.className = 'favorite-btn';
 			favoriteBtn.type = 'button';
@@ -204,7 +258,12 @@ export function createGallery(deps: GalleryDeps) {
 					img.alt = `Thumbnail for ${item.name}`;
 					thumbnailContainer.insertBefore(img, thumbnailContainer.firstChild);
 				} else {
-					thumbnailContainer.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>`;
+					const placeholder = document.createElement('div');
+					placeholder.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>`;
+					const icon = placeholder.firstElementChild;
+					if (icon) {
+						thumbnailContainer.insertBefore(icon, thumbnailContainer.firstChild);
+					}
 				}
 			}
 		};
@@ -281,7 +340,15 @@ export function createGallery(deps: GalleryDeps) {
 				for (let i = 0; i < chunkSize && index < total; i++, index++) {
 					const rec = items[index];
 					createItemCard(
-						{ type: 'image', handle: rec.handle, name: rec.name, nameLower: rec.name.toLowerCase() },
+						{
+							type: 'image',
+							handle: rec.handle,
+							name: rec.name,
+							nameLower: rec.name.toLowerCase(),
+							isFavorite: rec.isFavorite,
+							isHidden: rec.isHidden,
+							displayIndex: rec.displayIndex
+						},
 						rec.parentHandle,
 						rec.imageIndex,
 						useLazy,

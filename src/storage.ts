@@ -2,13 +2,17 @@ import { CONFIG } from './state';
 import {
   buildFavoriteKey,
   normalizeDirPathSegments,
+  normalizeConfigEntry,
   normalizeFavoriteEntry
 } from './utils';
 
-export type FavoriteEntry = string | { type?: string; path?: string };
+export type ConfigEntry = string | { type?: string; path?: string };
+export type FavoriteEntry = ConfigEntry;
+export type HiddenEntry = ConfigEntry;
 
 export type ConfigNode = {
   favorites: FavoriteEntry[];
+  hiddenItems: HiddenEntry[];
   settings: Record<string, unknown>;
   directories: Record<string, ConfigNode>;
   version?: number;
@@ -22,7 +26,7 @@ type FavoriteKeyItem = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-const isFavoriteEntry = (value: unknown): value is FavoriteEntry => {
+const isConfigEntry = (value: unknown): value is ConfigEntry => {
   if (typeof value === 'string') return true;
   if (!isRecord(value)) return false;
   const typeValue = value.type;
@@ -39,6 +43,7 @@ export function ensureConfigNode(raw: unknown): ConfigNode {
   if (!isRecord(raw)) {
     return {
       favorites: [],
+      hiddenItems: [],
       settings: {},
       directories: {}
     };
@@ -46,7 +51,12 @@ export function ensureConfigNode(raw: unknown): ConfigNode {
 
   const rawFavorites = raw.favorites;
   raw.favorites = Array.isArray(rawFavorites)
-    ? rawFavorites.filter(isFavoriteEntry)
+    ? rawFavorites.filter(isConfigEntry)
+    : [];
+
+  const rawHiddenItems = raw.hiddenItems;
+  raw.hiddenItems = Array.isArray(rawHiddenItems)
+    ? rawHiddenItems.filter(isConfigEntry)
     : [];
 
   const rawSettings = raw.settings;
@@ -71,7 +81,7 @@ export function ensureConfigNode(raw: unknown): ConfigNode {
  */
 export function normalizeRootConfig(raw: unknown): ConfigNode {
   const node = ensureConfigNode(raw);
-  node.version = 2;
+  node.version = 3;
   return node;
 }
 
@@ -152,6 +162,19 @@ export function makeFavoriteSet(config: ConfigNode | null): Set<string> {
 }
 
 /**
+ * 非表示一覧からキー集合を作成する。
+ */
+export function makeHiddenSet(config: ConfigNode | null): Set<string> {
+  const set = new Set<string>();
+  if (!config || !Array.isArray(config.hiddenItems)) return set;
+  config.hiddenItems.forEach(entry => {
+    const key = normalizeConfigEntry(entry);
+    if (key) set.add(key);
+  });
+  return set;
+}
+
+/**
  * アイテムからお気に入りキーを生成する。
  */
 export function getFavoriteKeyForItem(item: FavoriteKeyItem | null | undefined): string | null {
@@ -186,6 +209,35 @@ export async function toggleFavoriteEntry(
   }
   favorites.push(entry);
   config.favorites = favorites;
+  await writeRootConfig(rootHandle, rootConfig, onError);
+  return true;
+}
+
+/**
+ * 非表示の追加・削除をトグルする。
+ */
+export async function toggleHiddenEntry(
+  rootHandle: FileSystemDirectoryHandle | null,
+  dirPathSegments: unknown,
+  entry: HiddenEntry,
+  onError?: (message: string, error?: unknown) => void
+): Promise<boolean> {
+  if (!rootHandle) return false;
+  const rootConfig = await readRootConfig(rootHandle);
+  const config = getConfigNode(rootConfig, dirPathSegments, { create: true });
+  if (!config) return false;
+  const hiddenItems = Array.isArray(config.hiddenItems) ? config.hiddenItems.slice() : [];
+  const key = normalizeConfigEntry(entry);
+  if (!key) return false;
+  const index = hiddenItems.findIndex(item => normalizeConfigEntry(item) === key);
+  if (index >= 0) {
+    hiddenItems.splice(index, 1);
+    config.hiddenItems = hiddenItems;
+    await writeRootConfig(rootHandle, rootConfig, onError);
+    return false;
+  }
+  hiddenItems.push(entry);
+  config.hiddenItems = hiddenItems;
   await writeRootConfig(rootHandle, rootConfig, onError);
   return true;
 }

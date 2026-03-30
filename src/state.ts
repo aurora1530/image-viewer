@@ -9,6 +9,7 @@ export type DirectoryCacheDirectoryItem = {
   imageIndex?: number;
   displayIndex?: number;
   isFavorite?: boolean;
+  isHidden?: boolean;
 };
 
 export type DirectoryCacheImageItem = {
@@ -19,6 +20,7 @@ export type DirectoryCacheImageItem = {
   imageIndex?: number;
   displayIndex?: number;
   isFavorite?: boolean;
+  isHidden?: boolean;
 };
 
 export type DirectoryCacheVideoItem = {
@@ -29,6 +31,7 @@ export type DirectoryCacheVideoItem = {
   imageIndex?: number;
   displayIndex?: number;
   isFavorite?: boolean;
+  isHidden?: boolean;
 };
 
 export type DirectoryCacheItem =
@@ -108,6 +111,7 @@ export const DOM = {
   viewerVideoContainer: getRequiredElement('viewer-video-container', isDiv),
   viewerVideo: getRequiredElement('viewer-video', isVideo),
   favoriteModeSelect: getRequiredElement('favorite-mode-select', isSelect),
+  hiddenModeBtn: getRequiredElement('hidden-mode-btn', isButton),
   uiVisibilityBtn: getRequiredElement('ui-visibility-btn', isButton)
 };
 
@@ -136,6 +140,7 @@ type State = {
   isRecursiveMode: boolean;
   favoriteFirst: boolean;
   favoriteOnly: boolean;
+  isHiddenMode: boolean;
   isUiHidden: boolean;
   isUiDockRevealed: boolean;
   currentDisplayImageList: FileSystemFileHandle[];
@@ -167,6 +172,7 @@ export const state: State = {
   isRecursiveMode: false,
   favoriteFirst: false,
   favoriteOnly: false,
+  isHiddenMode: false,
   isUiHidden: localStorage.getItem('isUiHidden') === '1',
   isUiDockRevealed: false,
   currentDisplayImageList: [],

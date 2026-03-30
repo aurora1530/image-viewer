@@ -10,6 +10,7 @@ export type RecursiveImageItem = {
 	parentPath: string;
 	path: string;
 	isFavorite?: boolean;
+	isHidden?: boolean;
 	displayIndex?: number;
 	nameLower?: string;
 };

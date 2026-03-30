@@ -7,6 +7,7 @@ type ToolbarDeps = {
 	recursiveBtn: HTMLButtonElement;
 	toggleSortBtn: HTMLButtonElement;
 	favoriteModeSelect: HTMLSelectElement;
+	hiddenModeBtn: HTMLButtonElement;
 	uiVisibilityBtn: HTMLButtonElement;
 	viewerToolbar: HTMLElement;
 	getDirectoryHistoryLength: () => number;
@@ -16,6 +17,7 @@ type ToolbarDeps = {
 	getSortOrder: () => 'asc' | 'desc';
 	getFavoriteFirst: () => boolean;
 	getFavoriteOnly: () => boolean;
+	getIsHiddenMode: () => boolean;
 	getIsUiHidden: () => boolean;
 	setToolbarHideTimer: (id: number | null) => void;
 	getToolbarHideTimer: () => number | null;
@@ -31,6 +33,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		recursiveBtn,
 		toggleSortBtn,
 		favoriteModeSelect,
+		hiddenModeBtn,
 		uiVisibilityBtn,
 		viewerToolbar,
 		getDirectoryHistoryLength,
@@ -40,6 +43,7 @@ export function createToolbar(deps: ToolbarDeps) {
 		getSortOrder,
 		getFavoriteFirst,
 		getFavoriteOnly,
+		getIsHiddenMode,
 		getIsUiHidden,
 		setToolbarHideTimer,
 		getToolbarHideTimer
@@ -90,6 +94,8 @@ export function createToolbar(deps: ToolbarDeps) {
 		}
 		updateSortButtonUI();
 		updateFavoriteControlsUI();
+		hiddenModeBtn.textContent = getIsHiddenMode() ? '戻る' : '非表示一覧';
+		hiddenModeBtn.setAttribute('aria-pressed', getIsHiddenMode() ? 'true' : 'false');
 		uiVisibilityBtn.textContent = getIsUiHidden() ? 'UI表示' : 'UI非表示';
 	}
 

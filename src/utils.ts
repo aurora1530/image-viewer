@@ -16,29 +16,43 @@ export function normalizeDirPathSegments(path: unknown): string[] {
 }
 
 /**
- * お気に入りの識別キーを生成する。
+ * 設定エントリの識別キーを生成する。
  */
-export function buildFavoriteKey(type: 'file' | 'directory', path: string): string {
+export function buildEntryKey(type: 'file' | 'directory', path: string): string {
   return `${type}:${path}`;
 }
 
 /**
- * お気に入りエントリを `type:path` 形式に正規化する。
+ * お気に入りの識別キーを生成する。
  */
-export function normalizeFavoriteEntry(entry: unknown): string | null {
+export function buildFavoriteKey(type: 'file' | 'directory', path: string): string {
+  return buildEntryKey(type, path);
+}
+
+/**
+ * 設定エントリを `type:path` 形式に正規化する。
+ */
+export function normalizeConfigEntry(entry: unknown): string | null {
   if (typeof entry === 'string') {
     if (entry.includes(':')) return entry;
-    return buildFavoriteKey('file', entry);
+    return buildEntryKey('file', entry);
   }
   if (isRecord(entry)) {
     const typeValue = entry.type;
     const pathValue = entry.path;
     const type = typeValue === 'directory' ? 'directory' : 'file';
     if (typeof pathValue === 'string' && pathValue.length > 0) {
-      return buildFavoriteKey(type, pathValue);
+      return buildEntryKey(type, pathValue);
     }
   }
   return null;
+}
+
+/**
+ * お気に入りエントリを `type:path` 形式に正規化する。
+ */
+export function normalizeFavoriteEntry(entry: unknown): string | null {
+  return normalizeConfigEntry(entry);
 }
 
 /**

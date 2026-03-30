@@ -14,8 +14,10 @@ import {
 	getConfigNode,
 	getFavoriteKeyForItem,
 	makeFavoriteSet,
+	makeHiddenSet,
 	readRootConfig,
 	toggleFavoriteEntry,
+	toggleHiddenEntry,
 	writeRootConfig
 } from './storage';
 import type { ConfigNode } from './storage';
@@ -264,12 +266,26 @@ DOM.recursiveBtn.addEventListener('click', async () => {
 		await processDirectory(currentDir);
 		await scrollToVisitedChild(currentDir);
 	} else {
+		if (state.isHiddenMode) {
+			state.isHiddenMode = false;
+			toolbar.updateNavigationUI();
+		}
 		const confirmLoad = confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？');
 		if (!confirmLoad) return;
 		state.isRecursiveMode = true;
 		DOM.recursiveBtn.textContent = '戻る';
 		await processDirectoryRecursive(currentDir);
 	}
+});
+
+DOM.hiddenModeBtn.addEventListener('click', async () => {
+	if (state.directoryHistory.length === 0) return;
+	if (state.isRecursiveMode) {
+		state.isRecursiveMode = false;
+	}
+	state.isHiddenMode = !state.isHiddenMode;
+	toolbar.updateNavigationUI();
+	scheduleProcessForCurrentDir(0);
 });
 
 DOM.favoriteModeSelect.addEventListener('change', () => {
@@ -412,6 +428,7 @@ async function processDirectory(
 			applySettingsFromConfig(config);
 		}
 		const favoriteSet = makeFavoriteSet(config);
+		const hiddenSet = makeHiddenSet(config);
 		if (!cacheEntry.sorted[state.sortOrder]) {
 			const sorted = [...cacheEntry.items].sort((a, b) => {
 				const nameA = (a.nameLower || a.name.toLowerCase());
@@ -431,6 +448,7 @@ async function processDirectory(
 			item.imageIndex = item.type === 'image' ? imgIdx++ : -1;
 			const key = getFavoriteKeyForItem(item);
 			item.isFavorite = key ? favoriteSet.has(key) : false;
+			item.isHidden = key ? hiddenSet.has(key) : false;
 		});
 
 		let filteredItems = items;
@@ -447,6 +465,8 @@ async function processDirectory(
 		if (state.searchQuery) {
 			filteredItems = filteredItems.filter(i => (i.nameLower || i.name.toLowerCase()).includes(state.searchQuery));
 		}
+
+		filteredItems = filteredItems.filter(i => state.isHiddenMode ? i.isHidden : !i.isHidden);
 
 		if (state.favoriteOnly) {
 			filteredItems = filteredItems.filter(i => i.isFavorite);
@@ -529,14 +549,18 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 	const rootConfig = await readRootConfig(rootHandle);
 	const uniquePaths = new Set(items.map(item => item.parentPath));
 	const favoriteMap = new Map();
+	const hiddenMap = new Map();
 	uniquePaths.forEach(path => {
 		const config = getConfigNode(rootConfig, path, { create: false }) || ensureConfigNode({});
 		favoriteMap.set(path, makeFavoriteSet(config));
+		hiddenMap.set(path, makeHiddenSet(config));
 	});
 	items.forEach(item => {
 		const set = favoriteMap.get(item.parentPath);
+		const hiddenSet = hiddenMap.get(item.parentPath);
 		const key = buildFavoriteKey('file', item.name);
 		item.isFavorite = set ? set.has(key) : false;
+		item.isHidden = hiddenSet ? hiddenSet.has(key) : false;
 	});
 	items.sort((a, b) => {
 		const pathA = a.path.toLowerCase();
@@ -559,6 +583,8 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 	if (state.searchQuery) {
 		items = items.filter(i => i.name.toLowerCase().includes(state.searchQuery));
 	}
+
+	items = items.filter(i => !i.isHidden);
 
 	if (state.favoriteOnly) {
 		items = items.filter(i => i.isFavorite);
@@ -608,6 +634,7 @@ const toolbar = createToolbar({
 	recursiveBtn: DOM.recursiveBtn,
 	toggleSortBtn: DOM.toggleSortBtn,
 	favoriteModeSelect: DOM.favoriteModeSelect,
+	hiddenModeBtn: DOM.hiddenModeBtn,
 	uiVisibilityBtn: DOM.uiVisibilityBtn,
 	viewerToolbar: DOM.viewerToolbar,
 	getDirectoryHistoryLength: () => state.directoryHistory.length,
@@ -617,6 +644,7 @@ const toolbar = createToolbar({
 	getSortOrder: () => state.sortOrder,
 	getFavoriteFirst: () => state.favoriteFirst,
 	getFavoriteOnly: () => state.favoriteOnly,
+	getIsHiddenMode: () => state.isHiddenMode,
 	getIsUiHidden: () => state.isUiHidden,
 	setToolbarHideTimer: (id) => { state.toolbarHideTimer = id; },
 	getToolbarHideTimer: () => state.toolbarHideTimer
@@ -662,17 +690,28 @@ const gallery = createGallery({
 	ensureLazyLoadObserver,
 	getLazyLoadObserver: () => state.lazyLoadObserver,
 	getCurrentDisplayImageList: () => state.currentDisplayImageList,
+	setCurrentDisplayImageList: (list) => { state.currentDisplayImageList = list; },
 	openViewer: viewerController.openViewer,
 	openVideoPlayer: viewerController.openVideoPlayer,
 	enterDirectory,
 	getDirectoryPreviewUrl,
 	setFavoriteButtonState: toolbar.setFavoriteButtonState,
+	setHiddenButtonState: (button, isHidden, isHiddenMode) => {
+		button.classList.toggle('restore', isHiddenMode);
+		button.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+		button.setAttribute('aria-label', isHiddenMode ? '非表示を解除' : '非表示');
+		button.innerHTML = isHiddenMode
+			? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L7 7l5 5V9c3.31 0 6 2.69 6 6a6 6 0 01-6 6 6 6 0 01-5.65-4H4.26A8 8 0 0012 22a8 8 0 000-16z"/></svg>`
+			: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.41L10.59 13.41 4.29 19.7 2.88 18.29 9.17 12 2.88 5.71 4.29 4.3l6.3 6.29 6.29-6.3z"/></svg>`;
+	},
 	toggleFavoriteEntry,
+	toggleHiddenEntry,
 	getRootDirHandle,
 	normalizeDirPathSegments,
 	scheduleProcessForCurrentDir,
 	getFavoriteFirst: () => state.favoriteFirst,
 	getFavoriteOnly: () => state.favoriteOnly,
+	getIsHiddenMode: () => state.isHiddenMode,
 	getRenderToken: () => state.renderToken,
 	showStatus
 });
