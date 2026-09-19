@@ -476,15 +476,17 @@ DOM.fullscreenBtn.addEventListener('click', toggleFullscreen);
 document.addEventListener('keydown', (e) => {
 	if (e.altKey && e.key === 'ArrowLeft') {
 		e.preventDefault();
-		if (DOM.viewer.style.display !== 'none') {
+		if (DOM.viewer.style.display === 'flex') {
 			viewerController.closeViewer();
 		} else if (state.directoryHistory.length > 1) {
 			DOM.upDirBtn.click();
+		} else if (state.directoryHistory.length === 1 && isDesktopApp()) {
+			void showHome();
 		}
 		return;
 	}
 
-	if (DOM.viewer.style.display === 'none') return;
+	if (DOM.viewer.style.display !== 'flex') return;
 	if (e.key === 'Escape') {
 		e.preventDefault();
 		viewerController.closeViewer();

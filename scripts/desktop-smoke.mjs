@@ -61,6 +61,8 @@ try {
 	await mkdir(libraryFolder);
 	const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 	await writeFile(path.join(libraryFolder, 'sample.png'), png);
+	await mkdir(path.join(libraryFolder, 'child'));
+	await writeFile(path.join(libraryFolder, 'child', 'sample-child.png'), png);
 	child = spawn(executable, [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`], { stdio: 'ignore' });
 	const cdp = await connectCdp(await waitForTarget());
 	for (let attempt = 0; attempt < 40; attempt++) {
@@ -90,8 +92,28 @@ try {
 	if (mediumWidth >= sizing.container * 0.35 || sizing.card <= mediumWidth * 1.5 || sizing.card >= sizing.container * 0.75) {
 		throw new Error(`サムネイルのサイズ切替が正しくありません: ${JSON.stringify({ mediumWidth, ...sizing })}`);
 	}
+	await cdp.evaluate(`document.querySelector('#item-list .media-card').click()`);
+	await delay(200);
+	const viewerOpened = await cdp.evaluate(`document.querySelector('#viewer').style.display === 'flex'`);
+	if (!viewerOpened) throw new Error('画像ビューワーを開けませんでした。');
+	await cdp.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }))`);
+	await delay(100);
+	const viewerClosed = await cdp.evaluate(`document.querySelector('#viewer').style.display === 'none' && document.querySelector('#home-view').classList.contains('hidden')`);
+	if (!viewerClosed) throw new Error('Alt+Left で画像ビューワーを閉じられませんでした。');
+	await cdp.evaluate(`document.querySelector('#item-list .directory-card .thumbnail-container').click()`);
+	await delay(500);
+	const childName = await cdp.evaluate(`document.querySelector('#current-dir-name').textContent`);
+	if (childName !== 'child') throw new Error(`子フォルダーへ移動できませんでした: ${childName}`);
+	await cdp.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }))`);
+	await delay(500);
+	const parentName = await cdp.evaluate(`document.querySelector('#current-dir-name').textContent`);
+	if (parentName !== 'sample-images') throw new Error(`Alt+Left で親フォルダーへ戻れませんでした: ${parentName}`);
+	await cdp.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }))`);
+	await delay(300);
+	const returnedHome = await cdp.evaluate(`!document.querySelector('#home-view').classList.contains('hidden')`);
+	if (!returnedHome) throw new Error('ルートで Alt+Left を押してホームへ戻れませんでした。');
 	cdp.close();
-	console.log('Desktop smoke test passed: home, history, native folder open, local media stream, thumbnail sizing.');
+	console.log('Desktop smoke test passed: home, history, media, sizing, Alt+Left navigation.');
 } finally {
 	if (child && !child.killed) {
 		if (process.platform === 'win32') {
