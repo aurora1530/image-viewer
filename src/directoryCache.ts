@@ -6,6 +6,7 @@ import type {
 	DirectoryCacheImageItem
 } from './state';
 import { isImageFileName } from './utils';
+import { getMediaSource } from './nativeFs';
 type CacheEntry = DirectoryCacheEntry;
 type CacheItem = DirectoryCacheItem;
 
@@ -147,8 +148,8 @@ export async function getDirectoryPreviewUrl(dirHandle: FileSystemDirectoryHandl
 	try {
 		const tLabel = CONFIG.ENABLE_DEBUG_LOGS ? `previewGen:${dirHandle.name}-${Date.now()}` : null;
 		if (tLabel) console.time(tLabel);
-		const file = await handle.getFile();
-		const url = URL.createObjectURL(file);
+		const source = await getMediaSource(handle);
+		const url = source.url;
 		state.directoryPreviewCache.set(dirHandle, { url });
 		state.previewUrls.add(url);
 		if (CONFIG.ENABLE_DEBUG_LOGS) console.log(`[preview set] ${dirHandle.name}`);

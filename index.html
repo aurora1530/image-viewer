@@ -4,13 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ローカル画像ビューワー</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-
 </head>
 <body class="mono-body">
 
     <div id="main-content" class="frame">
+        <header class="app-header">
+            <div>
+                <span class="eyebrow">DESKTOP LIBRARY</span>
+                <h1>ローカル画像ビューワー</h1>
+            </div>
+            <span id="desktop-badge" class="desktop-badge hidden">DESKTOP</span>
+        </header>
         <div class="panel">
             <div class="panel-top">
                 <div class="dir-chip">
@@ -18,6 +22,7 @@
                     <span id="current-dir-name" class="chip-value">フォルダを選択してください</span>
                 </div>
                 <div class="actions">
+                    <button id="home-btn" class="ui-btn ghost hidden">ホーム</button>
                     <button id="up-dir-btn" class="ui-btn ghost hidden">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.707 4.293a1 1 0 010 1.414L7.414 9H14a1 1 0 110 2H7.414l3.293 3.293a1 1 0 01-1.414 1.414l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
                         上の階層へ
@@ -32,6 +37,29 @@
                     <button id="select-dir-btn" class="ui-btn primary">
                         ルートフォルダを選択
                     </button>
+                </div>
+            </div>
+            <div id="home-view" class="home-view hidden">
+                <div class="home-intro">
+                    <div>
+                        <span class="chip-label">ライブラリ</span>
+                        <h2>フォルダーをすぐに開く</h2>
+                        <p>最近使ったフォルダーはこの端末に保存されます。よく使う場所は ★ で上部に固定できます。</p>
+                    </div>
+                    <button id="home-select-dir-btn" class="ui-btn primary">新しいフォルダーを開く</button>
+                </div>
+                <div id="favorite-roots-section" class="library-section hidden">
+                    <div class="library-heading"><h3>お気に入り</h3><span id="favorite-roots-count"></span></div>
+                    <div id="favorite-roots" class="library-grid"></div>
+                </div>
+                <div id="recent-roots-section" class="library-section hidden">
+                    <div class="library-heading"><h3>最近使ったフォルダー</h3><span id="recent-roots-count"></span></div>
+                    <div id="recent-roots" class="library-grid"></div>
+                </div>
+                <div id="empty-library" class="empty-library">
+                    <div class="empty-icon">▧</div>
+                    <h3>まだフォルダーがありません</h3>
+                    <p>画像を保存しているフォルダーを選ぶと、次回からここから開けます。</p>
                 </div>
             </div>
             <div id="status-area" class="status"></div>

@@ -2,19 +2,20 @@ import { DOM, state } from './state';
 
 type SizeOption = {
 	name: string;
-	classes: string;
+	minWidth: number;
+	gap: number;
 	originalAspect: boolean;
 };
 
 export type StatusType = 'info' | 'error' | 'loading' | 'clear';
 
 const sizeOptions: SizeOption[] = [
-	{ name: '小', classes: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 xl:grid-cols-8 2xl:grid-cols-10 gap-2', originalAspect: false },
-	{ name: '中', classes: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2 md:gap-3', originalAspect: false },
-	{ name: '大', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 md:gap-4', originalAspect: false },
-	{ name: '元サイズ 小', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-3 md:gap-4', originalAspect: true },
-	{ name: '元サイズ 中', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3 md:gap-4', originalAspect: true },
-	{ name: '元サイズ 大', classes: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-3 md:gap-4', originalAspect: true },
+	{ name: '小', minWidth: 120, gap: 8, originalAspect: false },
+	{ name: '中', minWidth: 170, gap: 10, originalAspect: false },
+	{ name: '大', minWidth: 230, gap: 14, originalAspect: false },
+	{ name: '元サイズ 小', minWidth: 280, gap: 14, originalAspect: true },
+	{ name: '元サイズ 中', minWidth: 390, gap: 16, originalAspect: true },
+	{ name: '元サイズ 大', minWidth: 520, gap: 16, originalAspect: true },
 ];
 
 export function populateSizeSelect(): void {
@@ -28,10 +29,16 @@ export function populateSizeSelect(): void {
 }
 
 export function updateThumbnailSize(): void {
-	const size = sizeOptions[state.thumbnailSizeIndex];
-	DOM.itemList.className = 'grid contact-sheet ' + size.classes;
+	const safeIndex = Number.isInteger(state.thumbnailSizeIndex)
+		? Math.min(Math.max(state.thumbnailSizeIndex, 0), sizeOptions.length - 1)
+		: 1;
+	state.thumbnailSizeIndex = safeIndex;
+	const size = sizeOptions[safeIndex];
+	DOM.itemList.className = 'grid contact-sheet';
+	DOM.itemList.style.setProperty('--thumbnail-min-width', `${size.minWidth}px`);
+	DOM.itemList.style.setProperty('--thumbnail-gap', `${size.gap}px`);
 	DOM.itemList.classList.toggle('original-aspect', size.originalAspect);
-	DOM.sizeSelect.value = String(state.thumbnailSizeIndex);
+	DOM.sizeSelect.value = String(safeIndex);
 }
 
 export function updateUiVisibilityUI(): void {

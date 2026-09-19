@@ -83,6 +83,17 @@ const isSpan = (el: HTMLElement): el is HTMLSpanElement => el instanceof HTMLSpa
 
 export const DOM = {
   selectDirBtn: getRequiredElement('select-dir-btn', isButton),
+  homeBtn: getRequiredElement('home-btn', isButton),
+  homeSelectDirBtn: getRequiredElement('home-select-dir-btn', isButton),
+  homeView: getRequiredElement('home-view', isDiv),
+  favoriteRootsSection: getRequiredElement('favorite-roots-section', isDiv),
+  recentRootsSection: getRequiredElement('recent-roots-section', isDiv),
+  favoriteRoots: getRequiredElement('favorite-roots', isDiv),
+  recentRoots: getRequiredElement('recent-roots', isDiv),
+  favoriteRootsCount: getRequiredElement('favorite-roots-count', isSpan),
+  recentRootsCount: getRequiredElement('recent-roots-count', isSpan),
+  emptyLibrary: getRequiredElement('empty-library', isDiv),
+  desktopBadge: getRequiredElement('desktop-badge', isSpan),
   itemList: getRequiredElement('item-list', isDiv),
   statusArea: getRequiredElement('status-area', isDiv),
   viewer: getRequiredElement('viewer', isDiv),

@@ -1,4 +1,5 @@
 import type { StatusType } from './ui';
+import { getMediaSource } from './nativeFs';
 
 type MediaType = 'image' | 'video';
 
@@ -234,9 +235,9 @@ export function createGallery(deps: GalleryDeps) {
 			card.dataset.loaded = '1';
 			if (item.type === 'image') {
 				try {
-					const file = await item.handle.getFile();
-					const thumbnailUrl = URL.createObjectURL(file);
-					createdUrls.add(thumbnailUrl);
+					const source = await getMediaSource(item.handle);
+					const thumbnailUrl = source.url;
+					if (source.objectUrl) createdUrls.add(thumbnailUrl);
 					const img = document.createElement('img');
 					img.loading = 'lazy';
 					img.decoding = 'async';
@@ -250,9 +251,9 @@ export function createGallery(deps: GalleryDeps) {
 				playIconOverlay.innerHTML = `<svg class="w-16 h-16 text-white opacity-70 group-hover:opacity-90 transition-opacity" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>`;
 				thumbnailContainer.appendChild(playIconOverlay);
 				try {
-					const file = await item.handle.getFile();
-					const videoUrl = URL.createObjectURL(file);
-					createdUrls.add(videoUrl);
+					const source = await getMediaSource(item.handle);
+					const videoUrl = source.url;
+					if (source.objectUrl) createdUrls.add(videoUrl);
 					const video = document.createElement('video');
 					video.src = videoUrl + '#t=0.5';
 					video.muted = true;

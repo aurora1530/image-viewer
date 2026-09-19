@@ -37,6 +37,7 @@ import {
 	updateUiVisibilityUI,
 	updateViewModeUI
 } from './ui';
+import { chooseNativeDirectory, isDesktopApp, openNativeDirectory } from './nativeFs';
 
 const isFilterType = (value: string): value is FilterType =>
 	value === 'all' || value === 'directory' || value === 'image' || value === 'gif' || value === 'video';
@@ -62,6 +63,100 @@ function getRootDirHandle() {
 function getCurrentDirPathSegments() {
 	if (state.directoryHistory.length <= 1) return [];
 	return state.directoryHistory.slice(1).map(handle => handle.name);
+}
+
+function getDisplayPath() {
+	const current = state.directoryHistory[state.directoryHistory.length - 1];
+	return current?.nativePath || state.directoryHistory.map(handle => handle.name).join('/');
+}
+
+async function openRootDirectory(dirHandle: FileSystemDirectoryHandle) {
+	state.directoryHistory = [dirHandle];
+	resetSearchQuery();
+	DOM.homeView.classList.add('hidden');
+	DOM.itemList.classList.remove('hidden');
+	DOM.statusArea.classList.remove('hidden');
+	DOM.homeBtn.classList.remove('hidden');
+	await renderActiveDirectoryView(dirHandle);
+	await scrollToVisitedChild(dirHandle);
+}
+
+function createLibraryCard(item: DesktopLibraryItem) {
+	const card = document.createElement('div');
+	card.className = 'library-card';
+	card.tabIndex = 0;
+	card.setAttribute('role', 'button');
+	card.innerHTML = `
+		<div class="library-folder-icon">▰</div>
+		<div class="library-copy"><div class="library-name"></div><div class="library-path"></div></div>
+		<div class="library-card-actions">
+			<button class="icon-btn favorite-root-btn${item.favorite ? ' active' : ''}" title="お気に入り">★</button>
+			<button class="icon-btn remove-root-btn" title="履歴から削除">×</button>
+		</div>`;
+	const name = card.querySelector<HTMLElement>('.library-name');
+	const path = card.querySelector<HTMLElement>('.library-path');
+	if (name) name.textContent = item.name;
+	if (path) path.textContent = item.path;
+	const open = async () => {
+		try { await openRootDirectory(await openNativeDirectory(item.path)); }
+		catch (error) { console.error(error); showStatus('フォルダーを開けませんでした。', 'error'); await showHome(); }
+	};
+	card.addEventListener('click', open);
+	card.addEventListener('keydown', event => {
+		if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void open(); }
+	});
+	card.querySelector('.favorite-root-btn')?.addEventListener('click', async event => {
+		event.stopPropagation();
+		await window.desktopApi!.toggleFavoriteRoot(item.path);
+		await showHome();
+	});
+	card.querySelector('.remove-root-btn')?.addEventListener('click', async event => {
+		event.stopPropagation();
+		await window.desktopApi!.removeRecent(item.path);
+		await showHome();
+	});
+	return card;
+}
+
+async function showHome() {
+	if (!isDesktopApp()) return;
+	state.renderToken++;
+	state.directoryHistory = [];
+	state.currentDirHandle = null;
+	clearTransientUrls();
+	DOM.homeView.classList.remove('hidden');
+	DOM.itemList.classList.add('hidden');
+	DOM.statusArea.classList.add('hidden');
+	DOM.listToolbar.classList.add('hidden');
+	DOM.homeBtn.classList.add('hidden');
+	DOM.currentDirName.textContent = 'ホーム';
+	DOM.copyPathBtn.classList.add('hidden');
+	DOM.reloadBtn.classList.add('hidden');
+	DOM.recursiveBtn.classList.add('hidden');
+	DOM.favoriteListBtn.classList.add('hidden');
+	const items = await window.desktopApi!.getLibrary();
+	const favorites = items.filter(item => item.favorite);
+	DOM.favoriteRoots.replaceChildren(...favorites.map(createLibraryCard));
+	DOM.recentRoots.replaceChildren(...items.map(createLibraryCard));
+	DOM.favoriteRootsCount.textContent = `${favorites.length}`;
+	DOM.recentRootsCount.textContent = `${items.length}`;
+	DOM.favoriteRootsSection.classList.toggle('hidden', favorites.length === 0);
+	DOM.recentRootsSection.classList.toggle('hidden', items.length === 0);
+	DOM.emptyLibrary.classList.toggle('hidden', items.length > 0);
+}
+
+async function selectRootDirectory() {
+	try {
+		const dirHandle = isDesktopApp()
+			? await chooseNativeDirectory()
+			: await window.showDirectoryPicker?.();
+		if (!dirHandle) return;
+		await openRootDirectory(dirHandle);
+	} catch (err) {
+		if (err instanceof DOMException && err.name === 'AbortError') return;
+		console.error('ディレクトリ選択エラー:', err);
+		showStatus('フォルダーを開けませんでした。', 'error');
+	}
 }
 
 function isSupportedVideoFileName(name: string) {
@@ -186,21 +281,15 @@ function scheduleSaveCurrentDirectoryConfig() {
 // --- イベントリスナー ---
 
 DOM.selectDirBtn.addEventListener('click', async () => {
-	if (!window.showDirectoryPicker) {
+	if (!isDesktopApp() && !window.showDirectoryPicker) {
 		showStatus('お使いのブラウザはこの機能に対応していません。Google ChromeやMicrosoft Edgeの最新版をお試しください。', 'error');
 		return;
 	}
-	try {
-		const dirHandle = await window.showDirectoryPicker();
-		state.directoryHistory = [dirHandle];
-		resetSearchQuery();
-		await renderActiveDirectoryView(dirHandle);
-		await scrollToVisitedChild(dirHandle);
-	} catch (err) {
-		if (err instanceof DOMException && err.name === 'AbortError') return;
-		console.error('ディレクトリ選択エラー:', err);
-	}
+	await selectRootDirectory();
 });
+
+DOM.homeSelectDirBtn.addEventListener('click', selectRootDirectory);
+DOM.homeBtn.addEventListener('click', showHome);
 
 DOM.upDirBtn.addEventListener('click', async () => {
 	if (state.directoryHistory.length > 1) {
@@ -217,7 +306,7 @@ DOM.upDirBtn.addEventListener('click', async () => {
 
 DOM.copyPathBtn.addEventListener('click', () => {
 	if (state.directoryHistory.length > 0) {
-		const path = state.directoryHistory.map(handle => handle.name).join('/');
+		const path = getDisplayPath();
 		navigator.clipboard.writeText(path)
 			.then(() => {
 				showStatus('パスをクリップボードにコピーしました。', 'info');
@@ -232,7 +321,7 @@ DOM.copyPathBtn.addEventListener('click', () => {
 
 DOM.copyImagePathBtn.addEventListener('click', () => {
 	if (state.currentImageFiles.length > 0) {
-		const dirPath = state.directoryHistory.map(handle => handle.name).join('/');
+		const dirPath = getDisplayPath();
 		const fileName = state.currentImageFiles[state.currentImageIndex].name;
 		const fullPath = `${dirPath}/${fileName}`;
 		navigator.clipboard.writeText(fullPath)
@@ -813,6 +902,10 @@ updateUiVisibilityUI();
 toolbar.updateSortButtonUI();
 toolbar.updateFavoriteControlsUI();
 DOM.filterSelect.value = state.filterType;
+if (isDesktopApp()) {
+	DOM.desktopBadge.classList.remove('hidden');
+	void showHome();
+}
 
 const viewerController = createViewer({
 	viewer: DOM.viewer,

@@ -4,6 +4,7 @@ import type {
 	DirectoryCacheItem
 } from './state';
 import type { StatusType } from './ui';
+import { getMediaSource } from './nativeFs';
 
 type CacheItem = DirectoryCacheItem;
 type CacheEntry = DirectoryCacheEntry;
@@ -116,9 +117,9 @@ export function createViewer(deps: ViewerDeps) {
 			viewerToolbar.style.display = 'none';
 			listToolbar.style.display = 'none';
 			document.body.style.overflow = 'hidden';
-			const file = await videoHandle.getFile();
-			const url = URL.createObjectURL(file);
-			createdUrls.add(url);
+			const source = await getMediaSource(videoHandle);
+			const url = source.url;
+			if (source.objectUrl) createdUrls.add(url);
 			viewerVideo.loop = true;
 			viewerVideo.src = url;
 			viewerVideo.play();
@@ -135,8 +136,8 @@ export function createViewer(deps: ViewerDeps) {
 		document.body.style.overflow = 'auto';
 		const leftUrl = leftPageImg.dataset.url;
 		const rightUrl = rightPageImg.dataset.url;
-		if (leftUrl) URL.revokeObjectURL(leftUrl);
-		if (rightUrl) URL.revokeObjectURL(rightUrl);
+		if (leftUrl?.startsWith('blob:')) URL.revokeObjectURL(leftUrl);
+		if (rightUrl?.startsWith('blob:')) URL.revokeObjectURL(rightUrl);
 		if (leftUrl) createdUrls.delete(leftUrl);
 		if (rightUrl) createdUrls.delete(rightUrl);
 		leftPageImg.src = ''; rightPageImg.src = '';
@@ -144,7 +145,7 @@ export function createViewer(deps: ViewerDeps) {
 		setCurrentImageFiles([]);
 		if (viewerVideo.src) {
 			viewerVideo.pause();
-			URL.revokeObjectURL(viewerVideo.src);
+			if (viewerVideo.src.startsWith('blob:')) URL.revokeObjectURL(viewerVideo.src);
 			createdUrls.delete(viewerVideo.src);
 			viewerVideo.src = '';
 		}
@@ -177,16 +178,16 @@ export function createViewer(deps: ViewerDeps) {
 
 	async function displayImage(imgElement: HTMLImageElement, index: number) {
 		if (imgElement.dataset.url) {
-			URL.revokeObjectURL(imgElement.dataset.url);
+			if (imgElement.dataset.url.startsWith('blob:')) URL.revokeObjectURL(imgElement.dataset.url);
 			createdUrls.delete(imgElement.dataset.url);
 			imgElement.dataset.url = '';
 		}
 		const files = getCurrentImageFiles();
 		if (index >= 0 && index < files.length) {
 			try {
-				const file = await files[index].getFile();
-				const url = URL.createObjectURL(file);
-				createdUrls.add(url);
+				const source = await getMediaSource(files[index]);
+				const url = source.url;
+				if (source.objectUrl) createdUrls.add(url);
 				imgElement.src = url;
 				imgElement.dataset.url = url;
 				imgElement.style.visibility = 'visible';
