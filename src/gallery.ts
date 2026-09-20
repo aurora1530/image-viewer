@@ -83,7 +83,7 @@ type GalleryDeps = {
 	) => Promise<boolean>;
 	getRootDirHandle: () => FileSystemDirectoryHandle | null;
 	normalizeDirPathSegments: (path: unknown) => string[];
-	scheduleProcessForCurrentDir: (debounceMs: number) => void;
+	scheduleProcessForCurrentDir: (debounceMs: number, preserveScrollPosition?: boolean) => void;
 	getFavoriteFirst: () => boolean;
 	getFavoriteOnly: () => boolean;
 	getIsFavoriteListMode: () => boolean;
@@ -224,7 +224,7 @@ export function createGallery(deps: GalleryDeps) {
 				item.isFavorite = nextState;
 				setFavoriteButtonState(favoriteBtn, nextState);
 				if (getFavoriteOnly() || getFavoriteFirst() || getIsFavoriteListMode()) {
-					scheduleProcessForCurrentDir(0);
+					scheduleProcessForCurrentDir(0, true);
 				}
 			});
 			thumbnailContainer.appendChild(favoriteBtn);

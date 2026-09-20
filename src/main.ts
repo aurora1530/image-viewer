@@ -1007,13 +1007,20 @@ window.addEventListener('beforeunload', () => {
 	state.previewUrls.clear();
 });
 
-function scheduleProcessForCurrentDir(debounceMs = 150) {
+function scheduleProcessForCurrentDir(debounceMs = 150, preserveScrollPosition = false) {
 	if (state.searchDebounceTimer) {
 		clearTimeout(state.searchDebounceTimer);
 	}
+	const scrollPosition = preserveScrollPosition
+		? { x: window.scrollX, y: window.scrollY }
+		: null;
 	state.searchDebounceTimer = setTimeout(async () => {
 		if (state.directoryHistory.length === 0) return;
 		const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
 		await renderActiveDirectoryView(currentDir, { useConfig: false });
+		if (scrollPosition) {
+			window.scrollTo(scrollPosition.x, scrollPosition.y);
+			requestAnimationFrame(() => window.scrollTo(scrollPosition.x, scrollPosition.y));
+		}
 	}, debounceMs);
 }
