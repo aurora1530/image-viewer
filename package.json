@@ -13,6 +13,11 @@
     "desktop:build": "npm run build && electron-builder --win nsis portable",
     "desktop:pack": "npm run build && electron-builder --dir",
     "desktop:smoke": "node scripts/desktop-smoke.mjs",
+    "test": "vitest run --configLoader runner",
+    "test:typecheck": "tsc --project tsconfig.tests.json",
+    "test:coverage": "vitest run --configLoader runner --coverage",
+    "test:e2e": "playwright test --project=chromium",
+    "test:desktop": "playwright test --project=electron",
     "preview": "vite preview"
   },
   "devDependencies": {

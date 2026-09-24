@@ -54,6 +54,20 @@ npm run desktop:build
 3. 画像やフォルダのサムネイルをクリックして閲覧を開始
 4. 必要に応じて「全画像一覧」ボタンを押すと、サブディレクトリも含めた画像を確認ダイアログ後にまとめて表示できます
 
+## テスト
+
+初回は `npm install` と `npx playwright install chromium` を実行します。
+
+```powershell
+npm test                 # 単体・統合テスト
+npm run test:typecheck   # テストコードの型チェック
+npm run test:e2e         # Chromium での操作テスト
+npm run test:desktop     # Electron での操作テスト
+npm run test:coverage    # 単体・統合テストのカバレッジ
+```
+
+操作テストは自動で Vite を起動し、一時フォルダー内のテスト用ファイルを使います。テストの対象と移行時の確認項目は [TEST_PLAN.md](TEST_PLAN.md) を参照してください。カバレッジ表示には Chromium・Electron の操作テストは含まれません。
+
 ## 対応ブラウザ
 
 - Google Chrome（推奨）

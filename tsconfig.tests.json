@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node", "vitest/globals"],
+    "erasableSyntaxOnly": false
+  },
+  "include": ["src/types.d.ts", "tests", "vitest.config.ts", "playwright.config.ts"]
+}
