@@ -16,11 +16,15 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@vitest/coverage-v8": "^5.0.1",
     "concurrently": "^9.2.1",
     "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
+    "jsdom": "^30.1.1",
     "typescript": "~5.9.3",
     "vite": "^7.2.4",
+    "vitest": "^5.0.1",
     "wait-on": "^8.0.4"
   },
   "build": {
@@ -36,7 +40,10 @@
     ],
     "asar": true,
     "win": {
-      "target": ["nsis", "portable"]
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "nsis": {
       "oneClick": false,
