@@ -341,6 +341,10 @@ export function createGallery(deps: GalleryDeps) {
 	}
 
 	function renderRecursiveItemsInBatches(items: RecursiveItem[], useLazy: boolean, renderToken = getRenderToken()) {
+		if (renderToken === getRenderToken()) {
+			setCurrentDisplayImageList(items.map(item => item.handle));
+			items.forEach((item, index) => { item.displayIndex = index; });
+		}
 		return new Promise<void>(resolve => {
 			const label = enableDebugLogs ? `render:recursive-${Date.now()}` : null;
 			if (label) console.time(label);

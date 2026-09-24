@@ -77,6 +77,25 @@ test('opens child images in recursive mode and returns to the normal list', asyn
   await expect(page.locator('#item-list .item-card')).toHaveCount(5);
 });
 
+test('navigates across the favorite boundary in the all-images list', async ({ page }) => {
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: '全画像一覧' }).click();
+  const nested = page.locator('#item-list .media-card', { has: page.locator('img[alt="nested.png"]') });
+  await nested.locator('.favorite-btn').click();
+  await page.locator('#favorite-mode-select').selectOption('first');
+  await expect.poll(() => page.locator('#item-list .media-card img').evaluateAll(images =>
+    images.map(image => image.getAttribute('alt'))
+  )).toEqual(['nested.png', '2.png', '10.png', 'cover.gif']);
+
+  await page.locator('#item-list .media-card').first().click();
+  await page.locator('#toggle-view-btn').click();
+  await expect(page.locator('#page-counter')).toHaveText('1 / 4');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('2 / 4');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#page-counter')).toHaveText('1 / 4');
+});
+
 test('favorites can be shown alone and survive another directory render', async ({ page }) => {
   const cover = page.locator('#item-list .media-card', { has: page.locator('img[alt="cover.gif"]') });
   await cover.locator('.favorite-btn').click();

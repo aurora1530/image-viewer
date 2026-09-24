@@ -63,6 +63,21 @@ describe('gallery cards and batching', () => {
     expect(view.openViewer).toHaveBeenCalledWith(root.asHandle(), 1, [second, first]);
   });
 
+  it('uses the favorite-first all-images order across directories for navigation', async () => {
+    const view = harness();
+    const child = root.directory('child');
+    const favorite = child.file('favorite.png').asHandle();
+    const items = [
+      { handle: favorite, name: favorite.name, parentHandle: child.asHandle(), imageIndex: 0, parentPath: 'child', path: 'child/favorite.png', isFavorite: true },
+      { handle: first, name: first.name, parentHandle: root.asHandle(), imageIndex: 0, parentPath: '', path: 'first.png', isFavorite: false },
+      { handle: second, name: second.name, parentHandle: root.asHandle(), imageIndex: 1, parentPath: '', path: 'second.png', isFavorite: false }
+    ];
+    await view.gallery.renderRecursiveItemsInBatches(items, true);
+    expect(view.displayList).toEqual([favorite, first, second]);
+    view.itemList.querySelector('.media-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(view.openViewer).toHaveBeenCalledWith(child.asHandle(), 0, [favorite, first, second]);
+  });
+
   it('changes the favorite without opening the viewer, then schedules a fresh list', async () => {
     const view = harness();
     view.gallery.createItemCard({ type: 'image', handle: first, name: 'first.png' }, root.asHandle(), 0, true, null, 'chapter');
