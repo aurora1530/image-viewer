@@ -69,10 +69,6 @@ async function rememberRoot(rootPath) {
   return resolved;
 }
 
-function encodeMediaPath(filePath) {
-  return Buffer.from(filePath, 'utf8').toString('base64url');
-}
-
 function decodeMediaUrl(url) {
 	const encoded = new URL(url).pathname.replace(/^\//, '');
   return Buffer.from(encoded, 'base64url').toString('utf8');
@@ -137,10 +133,6 @@ function registerIpc() {
       const stat = await fs.stat(requireAllowed(targetPath));
       return kind === 'directory' ? stat.isDirectory() : stat.isFile();
     } catch { return false; }
-  });
-  ipcMain.handle('desktop:media-url', (_event, filePath) => {
-    const resolved = requireAllowed(filePath);
-	return `local-media://file/${encodeMediaPath(resolved)}`;
   });
 }
 

@@ -6,7 +6,7 @@ import type {
 	DirectoryCacheImageItem
 } from './state';
 import { isImageFileName } from './utils';
-import { getMediaSource } from './nativeFs';
+import { getMediaSource, listDirectoryEntries } from './nativeFs';
 type CacheEntry = DirectoryCacheEntry;
 type CacheItem = DirectoryCacheItem;
 
@@ -25,7 +25,7 @@ export async function buildDirectoryCache(dirHandle: FileSystemDirectoryHandle):
 	const items: CacheItem[] = [];
 	let imageCount = 0;
 	try {
-		for await (const entry of dirHandle.values()) {
+		for (const entry of await listDirectoryEntries(dirHandle)) {
 			if (isDirectoryHandle(entry)) {
 				items.push({ type: 'directory', handle: entry, name: entry.name, nameLower: entry.name.toLowerCase() });
 			} else if (isFileHandle(entry)) {
@@ -79,20 +79,7 @@ async function findFirstImageHandle(dirHandle: FileSystemDirectoryHandle): Promi
 		preferredBases.flatMap(base => CONFIG.IMAGE_EXTENSIONS.map(ext => `${base}${ext}`))
 	);
 
-	// 1) ダイレクトに名前指定で探す（巨大ディレクトリでも O(候補数) で完了）
-	for (const base of preferredBases) {
-		for (const ext of CONFIG.IMAGE_EXTENSIONS) {
-			const fileName = `${base}${ext}`;
-			try {
-				const fh = await dirHandle.getFileHandle(fileName);
-				if (fh) return fh;
-			} catch (_) {
-				/* ignore missing */
-			}
-		}
-	}
-
-	// まずキャッシュを優先的に見る（並び替えず O(1) でチェック）
+	// 既に一覧を読んだフォルダでは追加のファイル確認を行わない。
 	const cached = state.directoryCache.get(dirHandle);
 	if (cached && cached.items) {
 		const directPreferred = cached.items.find((i): i is DirectoryCacheImageItem =>
@@ -107,13 +94,28 @@ async function findFirstImageHandle(dirHandle: FileSystemDirectoryHandle): Promi
 		}
 	}
 
+	// ブラウザのフォルダハンドルでは、代表画像の直接取得を先に試す。
+	// デスクトップでは候補ごとにIPCが必要なため、一度の一覧取得を使う。
+	if (!dirHandle.nativePath) {
+		for (const base of preferredBases) {
+			for (const ext of CONFIG.IMAGE_EXTENSIONS) {
+				try {
+					const fh = await dirHandle.getFileHandle(`${base}${ext}`);
+					if (fh) return fh;
+				} catch (_) {
+					/* ignore missing */
+				}
+			}
+		}
+	}
+
 	// キャッシュが無い or 不足している場合は実際に走査
 	let firstSubDir: FileSystemDirectoryHandle | null = null;
 	let firstImage: FileSystemFileHandle | null = null;
 	try {
 		const tLabel = CONFIG.ENABLE_DEBUG_LOGS ? `findFirstImageHandle:${dirHandle.name}-${Date.now()}` : null;
 		if (tLabel) console.time(tLabel);
-		for await (const entry of dirHandle.values()) {
+		for (const entry of await listDirectoryEntries(dirHandle)) {
 			if (isFileHandle(entry) && isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS)) {
 				const lower = entry.name.toLowerCase();
 				if (preferredNames.has(lower)) {

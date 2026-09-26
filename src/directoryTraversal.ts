@@ -1,6 +1,7 @@
 import { CONFIG } from './state';
 import { isImageFileName, joinRelativePath } from './utils';
 import type { SortOrder } from './state';
+import { listDirectoryEntries } from './nativeFs';
 
 export type RecursiveImageItem = {
 	handle: FileSystemFileHandle;
@@ -21,7 +22,7 @@ export async function getImageFilesFromDirectory(
 ): Promise<FileSystemFileHandle[]> {
 	const imageFiles: FileSystemFileHandle[] = [];
 	try {
-		for await (const entry of dirHandle.values()) {
+		for (const entry of await listDirectoryEntries(dirHandle)) {
 			if (entry.kind === 'file' && isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS)) {
 				imageFiles.push(entry);
 			}
@@ -44,27 +45,54 @@ export async function getImageFilesFromDirectory(
 export async function collectImagesRecursively(
 	dirHandle: FileSystemDirectoryHandle,
 	list: RecursiveImageItem[] = [],
-	basePath = ''
+	basePath = '',
+	shouldContinue: () => boolean = () => true,
+	onFirstImages?: (images: RecursiveImageItem[]) => void
 ): Promise<RecursiveImageItem[]> {
-	const images = await getImageFilesFromDirectory(dirHandle);
-	images.forEach((img, idx) => {
-		list.push({
+	const maxConcurrentReads = 6;
+	let activeReads = 0;
+	const waiting: Array<() => void> = [];
+	async function visit(directory: FileSystemDirectoryHandle, path: string): Promise<RecursiveImageItem[]> {
+		if (!shouldContinue()) return [];
+		if (activeReads >= maxConcurrentReads) await new Promise<void>(resolve => waiting.push(resolve));
+		if (!shouldContinue()) {
+			waiting.shift()?.();
+			return [];
+		}
+		activeReads++;
+		const images: FileSystemFileHandle[] = [];
+		const directories: FileSystemDirectoryHandle[] = [];
+		try {
+			for (const entry of await listDirectoryEntries(directory)) {
+				if (!shouldContinue()) return [];
+				if (entry.kind === 'directory') directories.push(entry);
+				else if (isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS)) images.push(entry);
+			}
+		} catch (e) {
+			console.error('再帰的な画像取得に失敗', e);
+			return [];
+		} finally {
+			activeReads--;
+			waiting.shift()?.();
+		}
+		images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+		const found = images.map((img, idx) => ({
 			handle: img,
 			name: img.name,
-			parentHandle: dirHandle,
+			parentHandle: directory,
 			imageIndex: idx,
-			parentPath: basePath,
-			path: joinRelativePath(basePath, img.name)
-		});
-	});
-	try {
-		for await (const entry of dirHandle.values()) {
-			if (entry.kind === 'directory') {
-				await collectImagesRecursively(entry, list, joinRelativePath(basePath, entry.name));
-			}
+			parentPath: path,
+			path: joinRelativePath(path, img.name)
+		}));
+		if (found.length && shouldContinue()) onFirstImages?.(found);
+		const children = await Promise.all(directories.map(entry =>
+			visit(entry, joinRelativePath(path, entry.name))
+		));
+		for (const child of children) {
+			for (const item of child) found.push(item);
 		}
-	} catch (e) {
-		console.error('再帰的な画像取得に失敗', e);
+		return found;
 	}
+	for (const item of await visit(dirHandle, basePath)) list.push(item);
 	return list;
 }

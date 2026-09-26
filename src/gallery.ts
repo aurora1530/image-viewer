@@ -230,21 +230,46 @@ export function createGallery(deps: GalleryDeps) {
 			thumbnailContainer.appendChild(favoriteBtn);
 		}
 
+		let imageAttempts = 0;
 		const loadThumb = async () => {
 			if (card.dataset.loaded) return;
 			card.dataset.loaded = '1';
 			if (item.type === 'image') {
 				try {
+					imageAttempts++;
 					const source = await getMediaSource(item.handle);
 					const thumbnailUrl = source.url;
+					if (!card.isConnected) {
+						if (source.objectUrl) URL.revokeObjectURL(thumbnailUrl);
+						return;
+					}
 					if (source.objectUrl) createdUrls.add(thumbnailUrl);
 					const img = document.createElement('img');
-					img.loading = 'lazy';
+					img.loading = 'eager';
 					img.decoding = 'async';
-					img.src = thumbnailUrl;
 					img.alt = item.name;
+					img.addEventListener('error', () => {
+						img.remove();
+						if (source.objectUrl) {
+							URL.revokeObjectURL(thumbnailUrl);
+							createdUrls.delete(thumbnailUrl);
+						}
+						if (!card.isConnected) return;
+						if (imageAttempts < 3) {
+							delete card.dataset.loaded;
+							window.setTimeout(() => { if (card.isConnected) void loadThumb(); }, 300 * imageAttempts);
+						} else {
+							const fallback = document.createElement('span');
+							fallback.textContent = '画像を読み込めませんでした';
+							thumbnailContainer.appendChild(fallback);
+						}
+					}, { once: true });
+					img.src = thumbnailUrl;
 					thumbnailContainer.appendChild(img);
-				} catch(e) { console.error(`サムネイル生成失敗: ${item.name}`, e); }
+				} catch(e) {
+					delete card.dataset.loaded;
+					console.error(`サムネイル生成失敗: ${item.name}`, e);
+				}
 			} else if (item.type === 'video') {
 				const playIconOverlay = document.createElement('div');
 				playIconOverlay.className = 'absolute inset-0 flex items-center justify-center pointer-events-none z-10';
@@ -253,6 +278,10 @@ export function createGallery(deps: GalleryDeps) {
 				try {
 					const source = await getMediaSource(item.handle);
 					const videoUrl = source.url;
+					if (!card.isConnected) {
+						if (source.objectUrl) URL.revokeObjectURL(videoUrl);
+						return;
+					}
 					if (source.objectUrl) createdUrls.add(videoUrl);
 					const video = document.createElement('video');
 					video.src = videoUrl + '#t=0.5';
@@ -268,9 +297,10 @@ export function createGallery(deps: GalleryDeps) {
 				thumbnailContainer.appendChild(readBtn);
 
 				const thumbnailUrl = await getDirectoryPreviewUrl(item.handle);
+				if (!card.isConnected) return;
 				if (thumbnailUrl) {
 					const img = document.createElement('img');
-					img.loading = 'lazy';
+					img.loading = 'eager';
 					img.decoding = 'async';
 					img.src = thumbnailUrl;
 					img.alt = `Thumbnail for ${item.name}`;
@@ -312,7 +342,7 @@ export function createGallery(deps: GalleryDeps) {
 					return;
 				}
 				const frag = document.createDocumentFragment();
-				for (let i = 0; i < chunkSize && index < total; i++, index++) {
+				for (let i = 0, limit = index === 0 ? 24 : chunkSize; i < limit && index < total; i++, index++) {
 					const it = items[index];
 					createItemCard(it, dirHandle, it.imageIndex ?? 0, useLazy, frag, parentPath);
 				}
@@ -359,7 +389,7 @@ export function createGallery(deps: GalleryDeps) {
 					return;
 				}
 				const frag = document.createDocumentFragment();
-				for (let i = 0; i < chunkSize && index < total; i++, index++) {
+				for (let i = 0, limit = index === 0 ? 24 : chunkSize; i < limit && index < total; i++, index++) {
 					const rec = items[index];
 					createItemCard(
 						{
@@ -417,7 +447,7 @@ export function createGallery(deps: GalleryDeps) {
 					return;
 				}
 				const frag = document.createDocumentFragment();
-				for (let i = 0; i < chunkSize && index < total; i++, index++) {
+				for (let i = 0, limit = index === 0 ? 24 : chunkSize; i < limit && index < total; i++, index++) {
 					const rec = items[index];
 					createItemCard(
 						{

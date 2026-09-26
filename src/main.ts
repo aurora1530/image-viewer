@@ -37,7 +37,7 @@ import {
 	updateUiVisibilityUI,
 	updateViewModeUI
 } from './ui';
-import { chooseNativeDirectory, isDesktopApp, openNativeDirectory } from './nativeFs';
+import { chooseNativeDirectory, getMediaSource, isDesktopApp, openNativeDirectory } from './nativeFs';
 
 const isFilterType = (value: string): value is FilterType =>
 	value === 'all' || value === 'directory' || value === 'image' || value === 'gif' || value === 'video';
@@ -564,9 +564,12 @@ async function processDirectory(
 
 	try {
 		state.currentDirHandle = dirHandle;
-		const cacheEntry = await ensureDirectoryCache(dirHandle, { forceRefresh });
 		const rootHandle = getRootDirHandle();
-		const rootConfig = await readRootConfig(rootHandle);
+		const [cacheEntry, rootConfig] = await Promise.all([
+			ensureDirectoryCache(dirHandle, { forceRefresh }),
+			readRootConfig(rootHandle)
+		]);
+		if (renderToken !== state.renderToken) return;
 		const dirPathSegments = getCurrentDirPathSegments();
 		const config = getConfigNode(rootConfig, dirPathSegments, { create: false }) || ensureConfigNode({});
 		if (useConfig) {
@@ -642,7 +645,7 @@ async function processDirectory(
 
 		showStatus('', 'clear');
 
-		const useLazy = state.directoryHistory.length > 1 && cacheEntry.imageCount >= CONFIG.LAZY_LOAD_THRESHOLD;
+		const useLazy = true;
 		const dirPath = dirPathSegments.join('/');
 		await gallery.renderItemsInBatches(filteredItems, dirHandle, useLazy, dirPath, renderToken);
 
@@ -689,9 +692,41 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 	state.currentDisplayImageList = [];
 
 	const currentBasePath = getCurrentDirPathSegments().join('/');
-	let items = await collectImagesRecursively(dirHandle, [], currentBasePath);
 	const rootHandle = getRootDirHandle();
-	const rootConfig = await readRootConfig(rootHandle);
+	let previewActive = true;
+	let previewStarted = false;
+	let previewUrl: string | null = null;
+	const showFirstImage = (images: { handle: FileSystemFileHandle; name: string; parentHandle: FileSystemDirectoryHandle }[]) => {
+		if (previewStarted || renderToken !== state.renderToken) return;
+		previewStarted = true;
+		void getMediaSource(images[0].handle).then(source => {
+			if (!previewActive || renderToken !== state.renderToken) {
+				if (source.objectUrl) URL.revokeObjectURL(source.url);
+				return;
+			}
+			if (source.objectUrl) previewUrl = source.url;
+			const img = document.createElement('img');
+			img.src = source.url;
+			img.alt = images[0].name;
+			img.className = 'scan-preview';
+			img.title = '画像を開く';
+			img.addEventListener('click', () => {
+				void viewerController.openViewer(images[0].parentHandle, 0, [images[0].handle]);
+			});
+			DOM.statusArea.appendChild(img);
+		}).catch(error => console.error('先頭画像のプレビューに失敗:', error));
+	};
+	const [collectedItems, rootConfig] = await Promise.all([
+		collectImagesRecursively(dirHandle, [], currentBasePath, () => renderToken === state.renderToken, showFirstImage),
+		readRootConfig(rootHandle)
+	]);
+	previewActive = false;
+	const clearPreview = () => {
+		if (previewUrl) URL.revokeObjectURL(previewUrl);
+		previewUrl = null;
+	};
+	if (renderToken !== state.renderToken) { clearPreview(); return; }
+	let items = collectedItems;
 	const uniquePaths = new Set(items.map(item => item.parentPath));
 	const favoriteMap = new Map();
 	const hiddenMap = new Map();
@@ -740,12 +775,14 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 	}
 
 	if (items.length === 0) {
+		clearPreview();
 		showStatus('表示できる画像がありません。', 'info');
 		return;
 	}
 
 	showStatus('', 'clear');
-	const useLazy = state.directoryHistory.length > 1 && items.length >= CONFIG.LAZY_LOAD_THRESHOLD;
+	clearPreview();
+	const useLazy = true;
 	await gallery.renderRecursiveItemsInBatches(items, useLazy, renderToken);
 	if (CONFIG.ENABLE_DEBUG_LOGS) {
 		console.timeEnd(label);
@@ -841,7 +878,7 @@ async function processFavoriteList() {
 		}
 
 		showStatus('', 'clear');
-		const useLazy = items.length >= CONFIG.LAZY_LOAD_THRESHOLD;
+		const useLazy = true;
 		await gallery.renderCollectedMediaInBatches(items, useLazy, renderToken);
 	} catch (err) {
 		console.error('お気に入り一覧の処理エラー:', err);
@@ -867,7 +904,7 @@ function ensureLazyLoadObserver() {
 					delete entry.target._loadThumb;
 				}
 			});
-		}, { rootMargin: '200px' });
+		}, { rootMargin: '600px' });
 	}
 }
 

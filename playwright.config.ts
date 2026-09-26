@@ -6,7 +6,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: { baseURL: 'http://127.0.0.1:5173', trace: 'retain-on-failure' },
   projects: [
-    { name: 'chromium', testMatch: 'browser.spec.ts', use: { browserName: 'chromium' } },
+    { name: 'chromium', testMatch: 'browser.spec.ts', use: { browserName: 'chromium', channel: process.env.PLAYWRIGHT_CHROMIUM_CHANNEL || undefined } },
     { name: 'electron', testMatch: 'electron.spec.ts' }
   ],
   webServer: {

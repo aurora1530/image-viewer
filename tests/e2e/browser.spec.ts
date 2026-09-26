@@ -46,6 +46,7 @@ test.beforeEach(async ({ page }) => {
     root.file('cover.gif');
     root.file('clip.mp4');
     root.directory('chapter').file('nested.png');
+    (window as unknown as { __imageViewerTestRoot: TestDirectory }).__imageViewerTestRoot = root;
     const savedConfig = sessionStorage.getItem('image-viewer-test-config');
     if (savedConfig) root.entries.set('.image-viewer.json', new TestFile('.image-viewer.json', savedConfig));
     Object.defineProperty(window, 'showDirectoryPicker', { value: async () => root });
@@ -53,6 +54,40 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'ルートフォルダを選択' }).click();
   await expect(page.locator('#current-dir-name')).toHaveText('books');
+});
+
+test('keeps thumbnails visible after scrolling through a large folder and back', async ({ page }) => {
+  await page.evaluate(() => {
+    const root = (window as unknown as { __imageViewerTestRoot: { file(name: string): void } }).__imageViewerTestRoot;
+    for (let index = 0; index < 1200; index++) root.file(`extra-${index}.png`);
+  });
+  await page.locator('#reload-btn').click();
+  await expect(page.locator('#item-list .item-card')).toHaveCount(1205);
+  const images = page.locator('#item-list .media-card img');
+  await expect(images.first()).toHaveJSProperty('naturalWidth', 1);
+  await page.locator('#item-list .media-card').last().scrollIntoViewIfNeeded();
+  await expect(images.last()).toHaveJSProperty('naturalWidth', 1);
+  await page.locator('#item-list .media-card').first().scrollIntoViewIfNeeded();
+  await expect(images.first()).toHaveJSProperty('naturalWidth', 1);
+});
+
+test('shows an image while the recursive list is still scanning', async ({ page }) => {
+  await page.evaluate(() => {
+    const root = (window as unknown as { __imageViewerTestRoot: { entries: Map<string, { values(): AsyncIterable<unknown> }> } }).__imageViewerTestRoot;
+    const child = root.entries.get('chapter')!;
+    const originalValues = child.values.bind(child);
+    child.values = async function* () {
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      yield* originalValues();
+    };
+  });
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#recursive-btn').click();
+  await expect(page.locator('.scan-preview')).toBeVisible();
+  await page.locator('.scan-preview').click();
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#item-list .media-card')).toHaveCount(4);
+  await expect(page.locator('.scan-preview')).toHaveCount(0);
 });
 
 test('filters, searches and opens the displayed image', async ({ page }) => {

@@ -109,11 +109,27 @@ describe('gallery cards and batching', () => {
       type: 'image' as const, handle: first, name: `image-${index}.png`
     }));
     const rendering = view.gallery.renderItemsInBatches(items, root.asHandle(), true);
-    expect(view.itemList.querySelectorAll('.item-card')).toHaveLength(100);
+    expect(view.itemList.querySelectorAll('.item-card')).toHaveLength(24);
     expect(view.idleCallbacks).toHaveLength(1);
     view.renderToken = 2;
     view.idleCallbacks.shift()!();
     await rendering;
-    expect(view.itemList.querySelectorAll('.item-card')).toHaveLength(100);
+    expect(view.itemList.querySelectorAll('.item-card')).toHaveLength(24);
+  });
+
+  it('retries a failed thumbnail instead of leaving a blank card', async () => {
+    const view = harness();
+    view.gallery.createItemCard({ type: 'image', handle: first, name: 'first.png' }, root.asHandle(), 0);
+    const firstImage = await vi.waitFor(() => {
+      const image = view.itemList.querySelector('img');
+      expect(image).not.toBeNull();
+      return image!;
+    });
+    firstImage.dispatchEvent(new Event('error'));
+    await vi.waitFor(() => {
+      const retryImage = view.itemList.querySelector('img');
+      expect(retryImage).not.toBeNull();
+      expect(retryImage).not.toBe(firstImage);
+    });
   });
 });

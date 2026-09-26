@@ -16,8 +16,7 @@ describe('desktop and browser file access', () => {
       listDirectory: async () => [{ name: 'ONE.PNG', kind: 'file' }],
       readFile,
       writeFile: async () => undefined,
-      exists: async () => true,
-      mediaUrl: async path => `local-media://file/${path}`
+      exists: async () => true
     } as Window['desktopApi'];
     expect(isDesktopApp()).toBe(true);
     const root = await chooseNativeDirectory();
@@ -27,7 +26,10 @@ describe('desktop and browser file access', () => {
     expect(entries.map(entry => entry.name)).toEqual(['ONE.PNG']);
     const source = await getMediaSource(entries[0] as FileSystemFileHandle);
     expect(source).toMatchObject({ objectUrl: false });
-    expect(source.url).toContain('ONE.PNG');
+    const nativePath = (entries[0] as FileSystemFileHandle).nativePath!;
+    const encodedPath = btoa(Array.from(new TextEncoder().encode(nativePath), byte => String.fromCharCode(byte)).join(''))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(source.url).toBe(`local-media://file/${encodedPath}`);
     expect(readFile).not.toHaveBeenCalled();
     expect((await openNativeDirectory('C:\\photos')).name).toBe('photos');
   });

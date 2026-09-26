@@ -114,9 +114,26 @@ export async function openNativeDirectory(dirPath: string) {
 	return asDirectoryHandle(new NativeDirectoryHandle(selected));
 }
 
+export async function listDirectoryEntries(dirHandle: FileSystemDirectoryHandle): Promise<Array<FileSystemDirectoryHandle | FileSystemFileHandle>> {
+	if (dirHandle.nativePath && window.desktopApi) {
+		return (await window.desktopApi.listDirectory(dirHandle.nativePath)).map(entry => {
+			const childPath = joinPath(dirHandle.nativePath!, entry.name);
+			return entry.kind === 'directory'
+				? asDirectoryHandle(new NativeDirectoryHandle(childPath))
+				: asFileHandle(new NativeFileHandle(childPath));
+		});
+	}
+	const entries: Array<FileSystemDirectoryHandle | FileSystemFileHandle> = [];
+	for await (const entry of dirHandle.values()) entries.push(entry);
+	return entries;
+}
+
 export async function getMediaSource(handle: FileSystemFileHandle): Promise<{ url: string; objectUrl: boolean }> {
 	if (handle.nativePath && window.desktopApi) {
-		return { url: await window.desktopApi.mediaUrl(handle.nativePath), objectUrl: false };
+		const bytes = new TextEncoder().encode(handle.nativePath);
+		const encoded = btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(''))
+			.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+		return { url: `local-media://file/${encoded}`, objectUrl: false };
 	}
 	const file = await handle.getFile();
 	return { url: URL.createObjectURL(file), objectUrl: true };

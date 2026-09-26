@@ -156,11 +156,19 @@ body.mono-body {
     gap: var(--thumbnail-gap, 10px);
 }
 
+.scan-preview {
+    display: block;
+    cursor: pointer;
+    max-width: min(260px, 60vw);
+    max-height: 220px;
+    object-fit: contain;
+    margin: 12px auto 0;
+    border-radius: 8px;
+}
+
 .item-card {
     display: flex;
     flex-direction: column;
-    content-visibility: auto;
-    contain-intrinsic-size: 260px 180px;
     border: 1px solid var(--line);
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.35));

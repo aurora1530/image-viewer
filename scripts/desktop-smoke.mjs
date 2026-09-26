@@ -66,7 +66,7 @@ try {
 	child = spawn(executable, [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`], { stdio: 'ignore' });
 	const cdp = await connectCdp(await waitForTarget());
 	for (let attempt = 0; attempt < 40; attempt++) {
-		if (await cdp.evaluate(`Boolean(document.querySelector('#home-view'))`)) break;
+		if (await cdp.evaluate(`Boolean(window.desktopApi && document.querySelector('#home-view') && !document.querySelector('#home-view').classList.contains('hidden'))`)) break;
 		await delay(100);
 	}
 	const initial = await cdp.evaluate(`({ api: Boolean(window.desktopApi), ready: document.readyState, desktop: !document.querySelector('#desktop-badge').classList.contains('hidden'), home: !document.querySelector('#home-view').classList.contains('hidden'), badgeClass: document.querySelector('#desktop-badge').className, homeClass: document.querySelector('#home-view').className })`);

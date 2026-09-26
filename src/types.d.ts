@@ -23,7 +23,6 @@ interface Window {
 		readFile(path: string): Promise<Uint8Array>;
 		writeFile(path: string, data: string | Uint8Array): Promise<void>;
 		exists(path: string, kind: 'directory' | 'file'): Promise<boolean>;
-		mediaUrl(path: string): Promise<string>;
 	};
 }
 

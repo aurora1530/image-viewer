@@ -54,7 +54,7 @@ type CancelIdleCallback = (handle: number) => void;
 
 const requestIdle: IdleCallback =
   typeof window.requestIdleCallback === 'function'
-    ? (cb) => window.requestIdleCallback(() => cb())
+    ? (cb) => window.requestIdleCallback(() => cb(), { timeout: 16 })
     : (cb) => window.setTimeout(cb, 16);
 
 const cancelIdle: CancelIdleCallback =
@@ -131,7 +131,6 @@ export const CONFIG = {
   IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic'],
   VIDEO_EXTENSIONS: ['.mp4', '.webm', '.mov', '.ogg'],
   CONFIG_FILENAME: '.image-viewer.json',
-  LAZY_LOAD_THRESHOLD: 500,
   ENABLE_DEBUG_LOGS: true
 };
 

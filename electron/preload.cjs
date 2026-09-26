@@ -9,6 +9,5 @@ contextBridge.exposeInMainWorld('desktopApi', {
   listDirectory: path => ipcRenderer.invoke('desktop:list-directory', path),
   readFile: path => ipcRenderer.invoke('desktop:read-file', path),
   writeFile: (path, data) => ipcRenderer.invoke('desktop:write-file', path, data),
-  exists: (path, kind) => ipcRenderer.invoke('desktop:exists', path, kind),
-  mediaUrl: path => ipcRenderer.invoke('desktop:media-url', path)
+  exists: (path, kind) => ipcRenderer.invoke('desktop:exists', path, kind)
 });
