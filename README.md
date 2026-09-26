@@ -29,7 +29,7 @@ npm run desktop:pack
 npm run desktop:build
 ```
 
-生成物は `release` フォルダーに出力されます。
+生成物は `release` フォルダーに出力されます。Windows では一時フォルダーでパッケージ化してから `release` にコピーするため、ビルド時の出力フォルダーのリネーム失敗を避けられます。
 
 ## 機能
 
