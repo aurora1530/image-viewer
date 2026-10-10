@@ -31,6 +31,26 @@ describe('folder configuration', () => {
     expect(getConfigNode(root, ['a', 'b'])?.settings.filterType).toBe('gif');
   });
 
+  it('looks up normalized settings without mutating or reading unrelated subtrees', () => {
+    const root = normalizeRootConfig({ directories: {
+      child: { directories: { nested: { settings: { filterType: 'gif' } } } }
+    } });
+    const child = root.directories.child;
+    const nested = child.directories.nested;
+    Object.defineProperty(root.directories, 'unrelated', {
+      enumerable: true,
+      get() { throw new Error('unrelated subtree should not be read'); }
+    });
+    Object.freeze(root);
+    Object.freeze(root.directories);
+    Object.freeze(child);
+    Object.freeze(child.directories);
+    Object.freeze(nested);
+    expect(getConfigNode(root, 'child/nested')).toBe(nested);
+    expect(getConfigNode(root, 'child/nested')?.settings.filterType).toBe('gif');
+    expect(getConfigNode(root, 'missing')).toBeNull();
+  });
+
   it('reads malformed JSON as a usable empty version 3 config', async () => {
     const root = new MemoryDirectory('root');
     root.file('.image-viewer.json', '{broken');
@@ -62,6 +82,8 @@ describe('folder configuration', () => {
       favorites: ['cover.png', 'missing.png'],
       directories: { child: { favorites: ['part2.gif'], hiddenItems: ['part2.gif'] } }
     });
+    Object.freeze(config);
+    Object.freeze(config.directories.child);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const entries = await collectFavoriteFilesFromConfig(root.asHandle(), config);
     expect(entries.map(({ path, isHidden }) => ({ path, isHidden }))).toEqual([

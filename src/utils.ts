@@ -1,3 +1,10 @@
+// 比較ごとに照合器を生成せず、同じロケール・オプションの比較関数を再利用する。
+export const compareNumericText = new Intl.Collator(undefined, { numeric: true }).compare;
+export const compareBaseNumericText = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base'
+}).compare;
+
 /**
  * 指定拡張子リストに一致する画像ファイル名か判定する。
  */

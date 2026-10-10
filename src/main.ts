@@ -6,6 +6,7 @@ import { createViewer } from './viewer';
 import { createToolbar } from './toolbar';
 import {
 	buildFavoriteKey,
+	compareNumericText,
 	isImageFileName,
 	normalizeDirPathSegments,
 	sortByFavorite
@@ -582,8 +583,8 @@ async function processDirectory(
 				const nameA = (a.nameLower || a.name.toLowerCase());
 				const nameB = (b.nameLower || b.name.toLowerCase());
 				return state.sortOrder === 'asc'
-					? nameA.localeCompare(nameB, undefined, { numeric: true })
-					: nameB.localeCompare(nameA, undefined, { numeric: true });
+					? compareNumericText(nameA, nameB)
+					: compareNumericText(nameB, nameA);
 			});
 			cacheEntry.sorted[state.sortOrder] = sorted;
 		}
@@ -746,9 +747,9 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 		const pathA = a.path.toLowerCase();
 		const pathB = b.path.toLowerCase();
 		if (state.sortOrder === 'asc') {
-			return pathA.localeCompare(pathB, undefined, { numeric: true });
+			return compareNumericText(pathA, pathB);
 		} else {
-			return pathB.localeCompare(pathA, undefined, { numeric: true });
+			return compareNumericText(pathB, pathA);
 		}
 	});
 
@@ -838,8 +839,8 @@ async function processFavoriteList() {
 			const pathA = a.path.toLowerCase();
 			const pathB = b.path.toLowerCase();
 			return state.sortOrder === 'asc'
-				? pathA.localeCompare(pathB, undefined, { numeric: true })
-				: pathB.localeCompare(pathA, undefined, { numeric: true });
+				? compareNumericText(pathA, pathB)
+				: compareNumericText(pathB, pathA);
 		});
 
 		if (state.filterType === 'gif') {

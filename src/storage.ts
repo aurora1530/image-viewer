@@ -97,6 +97,7 @@ export function normalizeRootConfig(raw: unknown): ConfigNode {
 
 /**
  * パスセグメントに対応する設定ノードを取得する。
+ * 読み込み時に正規化されたツリーを参照し、全体の再正規化は行わない。
  * 存在しない場合は `create` 指定で作成する。
  */
 export function getConfigNode(
@@ -104,14 +105,14 @@ export function getConfigNode(
   pathSegments: unknown,
   { create = false }: { create?: boolean } = {}
 ): ConfigNode | null {
-  let node = ensureConfigNode(rootConfig);
+  let node = rootConfig;
   const segments = normalizeDirPathSegments(pathSegments);
   for (const segment of segments) {
     if (!node.directories[segment]) {
       if (!create) return null;
       node.directories[segment] = ensureConfigNode({});
     }
-    node = ensureConfigNode(node.directories[segment]);
+    node = node.directories[segment];
   }
   return node;
 }
@@ -228,7 +229,7 @@ async function collectFavoriteFilesFromNode(
       const childHandle = await dirHandle.getDirectoryHandle(dirName);
       await collectFavoriteFilesFromNode(
         childHandle,
-        ensureConfigNode(childNode),
+        childNode,
         joinRelativePath(parentPath, dirName),
         list
       );
@@ -242,6 +243,7 @@ async function collectFavoriteFilesFromNode(
 
 /**
  * ルート設定からお気に入りファイルのハンドル一覧を収集する。
+ * rootConfig は readRootConfig または normalizeRootConfig で正規化して渡す。
  */
 export async function collectFavoriteFilesFromConfig(
   rootHandle: FileSystemDirectoryHandle | null,
@@ -249,7 +251,7 @@ export async function collectFavoriteFilesFromConfig(
 ): Promise<FavoriteFileHandleEntry[]> {
   if (!rootHandle || !rootConfig) return [];
   const list: FavoriteFileHandleEntry[] = [];
-  await collectFavoriteFilesFromNode(rootHandle, ensureConfigNode(rootConfig), '', list);
+  await collectFavoriteFilesFromNode(rootHandle, rootConfig, '', list);
   return list;
 }
 

@@ -5,6 +5,7 @@ import type {
 } from './state';
 import type { StatusType } from './ui';
 import { getMediaSource } from './nativeFs';
+import { compareNumericText } from './utils';
 
 type CacheItem = DirectoryCacheItem;
 type CacheEntry = DirectoryCacheEntry;
@@ -77,8 +78,8 @@ export function createViewer(deps: ViewerDeps) {
 						const nameA = (a.nameLower || a.name.toLowerCase());
 						const nameB = (b.nameLower || b.name.toLowerCase());
 						return sortKey === 'asc'
-							? nameA.localeCompare(nameB, undefined, { numeric: true })
-							: nameB.localeCompare(nameA, undefined, { numeric: true });
+							? compareNumericText(nameA, nameB)
+							: compareNumericText(nameB, nameA);
 					});
 					cacheEntry.sorted[sortKey] = sorted;
 				}

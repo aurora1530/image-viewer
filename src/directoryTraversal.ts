@@ -1,5 +1,5 @@
 import { CONFIG } from './state';
-import { isImageFileName, joinRelativePath } from './utils';
+import { compareBaseNumericText, compareNumericText, isImageFileName, joinRelativePath } from './utils';
 import type { SortOrder } from './state';
 import { listDirectoryEntries } from './nativeFs';
 
@@ -31,9 +31,9 @@ export async function getImageFilesFromDirectory(
 			const nameA = a.name.toLowerCase();
 			const nameB = b.name.toLowerCase();
 			if (order === 'asc') {
-				return nameA.localeCompare(nameB, undefined, { numeric: true });
+				return compareNumericText(nameA, nameB);
 			} else {
-				return nameB.localeCompare(nameA, undefined, { numeric: true });
+				return compareNumericText(nameB, nameA);
 			}
 		});
 	} catch (e) {
@@ -75,7 +75,7 @@ export async function collectImagesRecursively(
 			activeReads--;
 			waiting.shift()?.();
 		}
-		images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+		images.sort((a, b) => compareBaseNumericText(a.name, b.name));
 		const found = images.map((img, idx) => ({
 			handle: img,
 			name: img.name,
