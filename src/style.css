@@ -156,6 +156,17 @@ body.mono-body {
     gap: var(--thumbnail-gap, 10px);
 }
 
+#item-list[data-virtual] {
+    display: block;
+}
+.virtual-gallery-row {
+    display: grid;
+    align-items: stretch;
+}
+#item-list[data-virtual].original-aspect .media-card:not([data-thumb-ready]) .thumbnail-container {
+    aspect-ratio: var(--thumbnail-aspect, 4 / 3);
+}
+
 .scan-preview {
     display: block;
     cursor: pointer;

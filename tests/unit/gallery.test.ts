@@ -23,9 +23,10 @@ function harness() {
   const toggleHiddenEntry = vi.fn(async () => true);
   const scheduleProcessForCurrentDir = vi.fn();
   const showStatus = vi.fn();
+  const createdUrls = new Set<string>();
   const gallery = createGallery({
     itemList,
-    createdUrls: new Set<string>(),
+    createdUrls,
     RIC: callback => { idleCallbacks.push(callback); return idleCallbacks.length; },
     enableDebugLogs: false,
     ensureLazyLoadObserver: vi.fn(),
@@ -50,7 +51,7 @@ function harness() {
   return {
     gallery, itemList, openViewer, openVideoPlayer, enterDirectory,
     toggleFavoriteEntry, toggleHiddenEntry, scheduleProcessForCurrentDir,
-    showStatus, idleCallbacks,
+    showStatus, idleCallbacks, createdUrls,
     get displayList() { return displayList; },
     set renderToken(value: number) { renderToken = value; }
   };
@@ -120,6 +121,32 @@ describe('gallery cards and batching', () => {
     view.idleCallbacks.shift()!();
     await rendering;
     expect(view.itemList.querySelectorAll('.item-card')).toHaveLength(24);
+  });
+
+  it('releases card-owned thumbnail URLs when a large list scrolls away', async () => {
+    const view = harness();
+    let serial = 0;
+    vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:thumbnail-${serial++}`);
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    Object.defineProperty(view.itemList, 'clientWidth', { configurable: true, value: 1024 });
+    vi.spyOn(window, 'scrollTo').mockImplementation((_x, y) => {
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: y || 0 });
+    });
+    window.scrollTo(0, 0);
+    vi.spyOn(view.itemList, 'getBoundingClientRect').mockImplementation(() => ({ top: -window.scrollY } as DOMRect));
+    const images = Array.from({ length: 1000 }, (_, index) => ({ type: 'image' as const, handle: first, name: `image-${index}.png` }));
+    const child = root.directory('last-folder').asHandle();
+    await view.gallery.renderItemsInBatches([...images, { type: 'directory', handle: child, name: child.name }], root.asHandle(), false);
+    await vi.waitFor(() => expect(view.itemList.querySelector('img')).not.toBeNull());
+    const oldUrls = Array.from(view.createdUrls);
+    expect(oldUrls.length).toBeGreaterThan(0);
+    expect(view.gallery.scrollToDirectory(child.name)?.dataset.dirName).toBe(child.name);
+    for (const url of oldUrls) {
+      expect(revoke).toHaveBeenCalledWith(url);
+      expect(view.createdUrls.has(url)).toBe(false);
+    }
+    view.gallery.resetVirtualView();
+    window.scrollTo(0, 0);
   });
 
   it('retries a failed thumbnail instead of leaving a blank card', async () => {

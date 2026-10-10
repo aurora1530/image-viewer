@@ -46,7 +46,10 @@ const isFilterType = (value: string): value is FilterType =>
 
 const recursiveImageCache = createRecursiveImageCache();
 
+let resetGalleryView: (() => void) | null = null;
+
 function clearTransientUrls() {
+	resetGalleryView?.();
 	for (const url of state.createdUrls) {
 		URL.revokeObjectURL(url);
 	}
@@ -1024,19 +1027,22 @@ function rememberVisitedChild(parentHandle: FileSystemDirectoryHandle | null, ch
 	}
 }
 
+resetGalleryView = gallery.resetVirtualView;
+
 async function scrollToVisitedChild(handle: FileSystemDirectoryHandle | null) {
 	const childName = handle ? state.lastVisitedChild.get(handle) : null;
 	if (!childName) return;
 	let tries = 0;
 	const maxTries = 20; // 約1秒 (20 * 50ms)
 	while (tries < maxTries) {
-		const target = Array.from(DOM.itemList.querySelectorAll<HTMLElement>('.directory-card'))
+		const target = gallery.scrollToDirectory(childName) || Array.from(DOM.itemList.querySelectorAll<HTMLElement>('.directory-card'))
 			.find(card => card.dataset.dirName === childName);
 		if (target) {
 			// レイアウトが安定する前にスクロールしてズレるのを防ぐため、2段階スクロール
 			target.scrollIntoView({ block: 'center' });
 			await new Promise(r => setTimeout(r, 300));
-			target.scrollIntoView({ block: 'center' });
+			const settledTarget = gallery.scrollToDirectory(childName) || target;
+			settledTarget.scrollIntoView({ block: 'center' });
 			return;
 		}
 		await new Promise(r => setTimeout(r, 50));

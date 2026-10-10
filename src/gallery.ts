@@ -1,6 +1,7 @@
 import type { StatusType } from './ui';
 import { getMediaSource } from './nativeFs';
 import { thumbnailCache } from './thumbnailCache';
+import { createVirtualGallery } from './virtualGallery';
 
 type MediaType = 'image' | 'video';
 
@@ -122,12 +123,32 @@ export function createGallery(deps: GalleryDeps) {
 		showStatus
 	} = deps;
 
+	let virtualView: ReturnType<typeof createVirtualGallery> | null = null;
+	let directoryItems: Item[] = [];
+	const cardDisposers = new WeakMap<HTMLElement, () => void>();
+	const mediaAspectRatios = new WeakMap<FileSystemHandle, number>();
+	function disposeCard(card: HTMLElement) {
+		cardDisposers.get(card)?.();
+		cardDisposers.delete(card);
+	}
+	function resetVirtualView() {
+		virtualView?.dispose();
+		virtualView = null;
+		directoryItems = [];
+	}
+
 	function removeCardFromCurrentView(card: HTMLDivElement, item: Item) {
 		if (item.type === 'image') {
 			const nextList = getCurrentDisplayImageList().filter(handle => handle !== item.handle);
 			setCurrentDisplayImageList(nextList);
 		}
+		disposeCard(card);
 		card.remove();
+		if (virtualView) {
+			scheduleProcessForCurrentDir(0, true);
+			showStatus('', 'clear');
+			return;
+		}
 		if (itemList.querySelector('.item-card')) {
 			showStatus('', 'clear');
 			return;
@@ -138,9 +159,26 @@ export function createGallery(deps: GalleryDeps) {
 	function createItemCard(item: Item, parentHandle: FileSystemDirectoryHandle | null, imageIndex: number, lazyLoad = false, container: ParentNode | null = null, parentPath = '') {
 		const card = document.createElement('div');
 		card.className = 'group item-card';
+		const ownedUrls = new Set<string>();
+		cardDisposers.set(card, () => {
+			getLazyLoadObserver()?.unobserve(card);
+			delete card._loadThumb;
+			for (const url of ownedUrls) {
+				URL.revokeObjectURL(url);
+				createdUrls.delete(url);
+			}
+			ownedUrls.clear();
+			for (const video of card.querySelectorAll('video')) {
+				video.pause();
+				video.removeAttribute('src');
+				video.load();
+			}
+		});
 
 		const thumbnailContainer = document.createElement('div');
 		thumbnailContainer.className = 'thumbnail-container cursor-pointer';
+		const knownAspectRatio = mediaAspectRatios.get(item.handle);
+		if (knownAspectRatio) thumbnailContainer.style.setProperty('--thumbnail-aspect', String(knownAspectRatio));
 
 		if (item.type === 'directory') {
 			card.classList.add('directory-card');
@@ -245,17 +283,22 @@ export function createGallery(deps: GalleryDeps) {
 						if (source.objectUrl) URL.revokeObjectURL(thumbnailUrl);
 						return;
 					}
-					if (source.objectUrl) createdUrls.add(thumbnailUrl);
+					if (source.objectUrl) { createdUrls.add(thumbnailUrl); ownedUrls.add(thumbnailUrl); }
 					const img = document.createElement('img');
 					img.loading = 'eager';
 					img.decoding = 'async';
 					img.alt = item.name;
+					img.addEventListener('load', () => {
+						if (img.naturalHeight) mediaAspectRatios.set(item.handle, img.naturalWidth / img.naturalHeight);
+						card.dataset.thumbReady = 'true';
+					}, { once: true });
 					img.addEventListener('error', () => {
 						thumbnailCache.clear();
 						img.remove();
 						if (source.objectUrl) {
 							URL.revokeObjectURL(thumbnailUrl);
 							createdUrls.delete(thumbnailUrl);
+							ownedUrls.delete(thumbnailUrl);
 						}
 						if (!card.isConnected) return;
 						if (imageAttempts < 3) {
@@ -285,11 +328,15 @@ export function createGallery(deps: GalleryDeps) {
 						if (source.objectUrl) URL.revokeObjectURL(videoUrl);
 						return;
 					}
-					if (source.objectUrl) createdUrls.add(videoUrl);
+					if (source.objectUrl) { createdUrls.add(videoUrl); ownedUrls.add(videoUrl); }
 					const video = document.createElement('video');
 					video.src = videoUrl + '#t=0.5';
 					video.muted = true;
 					video.preload = 'metadata';
+					video.addEventListener('loadedmetadata', () => {
+						if (video.videoHeight) mediaAspectRatios.set(item.handle, video.videoWidth / video.videoHeight);
+						card.dataset.thumbReady = 'true';
+					}, { once: true });
 					thumbnailContainer.insertBefore(video, playIconOverlay);
 				} catch(e) { console.error(`ビデオサムネイル生成失敗: ${item.name}`, e); }
 			} else if (item.type === 'directory') {
@@ -328,49 +375,54 @@ export function createGallery(deps: GalleryDeps) {
 		} else {
 			loadThumb();
 		}
+		return card;
 	}
 
-	function renderItemsInBatches(items: Item[], dirHandle: FileSystemDirectoryHandle | null, useLazy: boolean, parentPath = '', renderToken = getRenderToken()) {
+	type CardEntry = { item: Item; parent: FileSystemDirectoryHandle | null; parentPath: string };
+
+	function renderEntries(entries: CardEntry[], useLazy: boolean, renderToken: number) {
+		if (renderToken !== getRenderToken()) return Promise.resolve();
+		resetVirtualView();
+		directoryItems = entries.map(entry => entry.item);
+		const createCard = (index: number, container: ParentNode) => {
+			const entry = entries[index];
+			return createItemCard(entry.item, entry.parent, entry.item.imageIndex ?? 0, useLazy, container, entry.parentPath);
+		};
+		if (entries.length > 200) {
+			virtualView = createVirtualGallery(itemList, entries.length, createCard, disposeCard,
+				() => renderToken === getRenderToken(), (index, width) => {
+					const item = entries[index].item;
+					const originalAspect = itemList.classList.contains('original-aspect') && item.type !== 'directory';
+					const ratio = originalAspect ? mediaAspectRatios.get(item.handle) || 4 / 3 : 4 / 3;
+					return Math.max(1, width - 2) / ratio + 2 + (item.type === 'directory' ? 52 : 0);
+				});
+			return Promise.resolve();
+		}
 		return new Promise<void>(resolve => {
-			const label = enableDebugLogs ? `render:${dirHandle ? dirHandle.name : 'list'}-${Date.now()}` : null;
+			const label = enableDebugLogs ? `render:list-${Date.now()}` : null;
 			if (label) console.time(label);
-			const total = items.length;
-			const chunkSize = 100;
 			let index = 0;
-			let chunk = 0;
 			function renderChunk() {
 				if (renderToken !== getRenderToken()) {
 					if (label) console.timeEnd(label);
 					resolve();
 					return;
 				}
-				const frag = document.createDocumentFragment();
-				for (let i = 0, limit = index === 0 ? 24 : chunkSize; i < limit && index < total; i++, index++) {
-					const it = items[index];
-					createItemCard(it, dirHandle, it.imageIndex ?? 0, useLazy, frag, parentPath);
-				}
-				if (renderToken !== getRenderToken()) {
+				const fragment = document.createDocumentFragment();
+				for (let i = 0, limit = index === 0 ? 24 : 100; i < limit && index < entries.length; i++, index++) createCard(index, fragment);
+				itemList.appendChild(fragment);
+				if (index < entries.length) RIC(renderChunk);
+				else {
 					if (label) console.timeEnd(label);
-					resolve();
-					return;
-				}
-				itemList.appendChild(frag);
-				chunk++;
-				if (label && chunk % 5 === 0) {
-					console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
-				}
-				if (index < total) {
-					RIC(renderChunk);
-				} else {
-					if (label) {
-						console.timeEnd(label);
-						console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
-					}
 					resolve();
 				}
 			}
 			renderChunk();
 		});
+	}
+
+	function renderItemsInBatches(items: Item[], dirHandle: FileSystemDirectoryHandle | null, useLazy: boolean, parentPath = '', renderToken = getRenderToken()) {
+		return renderEntries(items.map(item => ({ item, parent: dirHandle, parentPath })), useLazy, renderToken);
 	}
 
 	function renderRecursiveItemsInBatches(items: RecursiveItem[], useLazy: boolean, renderToken = getRenderToken()) {
@@ -378,124 +430,25 @@ export function createGallery(deps: GalleryDeps) {
 			setCurrentDisplayImageList(items.map(item => item.handle));
 			items.forEach((item, index) => { item.displayIndex = index; });
 		}
-		return new Promise<void>(resolve => {
-			const label = enableDebugLogs ? `render:recursive-${Date.now()}` : null;
-			if (label) console.time(label);
-			const total = items.length;
-			const chunkSize = 100;
-			let index = 0;
-			let chunk = 0;
-			function renderChunk() {
-				if (renderToken !== getRenderToken()) {
-					if (label) console.timeEnd(label);
-					resolve();
-					return;
-				}
-				const frag = document.createDocumentFragment();
-				for (let i = 0, limit = index === 0 ? 24 : chunkSize; i < limit && index < total; i++, index++) {
-					const rec = items[index];
-					createItemCard(
-						{
-							type: 'image',
-							handle: rec.handle,
-							name: rec.name,
-							nameLower: rec.name.toLowerCase(),
-							isFavorite: rec.isFavorite,
-							isHidden: rec.isHidden,
-							displayIndex: rec.displayIndex
-						},
-						rec.parentHandle,
-						rec.imageIndex,
-						useLazy,
-						frag,
-						rec.parentPath
-					);
-				}
-				if (renderToken !== getRenderToken()) {
-					if (label) console.timeEnd(label);
-					resolve();
-					return;
-				}
-				itemList.appendChild(frag);
-				chunk++;
-				if (label && chunk % 5 === 0) {
-					console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
-				}
-				if (index < total) {
-					RIC(renderChunk);
-				} else {
-					if (label) {
-						console.timeEnd(label);
-						console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
-					}
-					resolve();
-				}
-			}
-			renderChunk();
-		});
+		return renderCollectedMediaInBatches(items.map(item => ({ ...item, type: 'image' as const })), useLazy, renderToken);
 	}
 
 	function renderCollectedMediaInBatches(items: CollectedMediaItem[], useLazy: boolean, renderToken = getRenderToken()) {
-		return new Promise<void>(resolve => {
-			const label = enableDebugLogs ? `render:collected-${Date.now()}` : null;
-			if (label) console.time(label);
-			const total = items.length;
-			const chunkSize = 100;
-			let index = 0;
-			let chunk = 0;
-			function renderChunk() {
-				if (renderToken !== getRenderToken()) {
-					if (label) console.timeEnd(label);
-					resolve();
-					return;
-				}
-				const frag = document.createDocumentFragment();
-				for (let i = 0, limit = index === 0 ? 24 : chunkSize; i < limit && index < total; i++, index++) {
-					const rec = items[index];
-					createItemCard(
-						{
-							type: rec.type,
-							handle: rec.handle,
-							name: rec.name,
-							nameLower: rec.nameLower ?? rec.name.toLowerCase(),
-							isFavorite: rec.isFavorite,
-							isHidden: rec.isHidden,
-							displayIndex: rec.displayIndex,
-							imageIndex: rec.imageIndex
-						},
-						rec.parentHandle,
-						rec.imageIndex,
-						useLazy,
-						frag,
-						rec.parentPath
-					);
-				}
-				if (renderToken !== getRenderToken()) {
-					if (label) console.timeEnd(label);
-					resolve();
-					return;
-				}
-				itemList.appendChild(frag);
-				chunk++;
-				if (label && chunk % 5 === 0) {
-					console.log(`[render chunk] ${label} chunk=${chunk} rendered=${index}/${total}`);
-				}
-				if (index < total) {
-					RIC(renderChunk);
-				} else {
-					if (label) {
-						console.timeEnd(label);
-						console.log(`[render done] ${label} total=${total} chunks=${chunk}`);
-					}
-					resolve();
-				}
-			}
-			renderChunk();
-		});
+		return renderEntries(items.map(rec => ({
+			item: { type: rec.type, handle: rec.handle, name: rec.name, isFavorite: rec.isFavorite, isHidden: rec.isHidden, displayIndex: rec.displayIndex, imageIndex: rec.imageIndex },
+			parent: rec.parentHandle,
+			parentPath: rec.parentPath
+		})), useLazy, renderToken);
 	}
 
 	return {
 		createItemCard,
+		resetVirtualView,
+		scrollToDirectory(name: string) {
+			if (!virtualView) return null;
+			const index = directoryItems.findIndex(item => item.type === 'directory' && item.name === name);
+			return virtualView.scrollToItem(index);
+		},
 		renderItemsInBatches,
 		renderRecursiveItemsInBatches,
 		renderCollectedMediaInBatches

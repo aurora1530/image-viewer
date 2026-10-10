@@ -62,13 +62,147 @@ test('keeps thumbnails visible after scrolling through a large folder and back',
     for (let index = 0; index < 1200; index++) root.file(`extra-${index}.png`);
   });
   await page.locator('#reload-btn').click();
-  await expect(page.locator('#item-list .item-card')).toHaveCount(1205);
+  await expect(page.locator('#item-list')).toHaveAttribute('data-virtual', 'true');
+  await expect.poll(() => page.locator('#item-list .item-card').count()).toBeLessThan(100);
   const images = page.locator('#item-list .media-card img');
   await expect(images.first()).toHaveJSProperty('naturalWidth', 1);
-  await page.locator('#item-list .media-card').last().scrollIntoViewIfNeeded();
-  await expect(images.last()).toHaveJSProperty('naturalWidth', 1);
-  await page.locator('#item-list .media-card').first().scrollIntoViewIfNeeded();
-  await expect(images.first()).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const lastImage = page.locator('#item-list img[alt="extra-1199.png"]');
+  await expect(lastImage).toHaveJSProperty('naturalWidth', 1);
+  await lastImage.click();
+  await expect(page.locator('#page-counter')).toContainText('1203 / 1203');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.locator('#item-list img[alt="2.png"]')).toHaveJSProperty('naturalWidth', 1);
+  await expect(lastImage).toHaveCount(0);
+  await page.locator('#search-input').fill('extra-1199');
+  await expect(page.locator('#item-list .item-card')).toHaveCount(1);
+  await expect(page.locator('#item-list')).not.toHaveAttribute('data-virtual', 'true');
+});
+
+test('virtual rows preserve original aspect ratios across resizing and returning to a distant folder', async ({ page }) => {
+  await page.evaluate(async () => {
+    const root = (window as unknown as { __imageViewerTestRoot: {
+      entries: Map<string, unknown>; file(name: string): void; directory(name: string): { file(name: string): void };
+    } }).__imageViewerTestRoot;
+    for (let i = 0; i < 500; i++) root.file(`extra-${i}.png`);
+    root.directory('zz-folder').file('child.png');
+    for (const [name, width, height] of [['zz-landscape.png', 400, 100], ['zz-portrait.png', 100, 400]] as const) {
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!)));
+      root.entries.set(name, { kind: 'file', name, getFile: async () => new File([blob], name, { type: 'image/png' }) });
+    }
+  });
+  await page.locator('#reload-btn').click();
+  await expect(page.locator('#item-list')).toHaveAttribute('data-virtual', 'true');
+  await page.locator('#size-select').selectOption('3');
+  await expect.poll(() => page.locator('#item-list .virtual-gallery-row').first().evaluate(row => getComputedStyle(row).gridTemplateColumns.split(' ').length)).toBe(4);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const portrait = page.locator('#item-list img[alt="zz-portrait.png"]');
+  const landscape = page.locator('#item-list img[alt="zz-landscape.png"]');
+  await expect(portrait).toHaveJSProperty('naturalHeight', 400);
+  await expect(landscape).toHaveJSProperty('naturalWidth', 400);
+  const ratio = (locator: typeof portrait) => locator.evaluate(image => image.clientHeight / image.clientWidth);
+  await expect.poll(() => ratio(portrait)).toBeCloseTo(4, 1);
+  await expect.poll(() => ratio(landscape)).toBeCloseTo(0.25, 1);
+  await page.setViewportSize({ width: 800, height: 720 });
+  await expect.poll(() => page.locator('#item-list .virtual-gallery-row').first().evaluate(row => getComputedStyle(row).gridTemplateColumns.split(' ').length)).toBe(2);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(portrait).toHaveJSProperty('naturalHeight', 400);
+  await expect.poll(() => ratio(portrait)).toBeCloseTo(4, 1);
+  await page.locator('#item-list .directory-card[data-dir-name="zz-folder"] .dir-title').click();
+  await expect(page.locator('#current-dir-name')).toHaveText('zz-folder');
+  await page.getByRole('button', { name: '上の階層へ', exact: true }).click();
+  const folder = page.locator('#item-list .directory-card[data-dir-name="zz-folder"]');
+  await expect(folder).toBeInViewport();
+  await expect.poll(() => page.locator('#item-list .item-card').count()).toBeLessThan(100);
+});
+
+test('keeps the complete recursive order when virtual cards are hidden or favorited', async ({ page }) => {
+  await page.evaluate(() => {
+    const root = (window as unknown as { __imageViewerTestRoot: { directory(name: string): { file(name: string): void } } }).__imageViewerTestRoot;
+    const child = root.directory('bulk');
+    for (let i = 0; i < 500; i++) child.file(`zz-item-${i}.png`);
+    localStorage.setItem('isSinglePageView', '1');
+  });
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#recursive-btn').click();
+  await expect(page.locator('#item-list')).toHaveAttribute('data-virtual', 'true');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const last = page.locator('#item-list .media-card', { has: page.locator('img[alt="zz-item-499.png"]') });
+  await expect(last.locator('img')).toHaveJSProperty('naturalWidth', 1);
+  await last.click();
+  await expect(page.locator('#page-counter')).toHaveText('502 / 504');
+  await page.keyboard.press('Escape');
+  await last.locator('.hidden-toggle-btn').click();
+  await expect(last).toHaveCount(0);
+  const previous = page.locator('#item-list .media-card', { has: page.locator('img[alt="zz-item-498.png"]') });
+  await expect(previous.locator('img')).toHaveJSProperty('naturalWidth', 1);
+  await previous.click();
+  await expect(page.locator('#page-counter')).toHaveText('501 / 503');
+  await page.keyboard.press('Escape');
+  await previous.locator('.favorite-btn').click();
+  await expect(previous.locator('.favorite-btn')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#favorite-mode-select').selectOption('only');
+  await expect(page.locator('#item-list .media-card')).toHaveCount(1);
+  await expect(previous.locator('img')).toHaveJSProperty('naturalWidth', 1);
+});
+
+test('keeps wheel scrolling uninterrupted when offscreen thumbnails finish loading', async ({ page }) => {
+  await expect(page.locator('#item-list img[alt="2.png"]')).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(async () => {
+    const modulePath = '/src/virtualGallery.ts';
+    const { createVirtualGallery } = await import(modulePath);
+    const container = document.querySelector<HTMLElement>('#item-list')!;
+    container.replaceChildren();
+    const grown = new Set<number>();
+    const view = createVirtualGallery(container, 3000, (index: number, row: HTMLElement) => {
+      const card = document.createElement('div');
+      card.className = 'item-card';
+      card.style.height = `${grown.has(index) ? 360 : 180}px`;
+      card.textContent = String(index);
+      row.append(card);
+      return card;
+    }, () => {}, () => true, () => 180);
+    const state = window as unknown as { __finishVirtualThumbnails: () => void; __virtualScrollCalls: number };
+    state.__virtualScrollCalls = 0;
+    state.__finishVirtualThumbnails = () => {
+      const nativeScrollTo = window.scrollTo.bind(window);
+      window.scrollTo = ((...args: [number, number]) => {
+        state.__virtualScrollCalls++;
+        nativeScrollTo(...args);
+      }) as typeof window.scrollTo;
+      for (const card of container.querySelectorAll<HTMLElement>('[data-item-index]')) {
+        if (card.getBoundingClientRect().bottom < 0) {
+          grown.add(Number(card.dataset.itemIndex));
+          card.style.height = '360px';
+        }
+      }
+    };
+    window.addEventListener('beforeunload', () => view.dispose(), { once: true });
+    window.scrollTo(0, 6000);
+  });
+  await page.mouse.move(600, 400);
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(6000);
+  const lowerPosition = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, -240);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(lowerPosition);
+  const anchor = await page.locator('#item-list [data-item-index]').evaluateAll(cards => {
+    const card = cards.find(card => card.getBoundingClientRect().bottom > 0)! as HTMLElement;
+    return { index: card.dataset.itemIndex!, top: card.getBoundingClientRect().top };
+  });
+  await page.evaluate(async () => {
+    (window as unknown as { __finishVirtualThumbnails: () => void }).__finishVirtualThumbnails();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  const anchoredCard = page.locator(`#item-list [data-item-index="${anchor.index}"]`);
+  await expect.poll(() => anchoredCard.evaluate((card, top) => Math.abs(card.getBoundingClientRect().top - top), anchor.top)).toBeLessThan(2);
+  expect(await page.evaluate(() => (window as unknown as { __virtualScrollCalls: number }).__virtualScrollCalls)).toBe(0);
+  const position = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel(0, -300);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(position - 200);
 });
 
 test('shows an image while the recursive list is still scanning', async ({ page }) => {
