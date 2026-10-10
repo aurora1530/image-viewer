@@ -239,6 +239,79 @@ test('restores saved sorting and filtering when the folder is opened again', asy
   await expect(page.locator('#item-list img[alt="cover.gif"]')).toHaveCount(1);
 });
 
+test('preloads decoded neighboring pages and reuses their sources when navigating back', async ({ page }) => {
+  await page.locator('#filter-select').selectOption('image');
+  await expect.poll(() => page.locator('#item-list .media-card img').evaluateAll(images =>
+    images.length === 3 && images.every(image => (image as HTMLImageElement).naturalWidth === 1)
+  )).toBe(true);
+  await page.evaluate(() => {
+    localStorage.setItem('isSinglePageView', '1');
+    type TestFile = { getFile(): Promise<File> };
+    const state = window as unknown as {
+      __imageViewerTestRoot: { entries: Map<string, TestFile> };
+      __pageReads: Record<string, number>;
+    };
+    state.__pageReads = {};
+    for (const name of ['2.png', '10.png', 'cover.gif']) {
+      const file = state.__imageViewerTestRoot.entries.get(name)!;
+      const original = file.getFile.bind(file);
+      file.getFile = async () => {
+        state.__pageReads[name] = (state.__pageReads[name] || 0) + 1;
+        return original();
+      };
+    }
+  });
+  await page.locator('#item-list .media-card').first().click();
+  await expect(page.locator('#page-counter')).toHaveText('1 / 3');
+  await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
+  const firstUrl = await page.locator('#right-page').getAttribute('src');
+  const reads = () => page.evaluate(() => (window as unknown as { __pageReads: Record<string, number> }).__pageReads);
+  await expect.poll(reads).toEqual({ '2.png': 1, '10.png': 1, 'cover.gif': 1 });
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('2 / 3');
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#page-counter')).toHaveText('1 / 3');
+  await expect(page.locator('#right-page')).toHaveAttribute('src', firstUrl!);
+  expect(await reads()).toEqual({ '2.png': 1, '10.png': 1, 'cover.gif': 1 });
+});
+
+test('keeps the latest page when an older page read finishes after rapid navigation', async ({ page }) => {
+  await page.locator('#filter-select').selectOption('image');
+  await expect.poll(() => page.locator('#item-list .media-card img').evaluateAll(images =>
+    images.length === 3 && images.every(image => (image as HTMLImageElement).naturalWidth === 1)
+  )).toBe(true);
+  await page.evaluate(() => {
+    localStorage.setItem('isSinglePageView', '1');
+    const state = window as unknown as {
+      __imageViewerTestRoot: { entries: Map<string, { getFile(): Promise<File> }> };
+      __releaseSlowPage: () => void;
+      __slowPageFinished: boolean;
+    };
+    const file = state.__imageViewerTestRoot.entries.get('10.png')!;
+    const original = file.getFile.bind(file);
+    const paused = new Promise<void>(resolve => { state.__releaseSlowPage = resolve; });
+    file.getFile = async () => {
+      await paused;
+      const result = await original();
+      state.__slowPageFinished = true;
+      return result;
+    };
+  });
+  await page.locator('#item-list .media-card').first().click();
+  await expect(page.locator('#page-counter')).toHaveText('1 / 3');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('3 / 3');
+  const latestUrl = await page.locator('#right-page').getAttribute('src');
+  await page.evaluate(() => (window as unknown as { __releaseSlowPage: () => void }).__releaseSlowPage());
+  await expect.poll(() => page.evaluate(async () => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return (window as unknown as { __slowPageFinished: boolean }).__slowPageFinished;
+  })).toBe(true);
+  await expect(page.locator('#right-page')).toHaveAttribute('src', latestUrl!);
+  await expect(page.locator('#page-counter')).toHaveText('3 / 3');
+});
+
 test('opens video in the player and closes it with Escape', async ({ page }) => {
   await page.locator('#filter-select').selectOption('video');
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);

@@ -965,7 +965,6 @@ const viewerController = createViewer({
 	rightPageImg: DOM.rightPageImg,
 	viewerVideo: DOM.viewerVideo,
 	pageCounter: DOM.pageCounter,
-	createdUrls: state.createdUrls,
 	getCurrentImageFiles: () => state.currentImageFiles,
 	setCurrentImageFiles: (files) => { state.currentImageFiles = files; },
 	getCurrentImageIndex: () => state.currentImageIndex,
