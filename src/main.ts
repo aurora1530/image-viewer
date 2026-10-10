@@ -29,7 +29,7 @@ import {
 	getDirectoryPreviewUrl,
 	invalidateDirectoryCache
 } from './directoryCache';
-import { collectImagesRecursively } from './directoryTraversal';
+import { createRecursiveImageCache } from './recursiveImageCache';
 import {
 	populateSizeSelect,
 	showStatus,
@@ -42,6 +42,8 @@ import { chooseNativeDirectory, getMediaSource, isDesktopApp, openNativeDirector
 
 const isFilterType = (value: string): value is FilterType =>
 	value === 'all' || value === 'directory' || value === 'image' || value === 'gif' || value === 'video';
+
+const recursiveImageCache = createRecursiveImageCache();
 
 function clearTransientUrls() {
 	for (const url of state.createdUrls) {
@@ -72,6 +74,7 @@ function getDisplayPath() {
 }
 
 async function openRootDirectory(dirHandle: FileSystemDirectoryHandle) {
+	recursiveImageCache.clear();
 	state.directoryHistory = [dirHandle];
 	resetSearchQuery();
 	DOM.homeView.classList.add('hidden');
@@ -122,6 +125,7 @@ function createLibraryCard(item: DesktopLibraryItem) {
 async function showHome() {
 	if (!isDesktopApp()) return;
 	state.renderToken++;
+	recursiveImageCache.clear();
 	state.directoryHistory = [];
 	state.currentDirHandle = null;
 	clearTransientUrls();
@@ -366,6 +370,7 @@ DOM.reloadBtn.addEventListener('click', async () => {
 	if (state.directoryHistory.length > 0) {
 		const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
 		invalidateDirectoryCache(currentDir);
+		recursiveImageCache.clear();
 		await renderActiveDirectoryView(currentDir, { forceRefresh: true, useConfig: false });
 		await scrollToVisitedChild(currentDir);
 	}
@@ -718,7 +723,10 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 		}).catch(error => console.error('先頭画像のプレビューに失敗:', error));
 	};
 	const [collectedItems, rootConfig] = await Promise.all([
-		collectImagesRecursively(dirHandle, [], currentBasePath, () => renderToken === state.renderToken, showFirstImage),
+		recursiveImageCache.get(dirHandle, currentBasePath, {
+			shouldContinue: () => renderToken === state.renderToken,
+			onFirstImages: showFirstImage
+		}),
 		readRootConfig(rootHandle)
 	]);
 	previewActive = false;

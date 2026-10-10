@@ -47,7 +47,8 @@ export async function collectImagesRecursively(
 	list: RecursiveImageItem[] = [],
 	basePath = '',
 	shouldContinue: () => boolean = () => true,
-	onFirstImages?: (images: RecursiveImageItem[]) => void
+	onFirstImages?: (images: RecursiveImageItem[]) => void,
+	onReadError?: () => void
 ): Promise<RecursiveImageItem[]> {
 	const maxConcurrentReads = 6;
 	let activeReads = 0;
@@ -69,6 +70,7 @@ export async function collectImagesRecursively(
 				else if (isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS)) images.push(entry);
 			}
 		} catch (e) {
+			onReadError?.();
 			console.error('再帰的な画像取得に失敗', e);
 			return [];
 		} finally {

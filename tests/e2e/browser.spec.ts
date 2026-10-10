@@ -131,6 +131,62 @@ test('navigates across the favorite boundary in the all-images list', async ({ p
   await expect(page.locator('#page-counter')).toHaveText('1 / 4');
 });
 
+test('reuses recursive scans for view controls and rescans changed files on reload', async ({ page }) => {
+  // 初期表示のフォルダープレビューが終わってから再帰走査の回数を測る。
+  await expect(page.locator('#item-list .directory-card img')).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => {
+    type Directory = { values(): AsyncIterable<unknown>; entries: Map<string, unknown>; file(name: string): void };
+    const root = (window as unknown as { __imageViewerTestRoot: Directory }).__imageViewerTestRoot;
+    const state = window as unknown as { __recursiveReads: number };
+    state.__recursiveReads = 0;
+    for (const directory of [root, root.entries.get('chapter') as Directory]) {
+      const original = directory.values.bind(directory);
+      directory.values = async function* () {
+        state.__recursiveReads++;
+        yield* original();
+      };
+    }
+  });
+  const reads = () => page.evaluate(() => (window as unknown as { __recursiveReads: number }).__recursiveReads);
+  const names = () => page.locator('#item-list .media-card img').evaluateAll(images => images.map(image => image.getAttribute('alt')));
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#recursive-btn').click();
+  await expect.poll(names).toEqual(['2.png', '10.png', 'nested.png', 'cover.gif']);
+  expect(await reads()).toBe(2);
+  await page.locator('#search-input').fill('nested');
+  await expect.poll(names).toEqual(['nested.png']);
+  await page.locator('#search-input').fill('');
+  await expect.poll(names).toHaveLength(4);
+  await page.locator('#toggle-sort-btn').click();
+  await expect.poll(names).toEqual(['cover.gif', 'nested.png', '10.png', '2.png']);
+  await page.locator('#filter-select').selectOption('gif');
+  await expect.poll(names).toEqual(['cover.gif']);
+  await page.locator('#filter-select').selectOption('image');
+  await expect.poll(names).toHaveLength(4);
+  const nested = page.locator('#item-list .media-card', { has: page.locator('img[alt="nested.png"]') });
+  await nested.locator('.favorite-btn').click();
+  await expect(nested.locator('.favorite-btn')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#favorite-mode-select').selectOption('only');
+  await expect.poll(names).toEqual(['nested.png']);
+  await page.locator('#favorite-mode-select').selectOption('off');
+  await expect.poll(names).toHaveLength(4);
+  await nested.locator('.hidden-toggle-btn').click();
+  await expect.poll(names).toHaveLength(3);
+  await page.locator('#toggle-sort-btn').click();
+  await expect.poll(names).toEqual(['2.png', '10.png', 'cover.gif']);
+  expect(await reads()).toBe(2);
+
+  await page.evaluate(() => {
+    type Directory = { entries: Map<string, unknown>; file(name: string): void };
+    const root = (window as unknown as { __imageViewerTestRoot: Directory }).__imageViewerTestRoot;
+    root.entries.delete('2.png');
+    (root.entries.get('chapter') as Directory).file('new.png');
+  });
+  await page.locator('#reload-btn').click();
+  await expect.poll(names).toEqual(['10.png', 'new.png', 'cover.gif']);
+  expect(await reads()).toBe(4);
+});
+
 test('favorites can be shown alone and survive another directory render', async ({ page }) => {
   const cover = page.locator('#item-list .media-card', { has: page.locator('img[alt="cover.gif"]') });
   await cover.locator('.favorite-btn').click();
