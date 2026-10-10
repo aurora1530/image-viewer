@@ -1,4 +1,5 @@
 import { getMediaSource } from './nativeFs';
+import { encodeThumbnailInWorker, THUMBNAIL_CONCURRENCY } from './thumbnailWorkerPool';
 
 const MAX_EDGE = 1280;
 const MAX_ENTRIES = 1000;
@@ -33,6 +34,8 @@ async function generate(handle: FileSystemFileHandle): Promise<Blob | null> {
       blob = await handle.getFile();
     }
     if (handle.name.toLowerCase().endsWith('.png') && await isAnimatedPng(blob)) return null;
+    const workerResult = await encodeThumbnailInWorker(blob);
+    if (workerResult) return workerResult;
     source = { url: URL.createObjectURL(blob), objectUrl: true };
     image.decoding = 'async';
     image.src = source.url;
@@ -66,13 +69,13 @@ async function validateStored(blob: Blob): Promise<boolean> {
   finally { image.removeAttribute('src'); URL.revokeObjectURL(url); }
 }
 
-export function createThumbnailCache() {
+export function createThumbnailCache({ concurrency = THUMBNAIL_CONCURRENCY }: { concurrency?: number } = {}) {
   let entries = new Map<string | FileSystemFileHandle, Entry>();
   let active = 0;
   const waiting: Array<() => void> = [];
 
   async function enqueue<T>(work: () => Promise<T>): Promise<T> {
-    if (active >= 2) await new Promise<void>(resolve => waiting.push(resolve));
+    if (active >= concurrency) await new Promise<void>(resolve => waiting.push(resolve));
     else active++;
     try { return await work(); }
     finally {
@@ -106,8 +109,12 @@ export function createThumbnailCache() {
         }
         const blob = await generate(handle);
         if (blob && stored && handle.nativePath && window.desktopApi) {
-          try { await window.desktopApi.writeThumbnail(handle.nativePath, stored.version, new Uint8Array(await blob.arrayBuffer())); }
-          catch { /* ディスク保存に失敗した場合もメモリに保持する */ }
+          const filePath = handle.nativePath;
+          const api = window.desktopApi;
+          const version = stored.version;
+          // 生成済み画像を先に表示し、保存待ちで次の生成を止めない。
+          void blob.arrayBuffer().then(buffer => api.writeThumbnail(filePath, version, new Uint8Array(buffer)))
+            .catch(() => { /* ディスク保存に失敗した場合もメモリに保持する */ });
         }
         return blob;
       }).catch(() => null).then(blob => {

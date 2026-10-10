@@ -2,6 +2,7 @@ import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createThumbnailCache, isAnimatedPng } from '../../src/thumbnailCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
+import * as workerPool from '../../src/thumbnailWorkerPool';
 
 const decode = vi.fn<() => Promise<void>>();
 const draw = vi.fn();
@@ -64,7 +65,7 @@ describe('thumbnail generation and reuse', () => {
   it('limits concurrent decoding to two and skips cards removed while waiting', async () => {
     const releases: Array<() => void> = [];
     decode.mockImplementation(() => new Promise(resolve => releases.push(resolve)));
-    const cache = createThumbnailCache();
+    const cache = createThumbnailCache({ concurrency: 2 });
     const third = root.file('third.jpg');
     const thirdRead = vi.spyOn(third, 'getFile');
     let connected = true;
@@ -124,7 +125,28 @@ describe('thumbnail generation and reuse', () => {
     const file = Object.assign(root.file('desktop.jpg').asHandle(), { nativePath: 'C:\\images\\desktop.jpg' });
     await createThumbnailCache().get(file);
     expect(draw).toHaveBeenCalledOnce();
-    expect(writeThumbnail).toHaveBeenCalledWith(file.nativePath, 'v1', expect.any(Uint8Array));
+    await vi.waitFor(() => expect(writeThumbnail).toHaveBeenCalledWith(file.nativePath, 'v1', expect.any(Uint8Array)));
+  });
+
+  it('uses worker results without decoding or drawing on the main thread', async () => {
+    vi.spyOn(workerPool, 'encodeThumbnailInWorker').mockResolvedValue(new Blob(['worker thumbnail']));
+    expect((await createThumbnailCache().get(root.file('worker.jpg').asHandle()))?.objectUrl).toBe(true);
+    expect(decode).not.toHaveBeenCalled();
+    expect(draw).not.toHaveBeenCalled();
+  });
+
+  it('returns generated thumbnails without waiting for disk persistence', async () => {
+    let release!: () => void;
+    const paused = new Promise<void>(resolve => { release = resolve; });
+    const writeThumbnail = vi.fn(async () => { await paused; return true; });
+    window.desktopApi = {
+      readThumbnail: async () => ({ version: 'v1', bytes: null }), writeThumbnail
+    } as unknown as Window['desktopApi'];
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob(['original']) })));
+    const file = Object.assign(root.file('saving.jpg').asHandle(), { nativePath: 'C:\\images\\saving.jpg' });
+    expect((await createThumbnailCache().get(file))?.objectUrl).toBe(true);
+    await vi.waitFor(() => expect(writeThumbnail).toHaveBeenCalledOnce());
+    release();
   });
 
   it('recognizes animated PNG headers before image data', async () => {

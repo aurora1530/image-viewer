@@ -2,8 +2,10 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-test('persists the library, opens media and confines file access to selected roots', async () => {
+for (const bundled of [false, true]) {
+test(`persists the library, generates thumbnails in workers and confines file access (${bundled ? 'bundled' : 'dev'})`, async () => {
   const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-test-'));
   const images = path.join(profile, 'images');
   const sibling = path.join(profile, 'images-other');
@@ -15,7 +17,9 @@ test('persists the library, opens media and confines file access to selected roo
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     const env = Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>;
-    env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:5173';
+    env.VITE_DEV_SERVER_URL = bundled
+      ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
+      : 'http://127.0.0.1:5173';
     delete env.ELECTRON_RUN_AS_NODE;
     app = await electron.launch({
       executablePath: path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe'),
@@ -24,6 +28,18 @@ test('persists the library, opens media and confines file access to selected roo
     });
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
+    await page.addInitScript(() => {
+      const state = window as unknown as { __thumbnailWorkerReplies: number };
+      state.__thumbnailWorkerReplies = 0;
+      const NativeWorker = window.Worker;
+      window.Worker = class extends NativeWorker {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options);
+          this.addEventListener('message', event => { if (event.data?.blob) state.__thumbnailWorkerReplies++; });
+        }
+      };
+    });
+    await page.reload();
     await expect(page.locator('#home-view')).toBeVisible();
     await page.evaluate(root => window.desktopApi!.openRoot(root), images);
     await page.reload();
@@ -32,6 +48,7 @@ test('persists the library, opens media and confines file access to selected roo
     await expect(page.locator('#item-list .media-card')).toHaveCount(1);
     await expect(page.locator('#item-list img')).toHaveJSProperty('naturalWidth', 1);
     await expect(page.locator('#item-list img')).toHaveAttribute('src', /^blob:/);
+    expect(await page.evaluate(() => (window as unknown as { __thumbnailWorkerReplies: number }).__thumbnailWorkerReplies)).toBeGreaterThan(0);
     await expect.poll(() => page.evaluate(async file => {
       const stored = await window.desktopApi!.readThumbnail(file);
       return stored.bytes?.byteLength || 0;
@@ -65,3 +82,4 @@ test('persists the library, opens media and confines file access to selected roo
     await rm(profile, { recursive: true, force: true });
   }
 });
+}
