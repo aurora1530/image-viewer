@@ -439,6 +439,20 @@ body.ui-hidden-mode .dock:not(.hidden):focus-within {
 }
 
 /* Viewer */
+html { scrollbar-gutter: stable; }
+
+.viewer-loading {
+  position: absolute;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 8px 16px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
 #viewer {
     position: fixed;
     inset: 0;

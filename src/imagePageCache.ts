@@ -8,11 +8,12 @@ type ImagePage = {
 
 type CacheEntry = {
   disposed: boolean;
+  ready: boolean;
   page: ImagePage | null;
   promise: Promise<ImagePage | null>;
 };
 
-export function createImagePageCache() {
+export function createImagePageCache(getSource = getMediaSource) {
   const entries = new Map<FileSystemFileHandle, CacheEntry>();
 
   function dispose(entry: CacheEntry) {
@@ -25,7 +26,7 @@ export function createImagePageCache() {
 
   async function load(handle: FileSystemFileHandle, entry: CacheEntry): Promise<ImagePage | null> {
     try {
-      const source = await getMediaSource(handle);
+      const source = await getSource(handle);
       if (entry.disposed) {
         if (source.objectUrl) URL.revokeObjectURL(source.url);
         return null;
@@ -35,6 +36,7 @@ export function createImagePageCache() {
       image.decoding = 'async';
       image.src = source.url;
       await image.decode();
+      entry.ready = true;
       return entry.disposed ? null : entry.page;
     } catch (error) {
       if (entry.disposed) return null;
@@ -47,7 +49,7 @@ export function createImagePageCache() {
   function get(handle: FileSystemFileHandle): Promise<ImagePage | null> {
     const cached = entries.get(handle);
     if (cached) return cached.promise;
-    const entry: CacheEntry = { disposed: false, page: null, promise: Promise.resolve(null) };
+    const entry: CacheEntry = { disposed: false, ready: false, page: null, promise: Promise.resolve(null) };
     entries.set(handle, entry);
     entry.promise = load(handle, entry);
     return entry.promise;
@@ -66,5 +68,14 @@ export function createImagePageCache() {
     retain([]);
   }
 
-  return { get, retain, clear };
+  function discardPending() {
+    for (const [handle, entry] of entries) {
+      if (entry.ready) continue;
+      entries.delete(handle);
+      dispose(entry);
+    }
+  }
+
+  return { get, retain, clear, discardPending,
+    peek: (handle: FileSystemFileHandle) => entries.get(handle)?.ready ? entries.get(handle)!.page : null };
 }

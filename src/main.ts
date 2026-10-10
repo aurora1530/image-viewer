@@ -25,12 +25,13 @@ import {
 } from './storage';
 import type { ConfigNode } from './storage';
 import {
-	clearThumbnailCaches,
+	clearThumbnailCaches as clearDirectoryThumbnailCaches,
 	ensureDirectoryCache,
 	getDirectoryPreviewUrl,
 	invalidateDirectoryCache
 } from './directoryCache';
 import { createRecursiveImageCache } from './recursiveImageCache';
+import { thumbnailCache } from './thumbnailCache';
 import {
 	populateSizeSelect,
 	showStatus,
@@ -45,6 +46,12 @@ const isFilterType = (value: string): value is FilterType =>
 	value === 'all' || value === 'directory' || value === 'image' || value === 'gif' || value === 'video';
 
 const recursiveImageCache = createRecursiveImageCache();
+
+let clearViewerCache: (() => void) | null = null;
+function clearThumbnailCaches() {
+	clearDirectoryThumbnailCaches();
+	clearViewerCache?.();
+}
 
 let resetGalleryView: (() => void) | null = null;
 
@@ -924,6 +931,8 @@ function ensureLazyLoadObserver() {
 	}
 }
 
+window.addEventListener('scroll', () => thumbnailCache.refresh(), { passive: true });
+
 const toolbar = createToolbar({
 	upDirBtn: DOM.upDirBtn,
 	copyPathBtn: DOM.copyPathBtn,
@@ -963,6 +972,8 @@ if (isDesktopApp()) {
 }
 
 const viewerController = createViewer({
+	getThumbnailPreview: handle => thumbnailCache.peek(handle),
+	setBackgroundWorkPaused: paused => thumbnailCache.setPaused(paused),
 	viewer: DOM.viewer,
 	viewerPages: DOM.viewerPages,
 	viewerVideoContainer: DOM.viewerVideoContainer,
@@ -985,6 +996,8 @@ const viewerController = createViewer({
 	showStatus,
 	ensureDirectoryCache
 });
+
+clearViewerCache = viewerController.clearCache;
 
 const gallery = createGallery({
 	itemList: DOM.itemList,

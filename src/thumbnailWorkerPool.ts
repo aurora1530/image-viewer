@@ -1,11 +1,14 @@
-export const THUMBNAIL_CONCURRENCY = Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 4) - 2));
+import { createThumbnailQueue } from './thumbnailQueue';
+import type { ThumbnailRequest } from './thumbnailQueue';
 
-type Job = { blob: Blob; resolve: (blob: Blob) => void; reject: (error: Error) => void };
+export const THUMBNAIL_CONCURRENCY = Math.min(32, Math.max(1, (navigator.hardwareConcurrency || 4) - 2));
+
+type Job = { resolve: (blob: Blob | null) => void; reject: (error: Error) => void; request: ThumbnailRequest };
 type Slot = { worker: Worker; job: Job | null };
 
 export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
   const slots: Slot[] = [];
-  const waiting: Job[] = [];
+  const queue = createThumbnailQueue(size);
   let failed = false;
 
   function fail() {
@@ -16,14 +19,15 @@ export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
       slot.job?.reject(error);
     }
     slots.length = 0;
-    for (const job of waiting.splice(0)) job.reject(error);
+    queue.clear(error);
   }
 
-  function dispatch() {
-    while (waiting.length && !failed) {
+  function encode(blob: Blob, request: ThumbnailRequest = {}, format = blob.type === 'image/jpeg' ? 'image/jpeg' : 'image/webp'): Promise<Blob | null> {
+    if (failed) return Promise.reject(new Error('サムネイル用Workerが利用できません。'));
+    const result = queue.enqueue(() => new Promise<Blob | null>((resolve, reject) => {
+      if (failed) { reject(new Error('サムネイル用Workerが利用できません。')); return; }
       let slot = slots.find(candidate => !candidate.job);
       if (!slot) {
-        if (slots.length >= size) return;
         try {
           const worker = new Worker(new URL('./thumbnailWorker.ts', import.meta.url), { type: 'module' });
           slot = { worker, job: null };
@@ -33,34 +37,59 @@ export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
             current.job = null;
             if (event.data.blob) job?.resolve(event.data.blob);
             else job?.reject(new Error(event.data.error || 'サムネイルの生成に失敗しました。'));
-            dispatch();
           };
           worker.onerror = fail;
           worker.onmessageerror = fail;
           slots.push(slot);
-        } catch { fail(); return; }
+        } catch { fail(); reject(new Error('サムネイル用Workerを起動できませんでした。')); return; }
       }
-      slot.job = waiting.shift()!;
-      try { slot.worker.postMessage(slot.job.blob); }
+      slot.job = { resolve, reject, request };
+      try { slot.worker.postMessage({ blob, format }); }
       catch { fail(); }
+    }), request);
+    refresh();
+    return result;
+  }
+
+  function refresh() {
+    // Reclaim abandoned running jobs only when a visible image needs their worker.
+    // Otherwise allow useful background results to complete and enter the cache.
+    if (queue.hasVisibleWaiting()) {
+      for (let i = slots.length - 1; i >= 0; i--) {
+        const slot = slots[i];
+        if (slot.job?.request.shouldContinue?.() === false) {
+          const job = slot.job;
+          slot.job = null;
+          slot.worker.terminate();
+          slots.splice(i, 1);
+          job.resolve(null);
+        }
+      }
     }
+    queue.refresh();
   }
 
-  function encode(blob: Blob): Promise<Blob> {
-    if (failed) return Promise.reject(new Error('サムネイル用Workerが利用できません。'));
-    return new Promise((resolve, reject) => {
-      waiting.push({ blob, resolve, reject });
-      dispatch();
-    });
-  }
-
-  return { encode };
+  return { encode, refresh, setPaused: queue.setPaused };
 }
 
 let pool: ReturnType<typeof createThumbnailWorkerPool> | null = null;
-export async function encodeThumbnailInWorker(blob: Blob): Promise<Blob | null> {
+let paused = false;
+const resumeWaiters = new Set<() => void>();
+export function setThumbnailWorkersPaused(value: boolean) {
+  paused = value;
+  pool?.setPaused(value);
+  if (!value) {
+    for (const resume of resumeWaiters) resume();
+    resumeWaiters.clear();
+  }
+}
+export async function waitForThumbnailResume() {
+  while (paused) await new Promise<void>(resolve => resumeWaiters.add(resolve));
+}
+export function refreshThumbnailWorkers() { pool?.refresh(); }
+export async function encodeThumbnailInWorker(blob: Blob, request: ThumbnailRequest = {}, format?: string): Promise<Blob | null> {
   if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return null;
-  pool ??= createThumbnailWorkerPool();
-  try { return await pool.encode(blob); }
+  if (!pool) { pool = createThumbnailWorkerPool(); pool.setPaused(paused); }
+  try { return await pool.encode(blob, request, format); }
   catch { return null; }
 }

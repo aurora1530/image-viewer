@@ -58,7 +58,12 @@ test.beforeEach(async ({ page }) => {
 
 test('keeps thumbnails visible after scrolling through a large folder and back', async ({ page }) => {
   await page.evaluate(() => {
-    const root = (window as unknown as { __imageViewerTestRoot: { file(name: string): void } }).__imageViewerTestRoot;
+    const state = window as unknown as { __imageViewerTestRoot: { file(name: string): void; entries: Map<string, { getFile(): Promise<File> }> }; __firstImageReads: number };
+    const root = state.__imageViewerTestRoot;
+    const first = root.entries.get('2.png')!;
+    const read = first.getFile.bind(first);
+    state.__firstImageReads = 0;
+    first.getFile = () => { state.__firstImageReads++; return read(); };
     for (let index = 0; index < 1200; index++) root.file(`extra-${index}.png`);
   });
   await page.locator('#reload-btn').click();
@@ -66,21 +71,71 @@ test('keeps thumbnails visible after scrolling through a large folder and back',
   await expect.poll(() => page.locator('#item-list .item-card').count()).toBeLessThan(100);
   const images = page.locator('#item-list .media-card img');
   await expect(images.first()).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => {
+    (window as unknown as { __unmountedThumb: Element }).__unmountedThumb = document.querySelector('#item-list img[alt="2.png"]')!;
+  });
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   const lastImage = page.locator('#item-list img[alt="extra-1199.png"]');
   await expect(lastImage).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => {
+    const thumbnail = (window as unknown as { __unmountedThumb: Element }).__unmountedThumb;
+    if (thumbnail.isConnected) throw new Error('The first card should have been unmounted');
+    thumbnail.dispatchEvent(new Event('error'));
+  });
+  await page.evaluate(() => {
+    const image = document.querySelector<HTMLImageElement>('#item-list img[alt="extra-1199.png"]')!;
+    Object.assign(window, { __retainedCard: image.closest('.item-card'), __retainedImage: image,
+      __retainedSrc: image.src, __retainedScroll: window.scrollY });
+  });
   await lastImage.click();
   await expect(page.locator('#page-counter')).toContainText('1203 / 1203');
   await page.keyboard.press('Escape');
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(await page.evaluate(() => {
+    const saved = window as unknown as { __retainedCard: Element; __retainedImage: HTMLImageElement; __retainedSrc: string; __retainedScroll: number };
+    return { connected: saved.__retainedCard.isConnected && saved.__retainedImage.isConnected,
+      sameUrl: saved.__retainedImage.src === saved.__retainedSrc, scrollDelta: Math.abs(window.scrollY - saved.__retainedScroll) };
+  })).toEqual({ connected: true, sameUrl: true, scrollDelta: 0 });
+  const readsBeforeReturning = await page.evaluate(() => (window as unknown as { __firstImageReads: number }).__firstImageReads);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect(page.locator('#item-list img[alt="2.png"]')).toHaveJSProperty('naturalWidth', 1);
+  expect(await page.evaluate(() => (window as unknown as { __firstImageReads: number }).__firstImageReads)).toBe(readsBeforeReturning);
   await expect(lastImage).toHaveCount(0);
   await page.locator('#search-input').fill('extra-1199');
   await expect(page.locator('#item-list .item-card')).toHaveCount(1);
   await expect(page.locator('#item-list')).not.toHaveAttribute('data-virtual', 'true');
 });
 
+test('shows a cached thumbnail during full-image decoding and reuses the decoded page on reopen', async ({ page }) => {
+  const thumbnail = page.locator('#item-list img[alt="2.png"]');
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => {
+    const original = HTMLImageElement.prototype.decode;
+    let release!: () => void;
+    const paused = new Promise<void>(resolve => { release = resolve; });
+    Object.assign(window, { __releaseDecode: release, __viewerDecodes: 0 });
+    HTMLImageElement.prototype.decode = async function() {
+      (window as unknown as { __viewerDecodes: number }).__viewerDecodes++;
+      await paused;
+      return original.call(this);
+    };
+  });
+  await thumbnail.click();
+  await expect(page.locator('#viewer .viewer-loading')).toBeVisible();
+  await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
+  await expect(page.locator('#left-page')).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => (window as unknown as { __releaseDecode(): void }).__releaseDecode());
+  await expect(page.locator('#viewer .viewer-loading')).toBeHidden();
+  const originalUrl = await page.locator('#right-page').getAttribute('src');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __viewerDecodes: number }).__viewerDecodes)).toBe(3);
+  await page.keyboard.press('Escape');
+  await thumbnail.click();
+  await expect(page.locator('#right-page')).toHaveAttribute('src', originalUrl!);
+  expect(await page.evaluate(() => (window as unknown as { __viewerDecodes: number }).__viewerDecodes)).toBe(3);
+});
+
 test('virtual rows preserve original aspect ratios across resizing and returning to a distant folder', async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 720 });
   await page.evaluate(async () => {
     const root = (window as unknown as { __imageViewerTestRoot: {
       entries: Map<string, unknown>; file(name: string): void; directory(name: string): { file(name: string): void };
@@ -384,8 +439,15 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
     const state = window as unknown as {
       __imageViewerTestRoot: { entries: Map<string, TestFile> };
       __pageReads: Record<string, number>;
+      __pageDecodes: number;
     };
     state.__pageReads = {};
+    state.__pageDecodes = 0;
+    const decode = HTMLImageElement.prototype.decode;
+    HTMLImageElement.prototype.decode = async function() {
+      state.__pageDecodes++;
+      return decode.call(this);
+    };
     for (const name of ['2.png', '10.png', 'cover.gif']) {
       const file = state.__imageViewerTestRoot.entries.get(name)!;
       const original = file.getFile.bind(file);
@@ -400,16 +462,17 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
   await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
   const firstUrl = await page.locator('#right-page').getAttribute('src');
   const reads = () => page.evaluate(() => (window as unknown as { __pageReads: Record<string, number> }).__pageReads);
-  await expect.poll(reads).toEqual({ '2.png': 1, '10.png': 1, 'cover.gif': 1 });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __pageDecodes: number }).__pageDecodes)).toBe(3);
+  expect(await reads()).toEqual({});
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('#page-counter')).toHaveText('2 / 3');
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#page-counter')).toHaveText('1 / 3');
   await expect(page.locator('#right-page')).toHaveAttribute('src', firstUrl!);
-  expect(await reads()).toEqual({ '2.png': 1, '10.png': 1, 'cover.gif': 1 });
+  expect(await reads()).toEqual({});
 });
 
-test('keeps the latest page when an older page read finishes after rapid navigation', async ({ page }) => {
+test('keeps the latest page when an older page decode finishes after rapid navigation', async ({ page }) => {
   await page.locator('#filter-select').selectOption('image');
   await expect.poll(() => page.locator('#item-list .media-card img').evaluateAll(images =>
     images.length === 3 && images.every(image => (image as HTMLImageElement).naturalWidth === 1)
@@ -421,14 +484,14 @@ test('keeps the latest page when an older page read finishes after rapid navigat
       __releaseSlowPage: () => void;
       __slowPageFinished: boolean;
     };
-    const file = state.__imageViewerTestRoot.entries.get('10.png')!;
-    const original = file.getFile.bind(file);
+    const decode = HTMLImageElement.prototype.decode;
+    let calls = 0;
     const paused = new Promise<void>(resolve => { state.__releaseSlowPage = resolve; });
-    file.getFile = async () => {
-      await paused;
-      const result = await original();
-      state.__slowPageFinished = true;
-      return result;
+    HTMLImageElement.prototype.decode = async function() {
+      const slow = ++calls === 2;
+      if (slow) await paused;
+      await decode.call(this);
+      if (slow) state.__slowPageFinished = true;
     };
   });
   await page.locator('#item-list .media-card').first().click();

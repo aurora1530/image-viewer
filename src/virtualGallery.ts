@@ -55,6 +55,7 @@ export function createVirtualGallery(
 		frame = 0;
 		if (disposed) return;
 		if (!isCurrent()) { dispose(); return; }
+		if (document.body.classList.contains('viewer-open')) return;
 		const style = getComputedStyle(container);
 		const nextWidth = container.clientWidth - parseFloat(style.paddingLeft || '0') - parseFloat(style.paddingRight || '0');
 		const nextGap = parseFloat(style.columnGap) || 0;

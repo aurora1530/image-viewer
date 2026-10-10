@@ -2,6 +2,7 @@ import type { StatusType } from './ui';
 import { getMediaSource } from './nativeFs';
 import { thumbnailCache } from './thumbnailCache';
 import { createVirtualGallery } from './virtualGallery';
+import type { ThumbnailRequest } from './thumbnailQueue';
 
 type MediaType = 'image' | 'video';
 
@@ -68,7 +69,7 @@ type GalleryDeps = {
 	openViewer: (handle: FileSystemDirectoryHandle, startIndex: number, overrideList?: FileSystemFileHandle[] | null) => void;
 	openVideoPlayer: (handle: FileSystemFileHandle) => void;
 	enterDirectory: (handle: FileSystemDirectoryHandle) => Promise<void>;
-	getDirectoryPreviewUrl: (handle: FileSystemDirectoryHandle) => Promise<string | null>;
+	getDirectoryPreviewUrl: (handle: FileSystemDirectoryHandle, request?: ThumbnailRequest) => Promise<string | null>;
 	setFavoriteButtonState: (button: HTMLButtonElement, isActive: boolean) => void;
 	setHiddenButtonState: (button: HTMLButtonElement, isHidden: boolean, isHiddenMode: boolean) => void;
 	toggleFavoriteEntry: (
@@ -270,13 +271,19 @@ export function createGallery(deps: GalleryDeps) {
 		}
 
 		let imageAttempts = 0;
+		const getPriority = () => {
+			const rect = card.getBoundingClientRect();
+			if (rect.bottom <= 0) return -rect.bottom + 1;
+			if (rect.top >= window.innerHeight) return rect.top - window.innerHeight + 1;
+			return 0;
+		};
 		const loadThumb = async () => {
 			if (card.dataset.loaded) return;
 			card.dataset.loaded = '1';
 			if (item.type === 'image') {
 				try {
 					imageAttempts++;
-					const source = await thumbnailCache.get(item.handle, () => card.isConnected);
+					const source = await thumbnailCache.get(item.handle, () => card.isConnected, getPriority);
 					if (!source) return;
 					const thumbnailUrl = source.url;
 					if (!card.isConnected) {
@@ -293,7 +300,6 @@ export function createGallery(deps: GalleryDeps) {
 						card.dataset.thumbReady = 'true';
 					}, { once: true });
 					img.addEventListener('error', () => {
-						thumbnailCache.clear();
 						img.remove();
 						if (source.objectUrl) {
 							URL.revokeObjectURL(thumbnailUrl);
@@ -301,6 +307,7 @@ export function createGallery(deps: GalleryDeps) {
 							ownedUrls.delete(thumbnailUrl);
 						}
 						if (!card.isConnected) return;
+						thumbnailCache.invalidate(item.handle);
 						if (imageAttempts < 3) {
 							delete card.dataset.loaded;
 							window.setTimeout(() => { if (card.isConnected) void loadThumb(); }, 300 * imageAttempts);
@@ -346,7 +353,7 @@ export function createGallery(deps: GalleryDeps) {
 				readBtn.onclick = (e) => { e.stopPropagation(); openViewer(item.handle, 0); };
 				thumbnailContainer.appendChild(readBtn);
 
-				const thumbnailUrl = await getDirectoryPreviewUrl(item.handle);
+				const thumbnailUrl = await getDirectoryPreviewUrl(item.handle, { shouldContinue: () => card.isConnected, getPriority });
 				if (!card.isConnected) return;
 				if (thumbnailUrl) {
 					const img = document.createElement('img');

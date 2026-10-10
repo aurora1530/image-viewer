@@ -2,11 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createViewer } from '../../src/viewer';
 import type { DirectoryCacheEntry } from '../../src/state';
 import { MemoryDirectory } from '../helpers/memoryFs';
+import { originalImageCache } from '../../src/originalImageCache';
 
 const root = new MemoryDirectory('root');
 const handles = ['1.png', '2.png', '3.png', '4.png', '5.png'].map(name => root.file(name).asHandle());
 
-function harness(single = false, files = handles) {
+function harness(single = false, files = handles, getThumbnailPreview?: (handle: FileSystemFileHandle) => { url: string; objectUrl: boolean } | null) {
   const viewer = document.querySelector<HTMLElement>('#viewer')!;
   const pages = document.querySelector<HTMLElement>('#viewer-pages')!;
   const videoContainer = document.querySelector<HTMLElement>('#viewer-video-container')!;
@@ -26,6 +27,7 @@ function harness(single = false, files = handles) {
   } satisfies DirectoryCacheEntry));
   localStorage.setItem('isSinglePageView', single ? '1' : '0');
   const controller = createViewer({
+    getThumbnailPreview,
     viewer, viewerPages: pages, viewerVideoContainer: videoContainer,
     viewerToolbar: toolbar, listToolbar, leftPageImg: left, rightPageImg: right,
     viewerVideo: video, pageCounter: counter,
@@ -47,6 +49,7 @@ function harness(single = false, files = handles) {
 }
 
 beforeEach(() => {
+  originalImageCache.clear();
   vi.stubGlobal('Image', class {
     src = '';
     decoding = '';
@@ -64,6 +67,54 @@ beforeEach(() => {
 });
 
 describe('image viewer behavior', () => {
+  it('keeps decoded images on close and reopens without a file read or decode', async () => {
+    const read = vi.spyOn(handles[0], 'getFile');
+    const view = harness(true, [handles[0]]);
+    await view.controller.openViewer(root.asHandle(), 0);
+    const url = view.right.dataset.url;
+    view.controller.closeViewer();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(url);
+    await view.controller.openViewer(root.asHandle(), 0);
+    expect(view.right.dataset.url).toBe(url);
+    expect(read).toHaveBeenCalledOnce();
+    expect(URL.createObjectURL).toHaveBeenCalledOnce();
+    view.controller.closeViewer();
+    view.controller.clearCache();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
+  });
+
+  it('shows cached previews immediately and publishes ready spread pages independently', async () => {
+    let release!: (file: File) => void;
+    vi.spyOn(handles[1], 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    const view = harness(false, handles.slice(0, 2), handle => ({ url: `blob:preview-${handle.name}`, objectUrl: true }));
+    const pending = view.controller.openViewer(root.asHandle(), 0);
+    await vi.waitFor(() => expect(view.right.dataset.url).toMatch(/^blob:image-/));
+    expect(view.left.dataset.url).toBe('blob:preview-2.png');
+    expect(view.left.style.visibility).toBe('visible');
+    expect(view.viewer.querySelector<HTMLElement>('.viewer-loading')!.hidden).toBe(false);
+    release(new File([''], '2.png'));
+    await pending;
+    expect(view.left.dataset.url).toMatch(/^blob:image-/);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview-2.png');
+    expect(view.viewer.querySelector<HTMLElement>('.viewer-loading')!.hidden).toBe(true);
+    view.controller.closeViewer();
+    view.controller.clearCache();
+  });
+
+  it('cleans up a preview and ignores the original that finishes after closing', async () => {
+    let release!: (file: File) => void;
+    vi.spyOn(handles[0], 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    const view = harness(true, [handles[0]], () => ({ url: 'blob:preview', objectUrl: true }));
+    const pending = view.controller.openViewer(root.asHandle(), 0);
+    await vi.waitFor(() => expect(view.right.dataset.url).toBe('blob:preview'));
+    view.controller.closeViewer();
+    release(new File([''], '1.png'));
+    await pending;
+    expect(view.right.hasAttribute('src')).toBe(false);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
   it('opens a spread right to left and shows the requested page', async () => {
     const view = harness();
     await view.controller.openViewer(root.asHandle(), 1);
@@ -152,6 +203,7 @@ describe('image viewer behavior', () => {
     await view.controller.openViewer(root.asHandle(), 0);
     view.controller.closeViewer();
     release(new File([''], '2.png'));
+    view.controller.clearCache();
     await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2));
     expect(view.right.hasAttribute('src')).toBe(false);
     expect(view.viewer.style.display).toBe('none');
@@ -169,6 +221,7 @@ describe('image viewer behavior', () => {
       expect(vi.mocked(URL.createObjectURL).mock.calls.length - vi.mocked(URL.revokeObjectURL).mock.calls.length).toBeLessThanOrEqual(6);
     }
     view.controller.closeViewer();
+    view.controller.clearCache();
     await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(vi.mocked(URL.createObjectURL).mock.calls.length));
   });
 

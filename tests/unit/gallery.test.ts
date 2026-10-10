@@ -4,7 +4,7 @@ import { MemoryDirectory } from '../helpers/memoryFs';
 
 vi.mock('../../src/thumbnailCache', async () => {
   const { getMediaSource } = await import('../../src/nativeFs');
-  return { thumbnailCache: { get: getMediaSource, clear: vi.fn() } };
+  return { thumbnailCache: { get: getMediaSource, clear: vi.fn(), invalidate: vi.fn() } };
 });
 
 const root = new MemoryDirectory('root');

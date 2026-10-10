@@ -7,11 +7,17 @@ import type { StatusType } from './ui';
 import { getMediaSource } from './nativeFs';
 import { compareNumericText } from './utils';
 import { createImagePageCache } from './imagePageCache';
+import { getOriginalImageSource } from './originalImageCache';
+
+type Source = { url: string; objectUrl: boolean };
 
 type CacheItem = DirectoryCacheItem;
 type CacheEntry = DirectoryCacheEntry;
 
 type ViewerDeps = {
+	getImageSource?: (handle: FileSystemFileHandle) => Promise<Source>;
+	getThumbnailPreview?: (handle: FileSystemFileHandle) => Source | null;
+	setBackgroundWorkPaused?: (paused: boolean) => void;
 	viewer: HTMLElement;
 	viewerPages: HTMLElement;
 	viewerVideoContainer: HTMLElement;
@@ -60,7 +66,19 @@ export function createViewer(deps: ViewerDeps) {
 		ensureDirectoryCache
 	} = deps;
 
-	const imageCache = createImagePageCache();
+	const imageCache = createImagePageCache(deps.getImageSource ?? getOriginalImageSource);
+	const previews = new Map<HTMLImageElement, Source>();
+	const loading = document.createElement('div');
+	loading.className = 'viewer-loading';
+	loading.setAttribute('role', 'status');
+	loading.hidden = true;
+	viewer.append(loading);
+
+	function clearPreview(element: HTMLImageElement) {
+		const source = previews.get(element);
+		if (source?.objectUrl) URL.revokeObjectURL(source.url);
+		previews.delete(element);
+	}
 	let viewerSession = 0;
 	let displayToken = 0;
 	let mediaMode: 'closed' | 'image' | 'video' = 'closed';
@@ -74,7 +92,10 @@ export function createViewer(deps: ViewerDeps) {
 		rightPageImg.removeAttribute('src');
 		leftPageImg.dataset.url = '';
 		rightPageImg.dataset.url = '';
-		imageCache.clear();
+		clearPreview(leftPageImg);
+		clearPreview(rightPageImg);
+		loading.hidden = true;
+		imageCache.discardPending();
 		setCurrentImageFiles([]);
 		pageCounter.textContent = '';
 		if (videoSource || viewerVideo.hasAttribute('src')) {
@@ -94,6 +115,7 @@ export function createViewer(deps: ViewerDeps) {
 	async function openViewer(dirHandle: FileSystemDirectoryHandle, startIndex: number, overrideImageList: FileSystemFileHandle[] | null = null) {
 		const session = resetMedia();
 		mediaMode = 'image';
+		deps.setBackgroundWorkPaused?.(true);
 		try {
 			showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
 			if (Array.isArray(overrideImageList) && overrideImageList.length > 0) {
@@ -132,6 +154,7 @@ export function createViewer(deps: ViewerDeps) {
 			viewerVideoContainer.classList.add('hidden');
 			viewerToolbar.style.display = 'flex';
 			listToolbar.style.display = 'none';
+			document.body.classList.add('viewer-open');
 			document.body.style.overflow = 'hidden';
 			updateViewModeUI();
 			await displayPages();
@@ -147,12 +170,15 @@ export function createViewer(deps: ViewerDeps) {
 	async function openVideoPlayer(videoHandle: FileSystemFileHandle) {
 		const session = resetMedia();
 		mediaMode = 'video';
+		imageCache.clear();
+		deps.setBackgroundWorkPaused?.(true);
 		try {
 			viewer.style.display = 'flex';
 			viewerPages.style.display = 'none';
 			viewerVideoContainer.classList.remove('hidden');
 			viewerToolbar.style.display = 'none';
 			listToolbar.style.display = 'none';
+			document.body.classList.add('viewer-open');
 			document.body.style.overflow = 'hidden';
 			const source = await getMediaSource(videoHandle);
 			if (session !== viewerSession) {
@@ -179,6 +205,8 @@ export function createViewer(deps: ViewerDeps) {
 		viewer.style.display = 'none';
 		listToolbar.style.display = '';
 		document.body.style.overflow = 'auto';
+		document.body.classList.remove('viewer-open');
+		deps.setBackgroundWorkPaused?.(false);
 		if (document.fullscreenElement) document.exitFullscreen();
 	}
 
@@ -216,20 +244,38 @@ export function createViewer(deps: ViewerDeps) {
 				return null;
 			}
 		};
-		const [right, left] = await Promise.all([load(rightIndex), load(leftIndex)]);
-		if (session !== viewerSession || token !== displayToken) return;
+		const current = () => session === viewerSession && token === displayToken;
 		viewerPages.classList.toggle('single-view', single);
-		for (const [element, page] of [[rightPageImg, right], [leftPageImg, left]] as const) {
-			if (page) {
-				if (element.dataset.url !== page.url) element.src = page.url;
-				element.dataset.url = page.url;
+		let pending = visible.length;
+		loading.textContent = '元画像を読み込んでいます…';
+		loading.hidden = pending === 0;
+		const show = (element: HTMLImageElement, source: Source | null) => {
+			if (source) {
+				if (element.dataset.url !== source.url) element.src = source.url;
+				element.dataset.url = source.url;
 				element.style.visibility = 'visible';
 			} else {
 				element.removeAttribute('src');
 				element.dataset.url = '';
 				element.style.visibility = 'hidden';
 			}
-		}
+		};
+		// A slow second page must not block the ready page or its cached preview.
+		await Promise.all(([[rightPageImg, rightIndex], [leftPageImg, leftIndex]] as const).map(async ([element, i]) => {
+			clearPreview(element);
+			if (i < 0 || i >= total) { show(element, null); return; }
+			const ready = imageCache.peek(files[i]);
+			const preview = ready ? null : deps.getThumbnailPreview?.(files[i]) ?? null;
+			if (preview) previews.set(element, preview);
+			show(element, ready ?? preview);
+			const page = await load(i);
+			if (!current()) return;
+			if (page) { show(element, page); clearPreview(element); }
+			else loading.textContent = '元画像の読み込みに失敗しました。';
+			pending--;
+			if (pending === 0 && loading.textContent === '元画像を読み込んでいます…') loading.hidden = true;
+		}));
+		if (!current()) return;
 		const pageNumber = (i: number) => i >= 0 && i < total ? i + 1 : '-';
 		pageCounter.textContent = single ? `${index + 1} / ${total}` : `${pageNumber(leftIndex)} - ${pageNumber(rightIndex)} / ${total}`;
 		void preloadNeighbors(neighbors, session, token);
@@ -267,6 +313,7 @@ export function createViewer(deps: ViewerDeps) {
 	}
 
 	return {
+		clearCache: () => imageCache.clear(),
 		openViewer,
 		openVideoPlayer,
 		closeViewer,

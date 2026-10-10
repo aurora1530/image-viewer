@@ -31,6 +31,18 @@ test(`persists the library, generates thumbnails in workers and confines file ac
     await page.addInitScript(() => {
       const state = window as unknown as { __thumbnailWorkerReplies: number };
       state.__thumbnailWorkerReplies = 0;
+      const NativeFetch = window.fetch;
+      const reads = window as unknown as { __originalReads: Record<string, number> };
+      reads.__originalReads = {};
+      window.fetch = (...args: Parameters<typeof fetch>) => {
+        const url = String(args[0]);
+        if (url.startsWith('local-media:')) {
+          const encoded = url.split('/').pop()!.replace(/-/g, '+').replace(/_/g, '/');
+          const file = new TextDecoder().decode(Uint8Array.from(atob(encoded), char => char.charCodeAt(0)));
+          reads.__originalReads[file] = (reads.__originalReads[file] || 0) + 1;
+        }
+        return NativeFetch(...args);
+      };
       const NativeWorker = window.Worker;
       window.Worker = class extends NativeWorker {
         constructor(url: string | URL, options?: WorkerOptions) {
@@ -77,6 +89,40 @@ test(`persists the library, generates thumbnails in workers and confines file ac
     expect(result.forbiddenError).toContain('許可されていません');
     expect(result.escapedError).toContain('許可されていません');
     expect(result.thumbnailError).toContain('許可されていません');
+
+    const jpeg = await page.evaluate(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 3000; canvas.height = 1500;
+      const blob = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/jpeg'));
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    });
+    const jpegPath = path.join(images, 'large.jpg');
+    await writeFile(jpegPath, Buffer.from(jpeg));
+    await page.locator('#reload-btn').click();
+    await expect(page.locator('#item-list img[alt="large.jpg"]')).toHaveJSProperty('naturalWidth', 1280);
+    await expect.poll(() => page.evaluate(async file => {
+      const stored = await window.desktopApi!.readThumbnail(file);
+      return stored.bytes ? Array.from(stored.bytes.slice(0, 2)) : [];
+    }, jpegPath)).toEqual([0xff, 0xd8]);
+    const jpegReads = () => page.evaluate(file => (window as unknown as { __originalReads: Record<string, number> }).__originalReads[file], jpegPath);
+    expect(await jpegReads()).toBe(1);
+    const thumbnailUrl = await page.locator('#item-list img[alt="large.jpg"]').getAttribute('src');
+    await page.locator('#item-list img[alt="large.jpg"]').click();
+    await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 3000);
+    await expect(page.locator('#viewer .viewer-loading')).toBeHidden();
+    const fullUrl = await page.locator('#right-page').getAttribute('src');
+    expect(await jpegReads()).toBe(1);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#item-list img[alt="large.jpg"]')).toHaveAttribute('src', thumbnailUrl!);
+    await page.locator('#item-list img[alt="large.jpg"]').click();
+    await expect(page.locator('#right-page')).toHaveAttribute('src', fullUrl!);
+    expect(await jpegReads()).toBe(1);
+    await page.keyboard.press('Escape');
+    await page.reload();
+    await page.locator('#recent-roots .library-card').click();
+    await expect(page.locator('#item-list img[alt="large.jpg"]')).toHaveJSProperty('naturalWidth', 1280);
+    await expect(page.locator('#item-list img[alt="sample.png"]')).toHaveJSProperty('naturalWidth', 1);
+    expect(await page.evaluate(() => (window as unknown as { __thumbnailWorkerReplies: number }).__thumbnailWorkerReplies)).toBe(0);
   } finally {
     await app?.close();
     await rm(profile, { recursive: true, force: true });

@@ -1,8 +1,9 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createThumbnailCache, isAnimatedPng } from '../../src/thumbnailCache';
+import { createThumbnailCache, inspectPng, isAnimatedPng } from '../../src/thumbnailCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
 import * as workerPool from '../../src/thumbnailWorkerPool';
+import { originalImageCache } from '../../src/originalImageCache';
 
 const decode = vi.fn<() => Promise<void>>();
 const draw = vi.fn();
@@ -10,6 +11,7 @@ const dimensions: number[][] = [];
 const root = new MemoryDirectory('root');
 
 beforeEach(() => {
+  originalImageCache.clear();
   dimensions.length = 0;
   decode.mockReset().mockResolvedValue(undefined);
   draw.mockReset();
@@ -49,7 +51,8 @@ describe('thumbnail generation and reuse', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:thumbnail-1');
     cache.clear();
     await cache.get(file.asHandle());
-    expect(read).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledOnce();
+    expect(decode).toHaveBeenCalledTimes(2);
   });
 
   it('shares generation requests while giving each card its own URL', async () => {
@@ -76,6 +79,69 @@ describe('thumbnail generation and reuse', () => {
     releases.forEach(release => release());
     expect((await Promise.all(jobs))[2]).toBeNull();
     expect(thirdRead).not.toHaveBeenCalled();
+  });
+
+  it('lets a new viewport request overtake earlier prefetches while serving memory hits immediately', async () => {
+    const cache = createThumbnailCache({ concurrency: 1 });
+    const warm = root.file('warm.jpg');
+    await cache.get(warm.asHandle());
+    const releases: Array<() => void> = [];
+    decode.mockImplementation(() => new Promise(resolve => releases.push(resolve)));
+    const active = cache.get(root.file('active.jpg').asHandle());
+    await vi.waitFor(() => expect(releases).toHaveLength(1));
+    const earlier = root.file('earlier.jpg');
+    const target = root.file('target.jpg');
+    const earlierRead = vi.spyOn(earlier, 'getFile');
+    const targetRead = vi.spyOn(target, 'getFile');
+    let priority = 100;
+    const background = cache.get(earlier.asHandle(), () => true, () => 10);
+    const visible = cache.get(target.asHandle(), () => true, () => priority);
+    priority = 0;
+    cache.refresh();
+    expect((await cache.get(warm.asHandle()))?.objectUrl).toBe(true);
+    expect(cache.stats().memoryHits).toBe(1);
+    releases[0]();
+    await vi.waitFor(() => expect(targetRead).toHaveBeenCalledOnce());
+    expect(earlierRead).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    releases[1]();
+    await vi.waitFor(() => expect(releases).toHaveLength(3));
+    releases[2]();
+    await Promise.all([active, background, visible]);
+  });
+
+  it('serves disk hits even while all generation slots are occupied', async () => {
+    let release!: (blob: Blob) => void;
+    vi.spyOn(workerPool, 'encodeThumbnailInWorker').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    window.desktopApi = {
+      readThumbnail: async (path: string) => ({ version: 'v1', bytes: path.includes('cached') ? new Uint8Array([0xff, 0xd8]) : null }),
+      writeThumbnail: async () => true
+    } as unknown as Window['desktopApi'];
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob(['original']) })));
+    const file = (name: string) => Object.assign(root.file(name).asHandle(), { nativePath: `C:\\images\\${name}` });
+    const cache = createThumbnailCache({ concurrency: 1 });
+    const generating = cache.get(file('generating.jpg'));
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    expect((await cache.get(file('cached.jpg')))?.objectUrl).toBe(true);
+    expect(cache.stats().diskHits).toBe(1);
+    expect(decode).not.toHaveBeenCalled();
+    release(new Blob(['thumbnail']));
+    await generating;
+  });
+
+  it('invalidates a single failed thumbnail without discarding other cached images', async () => {
+    const cache = createThumbnailCache();
+    const healthy = root.file('healthy.jpg');
+    const broken = root.file('broken.jpg');
+    const healthyRead = vi.spyOn(healthy, 'getFile');
+    const brokenRead = vi.spyOn(broken, 'getFile');
+    await cache.get(healthy.asHandle());
+    await cache.get(broken.asHandle());
+    cache.invalidate(broken.asHandle());
+    await cache.get(healthy.asHandle());
+    await cache.get(broken.asHandle());
+    expect(healthyRead).toHaveBeenCalledOnce();
+    expect(brokenRead).toHaveBeenCalledOnce();
   });
 
   it('keeps GIF and WebP animation and falls back when decoding fails', async () => {
@@ -115,7 +181,6 @@ describe('thumbnail generation and reuse', () => {
   });
 
   it('regenerates corrupt persisted thumbnails and writes their replacement', async () => {
-    decode.mockRejectedValueOnce(new Error('corrupt thumbnail'));
     const writeThumbnail = vi.fn(async () => true);
     window.desktopApi = {
       readThumbnail: async () => ({ version: 'v1', bytes: new Uint8Array([1]) }),
@@ -123,7 +188,11 @@ describe('thumbnail generation and reuse', () => {
     } as unknown as Window['desktopApi'];
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => new Blob(['original']) })));
     const file = Object.assign(root.file('desktop.jpg').asHandle(), { nativePath: 'C:\\images\\desktop.jpg' });
-    await createThumbnailCache().get(file);
+    const cache = createThumbnailCache();
+    await cache.get(file);
+    expect(decode).not.toHaveBeenCalled();
+    cache.invalidate(file); // The displayed image reported a decode error.
+    await cache.get(file);
     expect(draw).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(writeThumbnail).toHaveBeenCalledWith(file.nativePath, 'v1', expect.any(Uint8Array)));
   });
@@ -154,5 +223,29 @@ describe('thumbnail generation and reuse', () => {
     const signature = new Uint8Array(8);
     expect(await isAnimatedPng(new Blob([signature, chunk('IHDR'), chunk('acTL'), chunk('IDAT')]))).toBe(true);
     expect(await isAnimatedPng(new Blob([signature, chunk('IHDR'), chunk('IDAT')]))).toBe(false);
+  });
+
+  it('uses JPEG only for opaque PNGs and preserves explicit or palette transparency', async () => {
+    const chunk = (kind: string, data: Uint8Array = new Uint8Array()) => {
+      const bytes = new Uint8Array(data.length + 12);
+      new DataView(bytes.buffer).setUint32(0, data.length);
+      bytes.set(Array.from(kind, char => char.charCodeAt(0)), 4);
+      bytes.set(data, 8);
+      return bytes;
+    };
+    const png = (colorType: number, transparent = false) => {
+      const ihdr = new Uint8Array(13);
+      ihdr[9] = colorType;
+      return new Blob([new Uint8Array(8), chunk('IHDR', ihdr), ...(transparent ? [chunk('tRNS')] : []), chunk('IDAT')]);
+    };
+    expect(await inspectPng(png(2))).toEqual({ animated: false, opaque: true });
+    expect(await inspectPng(png(6))).toEqual({ animated: false, opaque: false });
+    expect(await inspectPng(png(3, true))).toEqual({ animated: false, opaque: false });
+    expect(await inspectPng(png(0, true))).toEqual({ animated: false, opaque: false });
+    const worker = vi.spyOn(workerPool, 'encodeThumbnailInWorker').mockResolvedValue(new Blob(['thumbnail']));
+    await createThumbnailCache().get({ name: 'opaque.png', getFile: async () => png(2) } as FileSystemFileHandle);
+    expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/jpeg');
+    await createThumbnailCache().get({ name: 'alpha.png', getFile: async () => png(6) } as FileSystemFileHandle);
+    expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/webp');
   });
 });

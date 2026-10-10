@@ -1,8 +1,8 @@
-self.addEventListener('message', async (event: MessageEvent<Blob>) => {
+self.addEventListener('message', async (event: MessageEvent<{ blob: Blob; format: string }>) => {
   let bitmap: ImageBitmap | null = null;
   let canvas: OffscreenCanvas | null = null;
   try {
-    bitmap = await createImageBitmap(event.data, { imageOrientation: 'from-image' });
+    bitmap = await createImageBitmap(event.data.blob, { imageOrientation: 'from-image' });
     const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height));
     canvas = new OffscreenCanvas(
       Math.max(1, Math.round(bitmap.width * scale)),
@@ -11,7 +11,7 @@ self.addEventListener('message', async (event: MessageEvent<Blob>) => {
     const context = canvas.getContext('2d');
     if (!context) throw new Error('サムネイルを生成できませんでした。');
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.85 });
+    const blob = await canvas.convertToBlob({ type: event.data.format, quality: 0.85 });
     self.postMessage({ blob });
   } catch (error) {
     self.postMessage({ error: error instanceof Error ? error.message : String(error) });

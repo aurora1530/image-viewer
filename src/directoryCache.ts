@@ -8,6 +8,8 @@ import type {
 import { isImageFileName } from './utils';
 import { listDirectoryEntries } from './nativeFs';
 import { thumbnailCache } from './thumbnailCache';
+import type { ThumbnailRequest } from './thumbnailQueue';
+import { originalImageCache } from './originalImageCache';
 type CacheEntry = DirectoryCacheEntry;
 type CacheItem = DirectoryCacheItem;
 
@@ -24,6 +26,7 @@ const isDirectoryItem = (item: CacheItem): item is DirectoryCacheDirectoryItem =
 
 export function clearThumbnailCaches(): void {
 	thumbnailCache.clear();
+	originalImageCache.clear();
 	state.directoryPreviewCache = new WeakMap();
 	for (const url of state.previewUrls) URL.revokeObjectURL(url);
 	state.previewUrls.clear();
@@ -146,7 +149,7 @@ async function findFirstImageHandle(dirHandle: FileSystemDirectoryHandle): Promi
 	return null;
 }
 
-export async function getDirectoryPreviewUrl(dirHandle: FileSystemDirectoryHandle): Promise<string | null> {
+export async function getDirectoryPreviewUrl(dirHandle: FileSystemDirectoryHandle, request: ThumbnailRequest = {}): Promise<string | null> {
 	const previewCache = state.directoryPreviewCache;
 	const cached = previewCache.get(dirHandle);
 	if (cached && cached.url) {
@@ -154,12 +157,13 @@ export async function getDirectoryPreviewUrl(dirHandle: FileSystemDirectoryHandl
 		return cached.url;
 	}
 
+	if (request.shouldContinue?.() === false) return null;
 	const handle = await findFirstImageHandle(dirHandle);
-	if (!handle) return null;
+	if (!handle || request.shouldContinue?.() === false) return null;
 	try {
 		const tLabel = CONFIG.ENABLE_DEBUG_LOGS ? `previewGen:${dirHandle.name}-${Date.now()}` : null;
 		if (tLabel) console.time(tLabel);
-		const source = await thumbnailCache.get(handle);
+		const source = await thumbnailCache.get(handle, request.shouldContinue, request.getPriority);
 		if (!source) return null;
 		const url = source.url;
 		if (previewCache !== state.directoryPreviewCache) {
