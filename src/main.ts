@@ -25,6 +25,7 @@ import {
 } from './storage';
 import type { ConfigNode } from './storage';
 import {
+	clearThumbnailCaches,
 	ensureDirectoryCache,
 	getDirectoryPreviewUrl,
 	invalidateDirectoryCache
@@ -74,6 +75,7 @@ function getDisplayPath() {
 }
 
 async function openRootDirectory(dirHandle: FileSystemDirectoryHandle) {
+	clearThumbnailCaches();
 	recursiveImageCache.clear();
 	state.directoryHistory = [dirHandle];
 	resetSearchQuery();
@@ -125,6 +127,7 @@ function createLibraryCard(item: DesktopLibraryItem) {
 async function showHome() {
 	if (!isDesktopApp()) return;
 	state.renderToken++;
+	clearThumbnailCaches();
 	recursiveImageCache.clear();
 	state.directoryHistory = [];
 	state.currentDirHandle = null;
@@ -370,6 +373,7 @@ DOM.reloadBtn.addEventListener('click', async () => {
 	if (state.directoryHistory.length > 0) {
 		const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
 		invalidateDirectoryCache(currentDir);
+		clearThumbnailCaches();
 		recursiveImageCache.clear();
 		await renderActiveDirectoryView(currentDir, { forceRefresh: true, useConfig: false });
 		await scrollToVisitedChild(currentDir);

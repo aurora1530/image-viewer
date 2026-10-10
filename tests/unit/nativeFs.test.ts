@@ -8,6 +8,8 @@ describe('desktop and browser file access', () => {
   it('opens a selected desktop root and reads children through the IPC adapter', async () => {
     const readFile = vi.fn(async () => new Uint8Array([1, 2, 3]));
     window.desktopApi = {
+      readThumbnail: async () => ({ version: 'test', bytes: null }),
+      writeThumbnail: async () => true,
       chooseDirectory: async () => 'C:\\photos',
       openRoot: async path => path,
       getLibrary: async () => [],

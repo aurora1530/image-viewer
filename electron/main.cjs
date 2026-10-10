@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, net, protocol } = require('electron
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { createThumbnailStore } = require('./thumbnail-store.cjs');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
@@ -31,6 +32,11 @@ function requireAllowed(target) {
   }
   return resolved;
 }
+
+const thumbnails = createThumbnailStore({
+  cacheDirectory: () => path.join(app.getPath('userData'), 'thumbnails'),
+  requireAllowed
+});
 
 async function loadJson(file, fallback) {
   try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch { return fallback; }
@@ -75,6 +81,8 @@ function decodeMediaUrl(url) {
 }
 
 function registerIpc() {
+  ipcMain.handle('desktop:read-thumbnail', (_event, filePath) => thumbnails.read(filePath));
+  ipcMain.handle('desktop:write-thumbnail', (_event, filePath, version, bytes) => thumbnails.write(filePath, version, bytes));
   ipcMain.handle('desktop:choose-directory', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'], title: 'ルートフォルダーを選択' });
     if (result.canceled || result.filePaths.length === 0) return null;

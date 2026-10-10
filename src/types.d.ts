@@ -14,6 +14,8 @@ interface HTMLDivElement {
 interface Window {
 	showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
 	desktopApi?: {
+		readThumbnail(path: string): Promise<{ version: string; bytes: Uint8Array | null }>;
+		writeThumbnail(path: string, version: string, bytes: Uint8Array): Promise<boolean>;
 		chooseDirectory(): Promise<string | null>;
 		openRoot(path: string): Promise<string>;
 		getLibrary(): Promise<DesktopLibraryItem[]>;

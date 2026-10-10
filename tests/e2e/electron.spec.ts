@@ -31,7 +31,11 @@ test('persists the library, opens media and confines file access to selected roo
     await page.locator('#recent-roots .library-card').click();
     await expect(page.locator('#item-list .media-card')).toHaveCount(1);
     await expect(page.locator('#item-list img')).toHaveJSProperty('naturalWidth', 1);
-    await expect(page.locator('#item-list img')).toHaveAttribute('src', /^local-media:\/\//);
+    await expect(page.locator('#item-list img')).toHaveAttribute('src', /^blob:/);
+    await expect.poll(() => page.evaluate(async file => {
+      const stored = await window.desktopApi!.readThumbnail(file);
+      return stored.bytes?.byteLength || 0;
+    }, path.join(images, 'sample.png'))).toBeGreaterThan(0);
     await page.locator('#item-list .media-card').click();
     await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
     await page.keyboard.press('Alt+ArrowLeft');
@@ -44,7 +48,9 @@ test('persists the library, opens media and confines file access to selected roo
       try { await api.readFile(forbidden); } catch (error) { forbiddenError = String(error); }
       let escapedError = '';
       try { await api.readFile(escaped); } catch (error) { escapedError = String(error); }
-      return { allowedLength: allowedResult.byteLength, forbiddenError, escapedError };
+      let thumbnailError = '';
+      try { await api.readThumbnail(forbidden); } catch (error) { thumbnailError = String(error); }
+      return { allowedLength: allowedResult.byteLength, forbiddenError, escapedError, thumbnailError };
     }, {
       allowed: path.join(images, 'sample.png'),
       forbidden: path.join(sibling, 'private.png'),
@@ -53,6 +59,7 @@ test('persists the library, opens media and confines file access to selected roo
     expect(result.allowedLength).toBeGreaterThan(0);
     expect(result.forbiddenError).toContain('許可されていません');
     expect(result.escapedError).toContain('許可されていません');
+    expect(result.thumbnailError).toContain('許可されていません');
   } finally {
     await app?.close();
     await rm(profile, { recursive: true, force: true });

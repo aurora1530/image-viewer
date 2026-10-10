@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi', {
+  readThumbnail: path => ipcRenderer.invoke('desktop:read-thumbnail', path),
+  writeThumbnail: (path, version, bytes) => ipcRenderer.invoke('desktop:write-thumbnail', path, version, bytes),
   chooseDirectory: () => ipcRenderer.invoke('desktop:choose-directory'),
   openRoot: path => ipcRenderer.invoke('desktop:open-root', path),
   getLibrary: () => ipcRenderer.invoke('desktop:get-library'),

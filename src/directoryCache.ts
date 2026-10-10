@@ -6,7 +6,8 @@ import type {
 	DirectoryCacheImageItem
 } from './state';
 import { isImageFileName } from './utils';
-import { getMediaSource, listDirectoryEntries } from './nativeFs';
+import { listDirectoryEntries } from './nativeFs';
+import { thumbnailCache } from './thumbnailCache';
 type CacheEntry = DirectoryCacheEntry;
 type CacheItem = DirectoryCacheItem;
 
@@ -20,6 +21,13 @@ const isFileHandle = (
 
 const isImageItem = (item: CacheItem): item is DirectoryCacheImageItem => item.type === 'image';
 const isDirectoryItem = (item: CacheItem): item is DirectoryCacheDirectoryItem => item.type === 'directory';
+
+export function clearThumbnailCaches(): void {
+	thumbnailCache.clear();
+	state.directoryPreviewCache = new WeakMap();
+	for (const url of state.previewUrls) URL.revokeObjectURL(url);
+	state.previewUrls.clear();
+}
 
 export async function buildDirectoryCache(dirHandle: FileSystemDirectoryHandle): Promise<CacheEntry> {
 	const items: CacheItem[] = [];
@@ -139,7 +147,8 @@ async function findFirstImageHandle(dirHandle: FileSystemDirectoryHandle): Promi
 }
 
 export async function getDirectoryPreviewUrl(dirHandle: FileSystemDirectoryHandle): Promise<string | null> {
-	const cached = state.directoryPreviewCache.get(dirHandle);
+	const previewCache = state.directoryPreviewCache;
+	const cached = previewCache.get(dirHandle);
 	if (cached && cached.url) {
 		if (CONFIG.ENABLE_DEBUG_LOGS) console.log(`[preview cache hit] ${dirHandle.name}`);
 		return cached.url;
@@ -150,9 +159,14 @@ export async function getDirectoryPreviewUrl(dirHandle: FileSystemDirectoryHandl
 	try {
 		const tLabel = CONFIG.ENABLE_DEBUG_LOGS ? `previewGen:${dirHandle.name}-${Date.now()}` : null;
 		if (tLabel) console.time(tLabel);
-		const source = await getMediaSource(handle);
+		const source = await thumbnailCache.get(handle);
+		if (!source) return null;
 		const url = source.url;
-		state.directoryPreviewCache.set(dirHandle, { url });
+		if (previewCache !== state.directoryPreviewCache) {
+			if (source.objectUrl) URL.revokeObjectURL(url);
+			return null;
+		}
+		previewCache.set(dirHandle, { url });
 		state.previewUrls.add(url);
 		if (CONFIG.ENABLE_DEBUG_LOGS) console.log(`[preview set] ${dirHandle.name}`);
 		if (tLabel) console.timeEnd(tLabel);

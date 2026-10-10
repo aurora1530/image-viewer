@@ -312,6 +312,54 @@ test('keeps the latest page when an older page read finishes after rapid navigat
   await expect(page.locator('#page-counter')).toHaveText('3 / 3');
 });
 
+test('reuses reduced thumbnails, keeps full viewer resolution and refreshes replaced originals', async ({ page }) => {
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 3000;
+    canvas.height = 1500;
+    canvas.getContext('2d')!.fillRect(0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(result => resolve(result!), 'image/jpeg'));
+    const state = window as unknown as {
+      __imageViewerTestRoot: { entries: Map<string, unknown> };
+      __largeFile: File;
+      __largeReads: number;
+    };
+    state.__largeFile = new File([blob], 'large.jpg', { type: 'image/jpeg' });
+    state.__largeReads = 0;
+    state.__imageViewerTestRoot.entries.set('large.jpg', {
+      kind: 'file', name: 'large.jpg',
+      getFile: async () => { state.__largeReads++; return state.__largeFile; }
+    });
+    localStorage.setItem('isSinglePageView', '1');
+  });
+  await page.locator('#reload-btn').click();
+  const thumbnail = page.locator('#item-list img[alt="large.jpg"]');
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
+  await expect(thumbnail).toHaveJSProperty('naturalHeight', 640);
+  const reads = () => page.evaluate(() => (window as unknown as { __largeReads: number }).__largeReads);
+  expect(await reads()).toBe(1);
+  await page.locator('#toggle-sort-btn').click();
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
+  expect(await reads()).toBe(1);
+  await page.locator('#size-select').selectOption('5');
+  await expect(page.locator('#item-list')).toHaveClass(/original-aspect/);
+  await expect(thumbnail).toHaveJSProperty('naturalHeight', 640);
+  await thumbnail.click();
+  await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 3000);
+  await expect(page.locator('#right-page')).toHaveJSProperty('naturalHeight', 1500);
+  await page.keyboard.press('Escape');
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 4000;
+    canvas.height = 1000;
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(result => resolve(result!), 'image/jpeg'));
+    (window as unknown as { __largeFile: File }).__largeFile = new File([blob], 'large.jpg', { type: 'image/jpeg' });
+  });
+  await page.locator('#reload-btn').click();
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
+  await expect(thumbnail).toHaveJSProperty('naturalHeight', 320);
+});
+
 test('opens video in the player and closes it with Escape', async ({ page }) => {
   await page.locator('#filter-select').selectOption('video');
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);

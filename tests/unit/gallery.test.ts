@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGallery } from '../../src/gallery';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
+vi.mock('../../src/thumbnailCache', async () => {
+  const { getMediaSource } = await import('../../src/nativeFs');
+  return { thumbnailCache: { get: getMediaSource, clear: vi.fn() } };
+});
+
 const root = new MemoryDirectory('root');
 const first = root.file('first.png').asHandle();
 const second = root.file('second.png').asHandle();

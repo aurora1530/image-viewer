@@ -1,5 +1,6 @@
 import type { StatusType } from './ui';
 import { getMediaSource } from './nativeFs';
+import { thumbnailCache } from './thumbnailCache';
 
 type MediaType = 'image' | 'video';
 
@@ -237,7 +238,8 @@ export function createGallery(deps: GalleryDeps) {
 			if (item.type === 'image') {
 				try {
 					imageAttempts++;
-					const source = await getMediaSource(item.handle);
+					const source = await thumbnailCache.get(item.handle, () => card.isConnected);
+					if (!source) return;
 					const thumbnailUrl = source.url;
 					if (!card.isConnected) {
 						if (source.objectUrl) URL.revokeObjectURL(thumbnailUrl);
@@ -249,6 +251,7 @@ export function createGallery(deps: GalleryDeps) {
 					img.decoding = 'async';
 					img.alt = item.name;
 					img.addEventListener('error', () => {
+						thumbnailCache.clear();
 						img.remove();
 						if (source.objectUrl) {
 							URL.revokeObjectURL(thumbnailUrl);
