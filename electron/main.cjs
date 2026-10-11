@@ -1,8 +1,8 @@
-const { app, BrowserWindow, dialog, ipcMain, net, protocol } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, protocol } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
 const { createThumbnailStore } = require('./thumbnail-store.cjs');
+const { serveMedia } = require('./media-protocol.cjs');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
@@ -169,7 +169,7 @@ app.whenReady().then(async () => {
   registerIpc();
   protocol.handle('local-media', request => {
     const filePath = requireAllowed(decodeMediaUrl(request.url));
-    return net.fetch(pathToFileURL(filePath).toString());
+    return serveMedia(request, filePath);
   });
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

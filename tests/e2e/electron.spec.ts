@@ -90,6 +90,19 @@ test(`persists the library, generates thumbnails in workers and confines file ac
     expect(result.escapedError).toContain('許可されていません');
     expect(result.thumbnailError).toContain('許可されていません');
 
+    const rangeResult = await page.evaluate(async file => {
+      const encoded = btoa(file).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const response = await fetch(`local-media://file/${encoded}`, { headers: { Range: 'bytes=8-15' } });
+      return {
+        status: response.status,
+        contentRange: response.headers.get('content-range'),
+        bytes: Array.from(new Uint8Array(await response.arrayBuffer()))
+      };
+    }, path.join(images, 'sample.png'));
+    expect(rangeResult.status).toBe(206);
+    expect(rangeResult.contentRange).toBe(`bytes 8-15/${png.length}`);
+    expect(rangeResult.bytes).toEqual(Array.from(png.subarray(8, 16)));
+
     const jpeg = await page.evaluate(async () => {
       const canvas = document.createElement('canvas');
       canvas.width = 3000; canvas.height = 1500;
@@ -123,6 +136,52 @@ test(`persists the library, generates thumbnails in workers and confines file ac
     await expect(page.locator('#item-list img[alt="large.jpg"]')).toHaveJSProperty('naturalWidth', 1280);
     await expect(page.locator('#item-list img[alt="sample.png"]')).toHaveJSProperty('naturalWidth', 1);
     expect(await page.evaluate(() => (window as unknown as { __thumbnailWorkerReplies: number }).__thumbnailWorkerReplies)).toBe(0);
+
+    const videoBytes = await page.evaluate(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320; canvas.height = 180;
+      const context = canvas.getContext('2d')!;
+      const stream = canvas.captureStream(10);
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = event => chunks.push(event.data);
+      const recording = new Promise<Blob>(resolve => {
+        recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
+      });
+      recorder.start();
+      const timer = setInterval(() => {
+        context.fillStyle = `hsl(${Date.now() % 360}, 100%, 50%)`;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }, 100);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      recorder.stop();
+      clearInterval(timer);
+      const blob = await recording;
+      stream.getTracks().forEach(track => track.stop());
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    });
+    await writeFile(path.join(images, 'seek.webm'), Buffer.from(videoBytes));
+    await page.locator('#reload-btn').click();
+    await page.locator('#filter-select').selectOption('video');
+    await page.locator('#item-list .media-card').click();
+    const video = page.locator('#viewer-video');
+    await expect(video).toBeVisible();
+    await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+    await expect(video).toHaveJSProperty('paused', false);
+    for (const time of [2, 0.5]) {
+      await video.evaluate((element, target) => {
+        const media = element as HTMLVideoElement;
+        media.pause();
+        media.currentTime = target;
+      }, time);
+      await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).seeking)).toBe(false);
+      await expect(video).toHaveJSProperty('currentTime', time);
+      await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
+    }
+    await video.evaluate(element => (element as HTMLVideoElement).play());
+    await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.5);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
   } finally {
     await app?.close();
     await rm(profile, { recursive: true, force: true });
