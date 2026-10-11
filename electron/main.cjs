@@ -1,6 +1,7 @@
-const { app, BrowserWindow, dialog, ipcMain, protocol } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, net, protocol } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { createThumbnailStore } = require('./thumbnail-store.cjs');
 const { serveMedia } = require('./media-protocol.cjs');
 
@@ -169,6 +170,12 @@ app.whenReady().then(async () => {
   registerIpc();
   protocol.handle('local-media', request => {
     const filePath = requireAllowed(decodeMediaUrl(request.url));
+    // Whole-image reads stay in Chromium's file pipeline instead of copying many
+    // small Node stream chunks across processes. Media byte ranges retain the
+    // explicit partial-response path needed for seeking.
+    if (!request.headers.has('range') && /\.(jpe?g|png|gif|webp|bmp|heic)$/i.test(filePath)) {
+      return net.fetch(pathToFileURL(filePath).toString(), { method: request.method });
+    }
     return serveMedia(request, filePath);
   });
   createWindow();

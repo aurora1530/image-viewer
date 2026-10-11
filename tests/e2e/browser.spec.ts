@@ -1,5 +1,90 @@
 import { expect, test } from '@playwright/test';
 
+test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail resolution', async ({ page }) => {
+  await page.goto('/');
+  const results = await page.evaluate(async () => {
+    const modulePath = '/src/thumbnailEncoder.ts';
+    const { encodeThumbnail } = await import(/* @vite-ignore */ modulePath);
+    const original = document.createElement('canvas'); original.width = 3200; original.height = 1600;
+    const context = original.getContext('2d')!;
+    for (const [color, x, y] of [['red', 0, 0], ['lime', 1600, 0], ['blue', 0, 800], ['yellow', 1600, 800]] as const) {
+      context.fillStyle = color; context.fillRect(x, y, 1600, 800);
+    }
+    const jpeg = await new Promise<Blob>(resolve => original.toBlob(value => resolve(value!), 'image/jpeg', .95));
+    const pixels = (image: ImageBitmap) => {
+      const canvas = new OffscreenCanvas(image.width, image.height); const context = canvas.getContext('2d')!;
+      context.drawImage(image, 0, 0);
+      return [[.25,.25],[.75,.25],[.25,.75],[.75,.75]].map(([x,y]) =>
+        Array.from(context.getImageData(Math.floor(image.width*x), Math.floor(image.height*y), 1, 1).data).slice(0,3));
+    };
+    const results = [];
+    for (let orientation = 1; orientation <= 8; orientation++) {
+      const exif = new Uint8Array([0xff,0xe1,0,34,69,120,105,102,0,0,73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,orientation,0,0,0,0,0,0,0]);
+      const source = new Blob([jpeg.slice(0,2), exif, jpeg.slice(2)], { type: 'image/jpeg' });
+      const expected = await createImageBitmap(source);
+      const blob = await encodeThumbnail(source, 'image/jpeg');
+      const actual = await createImageBitmap(blob);
+      const scale = 1280 / Math.max(expected.width, expected.height);
+      results.push({ orientation, expectedSize: [Math.round(expected.width*scale), Math.round(expected.height*scale)],
+        actualSize: [actual.width, actual.height], expectedColors: pixels(expected), actualColors: pixels(actual) });
+      expected.close(); actual.close();
+    }
+    return results;
+  });
+  for (const result of results) {
+    expect(result.actualSize, `orientation ${result.orientation}`).toEqual(result.expectedSize);
+    for (let corner = 0; corner < 4; corner++) for (let channel = 0; channel < 3; channel++) {
+      expect(Math.abs(result.actualColors[corner][channel] - result.expectedColors[corner][channel]), `orientation ${result.orientation}, corner ${corner}`).toBeLessThan(15);
+    }
+  }
+});
+
+test('large PNG thumbnails preserve transparency and proportional sizing', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const modulePath = '/src/thumbnailEncoder.ts';
+    const { encodeThumbnail } = await import(/* @vite-ignore */ modulePath);
+    const canvas = new OffscreenCanvas(3200, 1600); const context = canvas.getContext('2d')!;
+    context.fillStyle = 'rgba(255,0,0,.5)'; context.fillRect(0, 0, 1600, 800);
+    context.fillStyle = 'blue'; context.fillRect(0, 800, 1600, 800);
+    const source = await canvas.convertToBlob({ type: 'image/png' });
+    const encoded = await encodeThumbnail(source, 'image/webp');
+    const bitmap = await createImageBitmap(encoded);
+    const preview = new OffscreenCanvas(bitmap.width, bitmap.height); const pixels = preview.getContext('2d')!;
+    pixels.drawImage(bitmap, 0, 0);
+    const at = (x: number, y: number) => Array.from(pixels.getImageData(x, y, 1, 1).data);
+    const result = { width: bitmap.width, height: bitmap.height, translucent: at(320, 160), clear: at(960, 160), opaque: at(320, 480) };
+    bitmap.close(); return result;
+  });
+  expect([result.width, result.height]).toEqual([1280, 640]);
+  expect(result.translucent[0]).toBeGreaterThan(240);
+  expect(result.translucent[3]).toBeGreaterThanOrEqual(126);
+  expect(result.translucent[3]).toBeLessThanOrEqual(129);
+  expect(result.clear[3]).toBe(0);
+  expect(result.opaque[2]).toBeGreaterThan(240);
+  expect(result.opaque[3]).toBe(255);
+});
+
+test('JPEG thumbnails retain proportional sizing for odd, portrait and small originals', async ({ page }) => {
+  const results = await page.evaluate(async () => {
+    const modulePath = '/src/thumbnailEncoder.ts';
+    const { encodeThumbnail } = await import(/* @vite-ignore */ modulePath);
+    const results = [];
+    for (const [width, height] of [[6001,4003], [2048,5003], [100,200]]) {
+      const canvas = new OffscreenCanvas(width, height);
+      canvas.getContext('2d')!.fillRect(0, 0, width, height);
+      const source = await canvas.convertToBlob({ type: 'image/jpeg' });
+      const result = await encodeThumbnail(source, 'image/jpeg');
+      const image = await createImageBitmap(result);
+      const scale = Math.min(1, 1280 / Math.max(width, height));
+      results.push({ actual: [image.width, image.height], expected: [Math.round(width * scale), Math.round(height * scale)] });
+      image.close(); canvas.width = 0; canvas.height = 0;
+    }
+    return results;
+  });
+  for (const result of results) expect(result.actual).toEqual(result.expected);
+});
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const image = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), c => c.charCodeAt(0));

@@ -137,6 +137,29 @@ test(`persists the library, generates thumbnails in workers and confines file ac
     await expect(page.locator('#item-list img[alt="sample.png"]')).toHaveJSProperty('naturalWidth', 1);
     expect(await page.evaluate(() => (window as unknown as { __thumbnailWorkerReplies: number }).__thumbnailWorkerReplies)).toBe(0);
 
+    if (!bundled) {
+      const orientation = await page.evaluate(async () => {
+        const modulePath = '/src/thumbnailEncoder.ts';
+        const { encodeThumbnail } = await import(/* @vite-ignore */ modulePath);
+        const canvas = document.createElement('canvas'); canvas.width = 3200; canvas.height = 1600;
+        const context = canvas.getContext('2d')!;
+        context.fillStyle = 'red'; context.fillRect(0, 0, 1600, 1600);
+        context.fillStyle = 'blue'; context.fillRect(1600, 0, 1600, 1600);
+        const jpeg = await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!), 'image/jpeg'));
+        const exif = new Uint8Array([0xff,0xe1,0,34,69,120,105,102,0,0,73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,6,0,0,0,0,0,0,0]);
+        const result = await encodeThumbnail(new Blob([jpeg.slice(0,2), exif, jpeg.slice(2)], { type: 'image/jpeg' }), 'image/jpeg');
+        const image = await createImageBitmap(result);
+        const preview = new OffscreenCanvas(image.width, image.height); const pixels = preview.getContext('2d')!;
+        pixels.drawImage(image, 0, 0);
+        const color = (y: number) => Array.from(pixels.getImageData(image.width / 2, y, 1, 1).data).slice(0,3);
+        const resultData = { width: image.width, height: image.height, top: color(image.height / 4), bottom: color(image.height * .75) };
+        image.close(); return resultData;
+      });
+      expect(orientation).toMatchObject({ width: 640, height: 1280 });
+      expect(orientation.top[0]).toBeGreaterThan(240);
+      expect(orientation.bottom[2]).toBeGreaterThan(240);
+    }
+
     const videoBytes = await page.evaluate(async () => {
       const canvas = document.createElement('canvas');
       canvas.width = 320; canvas.height = 180;

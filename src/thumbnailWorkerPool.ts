@@ -1,7 +1,9 @@
 import { createThumbnailQueue } from './thumbnailQueue';
 import type { ThumbnailRequest } from './thumbnailQueue';
 
-export const THUMBNAIL_CONCURRENCY = Math.min(32, Math.max(1, (navigator.hardwareConcurrency || 4) - 2));
+// Bound full-resolution decode memory and read contention during rapid scrolling.
+// More workers increased first-visible latency in the 24 MP cold-thumbnail benchmark.
+export const THUMBNAIL_CONCURRENCY = Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 4) - 2));
 
 type Job = { resolve: (blob: Blob | null) => void; reject: (error: Error) => void; request: ThumbnailRequest };
 type Slot = { worker: Worker; job: Job | null };
