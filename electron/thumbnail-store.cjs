@@ -2,7 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 
-function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 10000, maxBytes = 1024 * 1024 * 1024 }) {
+function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 20000, maxBytes = 3 * 1024 * 1024 * 1024 }) {
   let writes = 0;
   const cachedFiles = new Map();
   let indexLoaded = false;
