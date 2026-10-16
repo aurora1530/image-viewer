@@ -228,18 +228,25 @@ export function createGallery(deps: GalleryDeps) {
 				setHiddenButtonState(hiddenBtn, !!item.isHidden, getIsHiddenMode());
 				hiddenBtn.addEventListener('click', async (e) => {
 					e.stopPropagation();
-					const entryType = item.type === 'directory' ? 'directory' : 'file';
-					const dirPathSegments = normalizeDirPathSegments(parentPath);
-					const rootHandle = getRootDirHandle();
-					const nextState = await toggleHiddenEntry(
-						rootHandle,
-						dirPathSegments,
-						{ type: entryType, path: item.name },
-						(message) => showStatus(message, 'error')
-					);
-					item.isHidden = nextState;
-					setHiddenButtonState(hiddenBtn, nextState, getIsHiddenMode());
-					removeCardFromCurrentView(card, item);
+					hiddenBtn.disabled = true;
+					try {
+						const entryType = item.type === 'directory' ? 'directory' : 'file';
+						const dirPathSegments = normalizeDirPathSegments(parentPath);
+						const rootHandle = getRootDirHandle();
+						const nextState = await toggleHiddenEntry(
+							rootHandle,
+							dirPathSegments,
+							{ type: entryType, path: item.name },
+							(message) => showStatus(message, 'error')
+						);
+						item.isHidden = nextState;
+						setHiddenButtonState(hiddenBtn, nextState, getIsHiddenMode());
+						removeCardFromCurrentView(card, item);
+					} catch (error) {
+						console.error(error);
+					} finally {
+						hiddenBtn.disabled = false;
+					}
 				});
 				thumbnailContainer.appendChild(hiddenBtn);
 			}
@@ -252,19 +259,26 @@ export function createGallery(deps: GalleryDeps) {
 			setFavoriteButtonState(favoriteBtn, !!item.isFavorite);
 			favoriteBtn.addEventListener('click', async (e) => {
 				e.stopPropagation();
-				const entryType = item.type === 'directory' ? 'directory' : 'file';
-				const dirPathSegments = normalizeDirPathSegments(parentPath);
-				const rootHandle = getRootDirHandle();
-				const nextState = await toggleFavoriteEntry(
-					rootHandle,
-					dirPathSegments,
-					{ type: entryType, path: item.name },
-					(message) => showStatus(message, 'error')
-				);
-				item.isFavorite = nextState;
-				setFavoriteButtonState(favoriteBtn, nextState);
-				if (getFavoriteOnly() || getFavoriteFirst() || getIsFavoriteListMode()) {
-					scheduleProcessForCurrentDir(0, true);
+				favoriteBtn.disabled = true;
+				try {
+					const entryType = item.type === 'directory' ? 'directory' : 'file';
+					const dirPathSegments = normalizeDirPathSegments(parentPath);
+					const rootHandle = getRootDirHandle();
+					const nextState = await toggleFavoriteEntry(
+						rootHandle,
+						dirPathSegments,
+						{ type: entryType, path: item.name },
+						(message) => showStatus(message, 'error')
+					);
+					item.isFavorite = nextState;
+					setFavoriteButtonState(favoriteBtn, nextState);
+					if (getFavoriteOnly() || getFavoriteFirst() || getIsFavoriteListMode()) {
+						scheduleProcessForCurrentDir(0, true);
+					}
+				} catch (error) {
+					console.error(error);
+				} finally {
+					favoriteBtn.disabled = false;
 				}
 			});
 			thumbnailContainer.appendChild(favoriteBtn);

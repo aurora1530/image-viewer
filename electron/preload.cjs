@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi', {
+  onBeforeClose: callback => {
+    const listener = async () => {
+      let saved = false;
+      try { saved = await callback(); } catch (error) { console.error(error); }
+      ipcRenderer.send('desktop:ready-to-close', saved);
+    };
+    ipcRenderer.on('desktop:before-close', listener);
+    ipcRenderer.send('desktop:close-handler-ready');
+    return () => ipcRenderer.removeListener('desktop:before-close', listener);
+  },
   onNavigate: callback => {
     const listener = (_event, direction) => callback(direction);
     ipcRenderer.on('desktop:navigate', listener);

@@ -156,7 +156,6 @@ type State = {
   isUiHidden: boolean;
   isUiDockRevealed: boolean;
   currentDisplayImageList: FileSystemFileHandle[];
-  configWriteTimer: ReturnType<typeof setTimeout> | null;
   lastVisitedChild: WeakMap<FileSystemDirectoryHandle, string>;
   directoryCache: WeakMap<FileSystemDirectoryHandle, DirectoryCacheEntry>;
   directoryPreviewCache: WeakMap<FileSystemDirectoryHandle, DirectoryPreviewEntry>;
@@ -189,7 +188,6 @@ export const state: State = {
   isUiHidden: localStorage.getItem('isUiHidden') === '1',
   isUiDockRevealed: false,
   currentDisplayImageList: [],
-  configWriteTimer: null,
   lastVisitedChild: new WeakMap<FileSystemDirectoryHandle, string>(),
   directoryCache: new WeakMap<FileSystemDirectoryHandle, DirectoryCacheEntry>(),
   directoryPreviewCache: new WeakMap<FileSystemDirectoryHandle, DirectoryPreviewEntry>(),

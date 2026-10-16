@@ -15,13 +15,15 @@ import {
 	collectFavoriteFilesFromConfig,
 	ensureConfigNode,
 	getConfigNode,
+	flushRootConfig,
 	getFavoriteKeyForItem,
 	makeFavoriteSet,
 	makeHiddenSet,
 	readRootConfig,
+	reloadRootConfig,
+	saveDirectorySettings,
 	toggleFavoriteEntry,
-	toggleHiddenEntry,
-	writeRootConfig
+	toggleHiddenEntry
 } from './storage';
 import type { ConfigNode } from './storage';
 import {
@@ -66,6 +68,7 @@ function captureNavigationState() {
 		const sameDirectory = directories.length === state.directoryHistory.length
 			&& directories.every((handle, index) => handle === state.directoryHistory[index]);
 		if (!sameDirectory) {
+			await flushRootConfig(getRootDirHandle());
 			clearThumbnailCaches();
 			state.directoryHistory = directories.slice();
 			Object.assign(state, settings, modes);
@@ -149,6 +152,8 @@ function getDisplayPath() {
 }
 
 async function openRootDirectory(dirHandle: FileSystemDirectoryHandle) {
+	await flushRootConfig(getRootDirHandle());
+	await reloadRootConfig(dirHandle);
 	clearForwardHistory();
 	clearThumbnailCaches();
 	recursiveImageCache.clear();
@@ -201,6 +206,7 @@ function createLibraryCard(item: DesktopLibraryItem) {
 
 async function showHome(preserveForwardHistory = false) {
 	if (!isDesktopApp()) return;
+	await flushRootConfig(getRootDirHandle());
 	if (!preserveForwardHistory) clearForwardHistory();
 	state.renderToken++;
 	clearThumbnailCaches();
@@ -347,19 +353,31 @@ function applySettingsFromConfig(config: ConfigNode | null) {
 }
 
 function scheduleSaveCurrentDirectoryConfig() {
-	if (state.configWriteTimer) clearTimeout(state.configWriteTimer);
-	state.configWriteTimer = setTimeout(async () => {
-		if (!state.currentDirHandle) return;
-		const rootHandle = getRootDirHandle();
-		if (!rootHandle) return;
-		const rootConfig = await readRootConfig(rootHandle);
-		const dirPathSegments = getCurrentDirPathSegments();
-		const config = getConfigNode(rootConfig, dirPathSegments, { create: true });
-		if (!config) return;
-		config.settings = { ...config.settings, ...getCurrentSettingsSnapshot() };
-		await writeRootConfig(rootHandle, rootConfig, (message) => showStatus(message, 'error'));
-	}, 250);
+	const rootHandle = getRootDirHandle();
+	if (!rootHandle) return;
+	void saveDirectorySettings(rootHandle, getCurrentDirPathSegments(), getCurrentSettingsSnapshot(),
+		(message) => showStatus(message, 'error'));
 }
+
+// Desktop close waits for pending writes. Browsers get a best-effort early flush.
+window.desktopApi?.onBeforeClose(async () => {
+	try {
+		await flushRootConfig(getRootDirHandle());
+		return true;
+	} catch (error) {
+		console.error(error);
+		showStatus('設定を保存できませんでした。保存先を確認してから再度終了してください。', 'error');
+		return false;
+	}
+});
+document.addEventListener('visibilitychange', () => {
+	if (document.visibilityState === 'hidden') {
+		void flushRootConfig(getRootDirHandle()).catch(error => console.error('設定の保存に失敗:', error));
+	}
+});
+window.addEventListener('pagehide', () => {
+	void flushRootConfig(getRootDirHandle()).catch(error => console.error('設定の保存に失敗:', error));
+});
 
 
 // --- イベントリスナー ---
@@ -452,6 +470,13 @@ DOM.toggleSortBtn.addEventListener('click', async () => {
 DOM.reloadBtn.addEventListener('click', async () => {
 	if (state.directoryHistory.length > 0) {
 		const currentDir = state.directoryHistory[state.directoryHistory.length - 1];
+		try {
+			await reloadRootConfig(getRootDirHandle());
+		} catch (error) {
+			console.error(error);
+			showStatus('設定ファイルを再読み込みできませんでした。', 'error');
+			return;
+		}
 		invalidateDirectoryCache(currentDir);
 		clearThumbnailCaches();
 		recursiveImageCache.clear();

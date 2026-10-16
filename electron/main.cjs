@@ -4,6 +4,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createThumbnailStore } = require('./thumbnail-store.cjs');
 const { serveMedia } = require('./media-protocol.cjs');
+const { writeConfigFile } = require('./config-file.cjs');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'local-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
@@ -135,13 +136,17 @@ function registerIpc() {
   });
   ipcMain.handle('desktop:write-file', async (_event, filePath, data) => {
     const resolved = requireAllowed(filePath);
-    await fs.writeFile(resolved, data);
+    if (path.basename(resolved) === '.image-viewer.json') await writeConfigFile(resolved, data);
+    else await fs.writeFile(resolved, data);
   });
   ipcMain.handle('desktop:exists', async (_event, targetPath, kind) => {
     try {
       const stat = await fs.stat(requireAllowed(targetPath));
       return kind === 'directory' ? stat.isDirectory() : stat.isFile();
-    } catch { return false; }
+    } catch (error) {
+      if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
+      throw error;
+    }
   });
 }
 
@@ -167,6 +172,37 @@ function createWindow() {
     }
   });
   if (devUrl) win.loadURL(devUrl); else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  let readyToClose = false;
+  let closing = false;
+  let hasCloseHandler = false;
+  const onCloseHandlerReady = event => {
+    if (event.sender === win.webContents) hasCloseHandler = true;
+  };
+  const onReadyToClose = (event, saved) => {
+    if (event.sender !== win.webContents || !closing) return;
+    closing = false;
+    if (saved === true) {
+      readyToClose = true;
+      win.close();
+    }
+  };
+  ipcMain.on('desktop:ready-to-close', onReadyToClose);
+  ipcMain.on('desktop:close-handler-ready', onCloseHandlerReady);
+  win.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) hasCloseHandler = false;
+  });
+  win.on('close', event => {
+    if (readyToClose || !hasCloseHandler || win.webContents.isDestroyed() || win.webContents.isCrashed()) return;
+    event.preventDefault();
+    if (!closing) {
+      closing = true;
+      win.webContents.send('desktop:before-close');
+    }
+  });
+  win.on('closed', () => {
+    ipcMain.removeListener('desktop:ready-to-close', onReadyToClose);
+    ipcMain.removeListener('desktop:close-handler-ready', onCloseHandlerReady);
+  });
 }
 
 app.whenReady().then(async () => {

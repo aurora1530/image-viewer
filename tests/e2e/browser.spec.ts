@@ -577,6 +577,44 @@ test('restores saved sorting and filtering when the folder is opened again', asy
   await expect(page.locator('#item-list img[alt="cover.gif"]')).toHaveCount(1);
 });
 
+test('keeps config reads out of search and sorting and reloads only on explicit refresh', async ({ page }) => {
+  await page.locator('#item-list .media-card', { has: page.locator('img[alt="cover.gif"]') }).locator('.favorite-btn').click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem('image-viewer-test-config'))).not.toBeNull();
+  await page.evaluate(() => {
+    type TestFile = { getFile(): Promise<File> };
+    const state = window as unknown as {
+      __imageViewerTestRoot: { entries: Map<string, TestFile> };
+      __configReads: number;
+    };
+    state.__configReads = 0;
+    const file = state.__imageViewerTestRoot.entries.get('.image-viewer.json')!;
+    const original = file.getFile.bind(file);
+    file.getFile = async () => { state.__configReads++; return original(); };
+  });
+  await page.locator('#search-input').fill('cover');
+  await expect(page.locator('#item-list .media-card')).toHaveCount(1);
+  await page.locator('#toggle-sort-btn').click();
+  await expect(page.locator('#toggle-sort-btn')).toContainText('降順');
+  const reads = () => page.evaluate(() => (window as unknown as { __configReads: number }).__configReads);
+  expect(await reads()).toBe(0);
+  await page.locator('#reload-btn').click();
+  await expect.poll(reads).toBe(1);
+});
+
+test('saves settings to the original folder when navigating before the save delay', async ({ page }) => {
+  await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
+  await expect(page.locator('#current-dir-name')).toHaveText('chapter');
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('#toggle-sort-btn')!.click();
+    document.querySelector<HTMLButtonElement>('#up-dir-btn')!.click();
+  });
+  await expect(page.locator('#current-dir-name')).toHaveText('books');
+  await expect.poll(() => page.evaluate(() => {
+    const config = JSON.parse(sessionStorage.getItem('image-viewer-test-config') || '{}');
+    return { child: config.directories?.chapter?.settings.sortOrder, root: config.settings?.sortOrder };
+  })).toEqual({ child: 'desc', root: undefined });
+});
+
 test('preloads decoded neighboring pages and reuses their sources when navigating back', async ({ page }) => {
   await page.locator('#filter-select').selectOption('image');
   await expect.poll(() => page.locator('#item-list .media-card img').evaluateAll(images =>

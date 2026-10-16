@@ -1,8 +1,46 @@
 import { _electron as electron, expect, test } from '@playwright/test';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+test('flushes pending config changes before acknowledging a desktop close request', async () => {
+  const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-config-close-'));
+  const images = path.join(profile, 'images');
+  await mkdir(images);
+  let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  try {
+    const env = Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== undefined)) as Record<string, string>;
+    env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:5173';
+    delete env.ELECTRON_RUN_AS_NODE;
+    app = await electron.launch({
+      executablePath: path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe'),
+      args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`], env
+    });
+    const page = await app.firstWindow();
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#home-view')).toBeVisible();
+    await page.evaluate(root => window.desktopApi!.openRoot(root), images);
+    await page.reload();
+    await page.locator('#recent-roots .library-card').click();
+    await expect(page.locator('#current-dir-name')).toHaveText('images');
+    await expect(page.locator('#status-area')).toContainText('表示できるアイテム');
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('#toggle-sort-btn')!.click();
+    });
+    const saved = await app.evaluate(({ BrowserWindow, ipcMain }) => new Promise<boolean>(resolve => {
+      ipcMain.once('desktop:ready-to-close', (_event, saved) => resolve(saved));
+      BrowserWindow.getAllWindows()[0].webContents.send('desktop:before-close');
+    }));
+    expect(saved).toBe(true);
+    const config = JSON.parse(await readFile(path.join(images, '.image-viewer.json'), 'utf8'));
+    expect(config.version).toBe(3);
+    expect(config.settings.sortOrder).toBe('desc');
+  } finally {
+    await app?.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
 
 for (const bundled of [false, true]) {
 test(`persists the library, generates thumbnails in workers and confines file access (${bundled ? 'bundled' : 'dev'})`, async () => {
