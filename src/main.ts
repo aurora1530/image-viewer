@@ -41,11 +41,75 @@ import {
 	updateViewModeUI
 } from './ui';
 import { chooseNativeDirectory, getMediaSource, isDesktopApp, openNativeDirectory } from './nativeFs';
+import { createNavigationInput } from './navigationInput';
 
 const isFilterType = (value: string): value is FilterType =>
 	value === 'all' || value === 'directory' || value === 'image' || value === 'gif' || value === 'video';
 
 const recursiveImageCache = createRecursiveImageCache();
+
+const forwardHistory: Array<() => Promise<void>> = [];
+let navigationQueue = Promise.resolve();
+
+function clearForwardHistory() {
+	forwardHistory.length = 0;
+}
+
+function captureNavigationState() {
+	const directories = state.directoryHistory.slice();
+	const restoreViewer = viewerController.captureView();
+	const settings = getCurrentSettingsSnapshot();
+	const modes = { isRecursiveMode: state.isRecursiveMode, isFavoriteListMode: state.isFavoriteListMode, isHiddenMode: state.isHiddenMode };
+	const query = state.searchQuery;
+	const scroll = { x: window.scrollX, y: window.scrollY };
+	return async () => {
+		const sameDirectory = directories.length === state.directoryHistory.length
+			&& directories.every((handle, index) => handle === state.directoryHistory[index]);
+		if (!sameDirectory) {
+			clearThumbnailCaches();
+			state.directoryHistory = directories.slice();
+			Object.assign(state, settings, modes);
+			applySettingsFromConfig({ ...ensureConfigNode({}), settings });
+			state.searchQuery = query;
+			DOM.searchInput.value = query;
+			DOM.homeView.classList.add('hidden');
+			DOM.itemList.classList.remove('hidden');
+			DOM.statusArea.classList.remove('hidden');
+			DOM.homeBtn.classList.remove('hidden');
+			await renderActiveDirectoryView(directories[directories.length - 1], { useConfig: false });
+		}
+		window.scrollTo(scroll.x, scroll.y);
+		if (restoreViewer) await restoreViewer();
+	};
+}
+
+function navigate(direction: 'back' | 'forward') {
+	navigationQueue = navigationQueue.then(() => performNavigation(direction));
+	return navigationQueue;
+}
+
+async function performNavigation(direction: 'back' | 'forward') {
+	try {
+		if (direction === 'forward') {
+			const restore = forwardHistory.at(-1);
+			if (!restore) return;
+			await restore();
+			forwardHistory.pop();
+		} else if (DOM.viewer.style.display === 'flex') {
+			forwardHistory.push(captureNavigationState());
+			viewerController.closeViewer();
+		} else if (state.directoryHistory.length > 1) {
+			forwardHistory.push(captureNavigationState());
+			await goUpDirectory();
+		} else if (state.directoryHistory.length === 1 && isDesktopApp()) {
+			forwardHistory.push(captureNavigationState());
+			await showHome(true);
+		}
+	} catch (error) {
+		console.error('移動に失敗:', error);
+		showStatus('前の状態を復元できませんでした。', 'error');
+	}
+}
 
 let clearViewerCache: (() => void) | null = null;
 function clearThumbnailCaches() {
@@ -85,6 +149,7 @@ function getDisplayPath() {
 }
 
 async function openRootDirectory(dirHandle: FileSystemDirectoryHandle) {
+	clearForwardHistory();
 	clearThumbnailCaches();
 	recursiveImageCache.clear();
 	state.directoryHistory = [dirHandle];
@@ -134,8 +199,9 @@ function createLibraryCard(item: DesktopLibraryItem) {
 	return card;
 }
 
-async function showHome() {
+async function showHome(preserveForwardHistory = false) {
 	if (!isDesktopApp()) return;
+	if (!preserveForwardHistory) clearForwardHistory();
 	state.renderToken++;
 	clearThumbnailCaches();
 	recursiveImageCache.clear();
@@ -307,9 +373,9 @@ DOM.selectDirBtn.addEventListener('click', async () => {
 });
 
 DOM.homeSelectDirBtn.addEventListener('click', selectRootDirectory);
-DOM.homeBtn.addEventListener('click', showHome);
+DOM.homeBtn.addEventListener('click', () => { void showHome(); });
 
-DOM.upDirBtn.addEventListener('click', async () => {
+async function goUpDirectory() {
 	if (state.directoryHistory.length > 1) {
 		const current = state.directoryHistory.pop();
 		const parentDirHandle = state.directoryHistory[state.directoryHistory.length - 1];
@@ -320,6 +386,10 @@ DOM.upDirBtn.addEventListener('click', async () => {
 		await renderActiveDirectoryView(parentDirHandle);
 		await scrollToVisitedChild(parentDirHandle);
 	}
+}
+
+DOM.upDirBtn.addEventListener('click', () => {
+	void navigate('back');
 });
 
 DOM.copyPathBtn.addEventListener('click', () => {
@@ -494,15 +564,9 @@ DOM.prevBtn.addEventListener('click', () => {
 DOM.fullscreenBtn.addEventListener('click', toggleFullscreen);
 
 document.addEventListener('keydown', (e) => {
-	if (e.altKey && e.key === 'ArrowLeft') {
+	if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
 		e.preventDefault();
-		if (DOM.viewer.style.display === 'flex') {
-			viewerController.closeViewer();
-		} else if (state.directoryHistory.length > 1) {
-			DOM.upDirBtn.click();
-		} else if (state.directoryHistory.length === 1 && isDesktopApp()) {
-			void showHome();
-		}
+		void navigate(e.key === 'ArrowLeft' ? 'back' : 'forward');
 		return;
 	}
 
@@ -521,6 +585,21 @@ document.addEventListener('keydown', (e) => {
 		case 'ArrowRight': viewerController.navigatePages(-step); break; // 前へ
 	}
 });
+
+const handleNavigationInput = createNavigationInput(direction => { void navigate(direction); });
+window.desktopApi?.onNavigate(direction => { handleNavigationInput(direction, 'command'); });
+
+// Handle XBUTTON1/2 directly, including in Electron. Preventing Chromium's
+// default navigation can also suppress the native app-command notification.
+for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) {
+	document.addEventListener(type, event => {
+		if (event.button !== 3 && event.button !== 4) return;
+		event.preventDefault();
+		if (type === 'mouseup') {
+			handleNavigationInput(event.button === 3 ? 'back' : 'forward', 'mouse');
+		}
+	}, true);
+}
 
 document.addEventListener('fullscreenchange', () => {
 	if (document.fullscreenElement) {
@@ -682,6 +761,7 @@ async function processDirectory(
 
 
 async function enterDirectory(dirHandle: FileSystemDirectoryHandle) {
+	clearForwardHistory();
 	const current = state.directoryHistory[state.directoryHistory.length - 1];
 	rememberVisitedChild(current, dirHandle.name);
 	state.directoryHistory.push(dirHandle);
@@ -731,6 +811,7 @@ async function processDirectoryRecursive(dirHandle: FileSystemDirectoryHandle) {
 			img.className = 'scan-preview';
 			img.title = '画像を開く';
 			img.addEventListener('click', () => {
+				clearForwardHistory();
 				void viewerController.openViewer(images[0].parentHandle, 0, [images[0].handle]);
 			});
 			DOM.statusArea.appendChild(img);
@@ -1008,8 +1089,8 @@ const gallery = createGallery({
 	getLazyLoadObserver: () => state.lazyLoadObserver,
 	getCurrentDisplayImageList: () => state.currentDisplayImageList,
 	setCurrentDisplayImageList: (list) => { state.currentDisplayImageList = list; },
-	openViewer: viewerController.openViewer,
-	openVideoPlayer: viewerController.openVideoPlayer,
+	openViewer: (...args) => { clearForwardHistory(); return viewerController.openViewer(...args); },
+	openVideoPlayer: (...args) => { clearForwardHistory(); return viewerController.openVideoPlayer(...args); },
 	enterDirectory,
 	getDirectoryPreviewUrl,
 	setFavoriteButtonState: toolbar.setFavoriteButtonState,

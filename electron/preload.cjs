@@ -1,6 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi', {
+  onNavigate: callback => {
+    const listener = (_event, direction) => callback(direction);
+    ipcRenderer.on('desktop:navigate', listener);
+    return () => ipcRenderer.removeListener('desktop:navigate', listener);
+  },
   readThumbnail: path => ipcRenderer.invoke('desktop:read-thumbnail', path),
   writeThumbnail: (path, version, bytes) => ipcRenderer.invoke('desktop:write-thumbnail', path, version, bytes),
   chooseDirectory: () => ipcRenderer.invoke('desktop:choose-directory'),

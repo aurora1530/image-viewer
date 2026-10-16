@@ -69,6 +69,40 @@ test(`persists the library, generates thumbnails in workers and confines file ac
     await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
     await page.keyboard.press('Alt+ArrowLeft');
     await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+    await page.keyboard.press('Alt+ArrowLeft');
+    await expect(page.locator('#home-view')).toBeVisible();
+    const mouseCommand = async (command: string) => {
+      await app!.evaluate(({ BrowserWindow }, command) => {
+        BrowserWindow.getAllWindows()[0].emit('app-command', {} as Electron.Event, command);
+      }, command);
+    };
+    await mouseCommand('browser-forward');
+    await expect(page.locator('#home-view')).toBeHidden();
+    await expect(page.locator('#item-list .media-card')).toHaveCount(1);
+    await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+    await mouseCommand('browser-forward');
+    await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+    await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
+    // Send trusted side-button input through Chromium, rather than emitting
+    // app-command ourselves: a physical click need not produce app-command.
+    const mouseSession = await page.context().newCDPSession(page);
+    const sideClick = async (button: 'back' | 'forward') => {
+      await mouseSession.send('Input.dispatchMouseEvent', {
+        type: 'mousePressed', x: 400, y: 300, button, buttons: button === 'back' ? 8 : 16, clickCount: 1
+      });
+      await mouseSession.send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased', x: 400, y: 300, button, buttons: 0, clickCount: 1
+      });
+    };
+    await sideClick('back');
+    await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+    await expect(page.locator('#home-view')).toBeHidden();
+    await sideClick('forward');
+    await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+    await sideClick('back');
+    await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+    await expect(page.locator('#home-view')).toBeHidden();
+    await mouseSession.detach();
 
     const result = await page.evaluate(async ({ allowed, forbidden, escaped }) => {
       const api = window.desktopApi!;
@@ -201,6 +235,12 @@ test(`persists the library, generates thumbnails in workers and confines file ac
       await expect(video).toHaveJSProperty('currentTime', time);
       await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(2);
     }
+    await page.keyboard.press('Alt+ArrowLeft');
+    await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+    await mouseCommand('browser-forward');
+    await expect(video).toBeVisible();
+    await expect(video).toHaveJSProperty('currentTime', 0.5);
+    await expect(video).toHaveJSProperty('paused', true);
     await video.evaluate(element => (element as HTMLVideoElement).play());
     await expect.poll(() => video.evaluate(element => (element as HTMLVideoElement).currentTime)).toBeGreaterThan(0.5);
     await page.keyboard.press('Escape');

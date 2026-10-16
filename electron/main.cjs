@@ -161,6 +161,11 @@ function createWindow() {
     }
   });
   const devUrl = process.env.VITE_DEV_SERVER_URL || (app.isPackaged ? null : 'http://127.0.0.1:5173');
+  win.on('app-command', (_event, command) => {
+    if (command === 'browser-backward' || command === 'browser-forward') {
+      win.webContents.send('desktop:navigate', command === 'browser-backward' ? 'back' : 'forward');
+    }
+  });
   if (devUrl) win.loadURL(devUrl); else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 

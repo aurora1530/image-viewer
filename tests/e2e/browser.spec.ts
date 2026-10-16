@@ -141,6 +141,70 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('#current-dir-name')).toHaveText('books');
 });
 
+test('back and forward restore folders and viewer pages and discard a branched history', async ({ page }) => {
+  await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
+  await expect(page.locator('#current-dir-name')).toHaveText('chapter');
+  await page.locator('#search-input').fill('nested');
+  await expect(page.locator('#item-list .media-card')).toHaveCount(1);
+  await page.locator('#item-list .media-card').click();
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+  await page.keyboard.press('Alt+ArrowRight'); // No forward entry must not turn a page.
+  await expect(page.locator('#page-counter')).toContainText('1 / 1');
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.locator('#current-dir-name')).toHaveText('books');
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.locator('#current-dir-name')).toHaveText('chapter');
+  await expect(page.locator('#search-input')).toHaveValue('nested');
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.locator('#current-dir-name')).toHaveText('books');
+  await page.locator('#item-list img[alt="10.png"]').click();
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+  await page.locator('#toggle-view-btn').click();
+  await page.keyboard.press('ArrowLeft');
+  const counter = await page.locator('#page-counter').textContent();
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.locator('#page-counter')).toHaveText(counter!);
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#page-counter')).toHaveText(counter!);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.locator('#current-dir-name')).toHaveText('books');
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+});
+
+test('mouse buttons 3 and 4 navigate once per click in the browser', async ({ page }) => {
+  await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
+  await expect(page.locator('#current-dir-name')).toHaveText('chapter');
+  await page.locator('#item-list .media-card').click();
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+  const mouseNavigation = (button: number) => page.evaluate(button => {
+    for (const type of ['mousedown', 'mouseup', 'auxclick']) {
+      const event = new MouseEvent(type, { button, bubbles: true, cancelable: true });
+      if (document.dispatchEvent(event)) throw new Error(`${type} default was not prevented`);
+    }
+  }, button);
+  await mouseNavigation(3);
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+  await expect(page.locator('#current-dir-name')).toHaveText('chapter');
+  await mouseNavigation(3);
+  await expect(page.locator('#current-dir-name')).toHaveText('books');
+  await mouseNavigation(4);
+  await expect(page.locator('#current-dir-name')).toHaveText('chapter');
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+  await mouseNavigation(4);
+  await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
+});
+
 test('keeps thumbnails visible after scrolling through a large folder and back', async ({ page }) => {
   await page.evaluate(() => {
     const state = window as unknown as { __imageViewerTestRoot: { file(name: string): void; entries: Map<string, { getFile(): Promise<File> }> }; __firstImageReads: number };

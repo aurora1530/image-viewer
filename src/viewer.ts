@@ -83,11 +83,47 @@ export function createViewer(deps: ViewerDeps) {
 	let displayToken = 0;
 	let mediaMode: 'closed' | 'image' | 'video' = 'closed';
 	let videoSource: { url: string; objectUrl: boolean } | null = null;
+	let currentVideo: FileSystemFileHandle | null = null;
+	let currentImageDirectory: FileSystemDirectoryHandle | null = null;
+
+	function captureView(): (() => Promise<void>) | null {
+		if (mediaMode === 'video' && currentVideo) {
+			const handle = currentVideo;
+			const time = viewerVideo.currentTime;
+			const paused = viewerVideo.paused;
+			return async () => {
+				await openVideoPlayer(handle);
+				const session = viewerSession;
+				const restorePlayback = () => {
+					if (session !== viewerSession) return;
+					viewerVideo.currentTime = time;
+					if (paused) viewerVideo.pause();
+				};
+				if (viewerVideo.readyState >= 1) restorePlayback();
+				else viewerVideo.addEventListener('loadedmetadata', restorePlayback, { once: true });
+			};
+		}
+		if (mediaMode !== 'image' || !currentImageDirectory) return null;
+		const directory = currentImageDirectory;
+		const files = getCurrentImageFiles().slice();
+		const index = getCurrentImageIndex();
+		const offset = getPageOffset();
+		const single = getIsSinglePageView();
+		return async () => {
+			// The captured list avoids rescanning and preserves recursive/favorite lists.
+			await openViewer(directory, index, files);
+			setPageOffset(offset);
+			setIsSinglePageView(single);
+			updateViewModeUI();
+			await displayPages();
+		};
+	}
 
 	function resetMedia() {
 		viewerSession++;
 		displayToken++;
 		mediaMode = 'closed';
+		currentVideo = null;
 		leftPageImg.removeAttribute('src');
 		rightPageImg.removeAttribute('src');
 		leftPageImg.dataset.url = '';
@@ -114,6 +150,7 @@ export function createViewer(deps: ViewerDeps) {
 
 	async function openViewer(dirHandle: FileSystemDirectoryHandle, startIndex: number, overrideImageList: FileSystemFileHandle[] | null = null) {
 		const session = resetMedia();
+		currentImageDirectory = dirHandle;
 		mediaMode = 'image';
 		deps.setBackgroundWorkPaused?.(true);
 		try {
@@ -170,6 +207,7 @@ export function createViewer(deps: ViewerDeps) {
 	async function openVideoPlayer(videoHandle: FileSystemFileHandle) {
 		const session = resetMedia();
 		mediaMode = 'video';
+		currentVideo = videoHandle;
 		imageCache.clear();
 		deps.setBackgroundWorkPaused?.(true);
 		try {
@@ -313,6 +351,7 @@ export function createViewer(deps: ViewerDeps) {
 	}
 
 	return {
+		captureView,
 		clearCache: () => imageCache.clear(),
 		openViewer,
 		openVideoPlayer,
