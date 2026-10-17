@@ -18,10 +18,9 @@ import {
 import type { ConfigNode } from '../services/storage';
 import {
   clearThumbnailCaches as clearDirectoryThumbnailCaches,
-  ensureDirectoryCache,
-  invalidateDirectoryCache,
   getDirectoryPreview,
-} from '../services/directoryCache';
+} from '../services/directoryPreview';
+import { ensureDirectoryCache, invalidateDirectoryCache } from '../services/directoryCache';
 import { createDirectoryViews } from './createDirectoryViews';
 import { thumbnailCache } from '../services/thumbnailCache';
 import {

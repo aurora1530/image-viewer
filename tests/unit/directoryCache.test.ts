@@ -2,9 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildDirectoryCache,
   ensureDirectoryCache,
-  getDirectoryPreview,
   invalidateDirectoryCache,
 } from '../../src/services/directoryCache';
+import {
+  getDirectoryPreview,
+  selectDirectoryPreviewFile,
+} from '../../src/services/directoryPreview';
 import { thumbnailCache } from '../../src/services/thumbnailCache';
 import { state } from '../../src/services/directoryResources';
 import { MemoryDirectory } from '../helpers/memoryFs';
@@ -72,7 +75,24 @@ describe('directory cache and previews', () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   });
 
-  it.each(['__0.jpg', 'ICON.PNG', 'thumbnail.webp'])(
+  it('selects a file independently of the gallery listing and thumbnail generation', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('ordinary.jpg');
+    const listing = await ensureDirectoryCache(root.asHandle());
+    const preferred = root.file('__0.png');
+    const read = vi.spyOn(preferred, 'getFile');
+    const thumbnails = vi.spyOn(thumbnailCache, 'get');
+    expect(await selectDirectoryPreviewFile(root.asHandle())).toEqual({
+      handle: preferred.asHandle(),
+      path: ['__0.png'],
+    });
+    expect(await ensureDirectoryCache(root.asHandle())).toBe(listing);
+    expect(listing.items.map((item) => item.name)).toEqual(['ordinary.jpg']);
+    expect(read).not.toHaveBeenCalled();
+    expect(thumbnails).not.toHaveBeenCalled();
+  });
+
+  it.each(['__0.png', 'ICON.PNG', 'thumbnail.png'])(
     'selects an added %s despite a cached listing, previous preview and persisted path',
     async (name) => {
       const root = new MemoryDirectory('root');
