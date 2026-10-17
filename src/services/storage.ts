@@ -18,7 +18,57 @@ export type ConfigNode = {
   settings: Record<string, unknown>;
   directories: Record<string, ConfigNode>;
   version?: number;
+  directoryThumbnail?: { path: string[]; expiresAt: number };
 };
+
+export type DirectoryConfigLocation = {
+  rootHandle: FileSystemDirectoryHandle;
+  path: string[];
+};
+
+export async function readDirectoryThumbnail(location: DirectoryConfigLocation) {
+  try {
+    const node = getConfigNode(await readRootConfig(location.rootHandle), location.path);
+    const cache = node?.directoryThumbnail;
+    if (
+      cache &&
+      Array.isArray(cache.path) &&
+      cache.path.length > 0 &&
+      cache.path.every(
+        (part) =>
+          typeof part === 'string' &&
+          !!part &&
+          !/[\\/]/.test(part) &&
+          part !== '.' &&
+          part !== '..',
+      ) &&
+      Number.isFinite(cache.expiresAt) &&
+      cache.expiresAt > Date.now()
+    )
+      return cache;
+  } catch {
+    // Optional cache failures must not prevent previews or overwrite unreadable settings.
+  }
+  return null;
+}
+
+export async function saveDirectoryThumbnail(
+  location: DirectoryConfigLocation,
+  path: string[] | null,
+): Promise<void> {
+  try {
+    const store = getConfigStore(location.rootHandle);
+    if (!path && !getConfigNode(await store.read(), location.path)?.directoryThumbnail) return;
+    await store.update((root) => {
+      const node = getConfigNode(root, location.path, { create: true })!;
+      if (path) node.directoryThumbnail = { path, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 };
+      else delete node.directoryThumbnail;
+    });
+    store.scheduleSave((error) => console.warn('サムネイル探索結果の保存に失敗しました。', error));
+  } catch {
+    // Caching is best effort, including for read-only or invalid config files.
+  }
+}
 
 export type FavoriteFileHandleEntry = {
   handle: FileSystemFileHandle;

@@ -11,6 +11,8 @@ import { listDirectoryEntries } from '../platform/nativeFs';
 import { thumbnailCache } from './thumbnailCache';
 import type { ThumbnailRequest } from './thumbnailQueue';
 import { originalImageCache } from './originalImageCache';
+import { readDirectoryThumbnail, saveDirectoryThumbnail } from './storage';
+import type { DirectoryConfigLocation } from './storage';
 type CacheEntry = DirectoryCacheEntry;
 type CacheItem = DirectoryCacheItem;
 
@@ -95,83 +97,82 @@ export function invalidateDirectoryCache(dirHandle: FileSystemDirectoryHandle): 
   state.directoryPreviewCache.delete(dirHandle);
 }
 
+type ImageSelection = { handle: FileSystemFileHandle; path: string[] };
+
 async function findFirstImageHandle(
   dirHandle: FileSystemDirectoryHandle,
-): Promise<FileSystemFileHandle | null> {
+  location?: DirectoryConfigLocation,
+): Promise<ImageSelection | null> {
   const preferredBases = ['__0', 'icon', 'thumbnail'];
   const preferredNames = new Set(
     preferredBases.flatMap((base) => CONFIG.IMAGE_EXTENSIONS.map((ext) => `${base}${ext}`)),
   );
-
-  // 既に一覧を読んだフォルダでは追加のファイル確認を行わない。
   const cached = state.directoryCache.get(dirHandle);
-  if (cached && cached.items) {
-    const directPreferred = cached.items.find(
-      (i): i is DirectoryCacheImageItem => isImageItem(i) && preferredNames.has(i.nameLower),
-    );
-    if (directPreferred) return directPreferred.handle;
-    const directAny = cached.items.find((i): i is DirectoryCacheImageItem => isImageItem(i));
-    if (directAny) return directAny.handle;
-    const pdf = cached.items.find((item) => item.type === 'pdf');
-    if (pdf && pdf.type === 'pdf') return pdf.handle;
-    const firstDir = cached.items.find((i): i is DirectoryCacheDirectoryItem => isDirectoryItem(i));
-    if (firstDir) {
-      return findFirstImageHandle(firstDir.handle);
-    }
-  }
-
-  // ブラウザのフォルダハンドルでは、代表画像の直接取得を先に試す。
-  // デスクトップでは候補ごとにIPCが必要なため、一度の一覧取得を使う。
-  if (!dirHandle.nativePath) {
+  // Browser handles can find an explicit cover without listing a large directory.
+  // Desktop handles use one listing instead of an IPC request for every candidate.
+  if (!cached && !dirHandle.nativePath) {
     for (const base of preferredBases) {
       for (const ext of CONFIG.IMAGE_EXTENSIONS) {
         try {
-          const fh = await dirHandle.getFileHandle(`${base}${ext}`);
-          if (fh) return fh;
+          const handle = await dirHandle.getFileHandle(`${base}${ext}`);
+          return { handle, path: [handle.name] };
         } catch {
-          /* ignore missing */
+          // Missing preferred names are expected.
         }
       }
     }
   }
+  const items = cached?.items ?? (await buildDirectoryCache(dirHandle)).items;
+  const preferred = items.find(
+    (item): item is DirectoryCacheImageItem =>
+      isImageItem(item) && preferredNames.has(item.nameLower),
+  );
+  if (preferred) return { handle: preferred.handle, path: [preferred.name] };
 
-  // キャッシュが無い or 不足している場合は実際に走査
-  let firstSubDir: FileSystemDirectoryHandle | null = null;
-  let firstImage: FileSystemFileHandle | null = null;
-  try {
-    const tLabel = CONFIG.ENABLE_DEBUG_LOGS
-      ? `findFirstImageHandle:${dirHandle.name}-${Date.now()}`
-      : null;
-    if (tLabel) console.time(tLabel);
-    for (const entry of await listDirectoryEntries(dirHandle)) {
-      if (
-        isFileHandle(entry) &&
-        (isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS) || /\.pdf$/i.test(entry.name))
-      ) {
-        const lower = entry.name.toLowerCase();
-        if (preferredNames.has(lower)) {
-          if (tLabel) console.timeEnd(tLabel);
-          return entry;
+  if (location) {
+    const previous = await readDirectoryThumbnail(location);
+    if (previous) {
+      try {
+        const path = previous.path;
+        const name = path[path.length - 1];
+        if (isImageFileName(name, CONFIG.IMAGE_EXTENSIONS) || /\.pdf$/i.test(name)) {
+          let parent = dirHandle;
+          for (const segment of path.slice(0, -1))
+            parent = await parent.getDirectoryHandle(segment);
+          const handle = await parent.getFileHandle(name);
+          return { handle, path };
         }
-        if (!firstImage) firstImage = entry;
-      }
-      if (!firstSubDir && isDirectoryHandle(entry)) {
-        firstSubDir = entry;
+      } catch {
+        // A removed or renamed source falls back to the normal search.
       }
     }
-    if (tLabel) console.timeEnd(tLabel);
-  } catch (e) {
-    console.error(`プレビュー用画像探索エラー (${dirHandle.name}):`, e);
   }
 
-  if (firstImage) return firstImage;
-  if (firstSubDir) return findFirstImageHandle(firstSubDir);
-  return null;
+  // Keep the existing fallback: direct media, then only the first subdirectory.
+  const direct = cached
+    ? (items.find(isImageItem) ?? items.find((item) => item.type === 'pdf'))
+    : items.find((item) => item.type === 'image' || item.type === 'pdf');
+  let result: ImageSelection | null = null;
+  if (direct) {
+    result = { handle: direct.handle, path: [direct.name] };
+  } else {
+    const child = items.find(isDirectoryItem);
+    if (child) {
+      const selected = await findFirstImageHandle(
+        child.handle,
+        location ? { ...location, path: [...location.path, child.name] } : undefined,
+      );
+      if (selected) result = { handle: selected.handle, path: [child.name, ...selected.path] };
+    }
+  }
+  if (location) await saveDirectoryThumbnail(location, result?.path ?? null);
+  return result;
 }
 
 export async function getDirectoryPreviewUrl(
   dirHandle: FileSystemDirectoryHandle,
   request: ThumbnailRequest = {},
+  location?: DirectoryConfigLocation,
 ): Promise<string | null> {
   const previewCache = state.directoryPreviewCache;
   const cached = previewCache.get(dirHandle);
@@ -181,7 +182,8 @@ export async function getDirectoryPreviewUrl(
   }
 
   if (request.shouldContinue?.() === false) return null;
-  const handle = await findFirstImageHandle(dirHandle);
+  const selected = await findFirstImageHandle(dirHandle, location);
+  const handle = selected?.handle;
   if (!handle || request.shouldContinue?.() === false) return null;
   try {
     const tLabel = CONFIG.ENABLE_DEBUG_LOGS ? `previewGen:${dirHandle.name}-${Date.now()}` : null;

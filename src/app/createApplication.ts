@@ -444,7 +444,16 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
         getPriority: () => number,
       ) => thumbnailCache.get(handle, shouldContinue, getPriority),
       invalidateThumbnail: (handle: FileSystemFileHandle) => thumbnailCache.invalidate(handle),
-      getDirectoryPreview: getDirectoryPreviewUrl,
+      getDirectoryPreview: (handle, request) => {
+        const rootHandle = getRootDirHandle();
+        return getDirectoryPreviewUrl(
+          handle,
+          request,
+          rootHandle
+            ? { rootHandle, path: [...getCurrentDirPathSegments(), handle.name] }
+            : undefined,
+        );
+      },
       getMediaSource,
     } satisfies MediaServices,
   };
