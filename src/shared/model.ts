@@ -48,10 +48,6 @@ export type DirectoryCacheEntry = {
   sorted: Partial<Record<SortOrder, DirectoryCacheItem[]>>;
 };
 
-export type DirectoryPreviewEntry = {
-  url: string;
-};
-
 export const CONFIG = {
   IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic'],
   VIDEO_EXTENSIONS: ['.mp4', '.webm', '.mov', '.ogg'],

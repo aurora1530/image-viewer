@@ -20,7 +20,7 @@ import {
   clearThumbnailCaches as clearDirectoryThumbnailCaches,
   ensureDirectoryCache,
   invalidateDirectoryCache,
-  getDirectoryPreviewUrl,
+  getDirectoryPreview,
 } from '../services/directoryCache';
 import { createDirectoryViews } from './createDirectoryViews';
 import { thumbnailCache } from '../services/thumbnailCache';
@@ -462,7 +462,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       invalidateThumbnail: (handle: FileSystemFileHandle) => thumbnailCache.invalidate(handle),
       getDirectoryPreview: (handle, request) => {
         const rootHandle = getRootDirHandle();
-        return getDirectoryPreviewUrl(
+        return getDirectoryPreview(
           handle,
           request,
           rootHandle

@@ -31,9 +31,6 @@ const isDirectoryItem = (item: CacheItem): item is DirectoryCacheDirectoryItem =
 export function clearThumbnailCaches(): void {
   thumbnailCache.clear();
   originalImageCache.clear();
-  state.directoryPreviewCache = new WeakMap();
-  for (const url of state.previewUrls) URL.revokeObjectURL(url);
-  state.previewUrls.clear();
 }
 
 export async function buildDirectoryCache(
@@ -76,25 +73,12 @@ export async function ensureDirectoryCache(
   if (!entry || forceRefresh) {
     entry = await buildDirectoryCache(dirHandle);
     state.directoryCache.set(dirHandle, entry);
-    // プレビューキャッシュも無効化
-    const prev = state.directoryPreviewCache.get(dirHandle);
-    if (prev && prev.url) {
-      URL.revokeObjectURL(prev.url);
-      state.previewUrls.delete(prev.url);
-    }
-    state.directoryPreviewCache.delete(dirHandle);
   }
   return entry;
 }
 
 export function invalidateDirectoryCache(dirHandle: FileSystemDirectoryHandle): void {
-  const entry = state.directoryPreviewCache.get(dirHandle);
-  if (entry && entry.url) {
-    URL.revokeObjectURL(entry.url);
-    state.previewUrls.delete(entry.url);
-  }
   state.directoryCache.delete(dirHandle);
-  state.directoryPreviewCache.delete(dirHandle);
 }
 
 type ImageSelection = { handle: FileSystemFileHandle; path: string[] };
@@ -104,30 +88,20 @@ async function findFirstImageHandle(
   location?: DirectoryConfigLocation,
 ): Promise<ImageSelection | null> {
   const preferredBases = ['__0', 'icon', 'thumbnail'];
-  const preferredNames = new Set(
-    preferredBases.flatMap((base) => CONFIG.IMAGE_EXTENSIONS.map((ext) => `${base}${ext}`)),
+  const preferredNames = preferredBases.flatMap((base) =>
+    CONFIG.IMAGE_EXTENSIONS.map((ext) => `${base}${ext}`),
   );
-  const cached = state.directoryCache.get(dirHandle);
-  // Browser handles can find an explicit cover without listing a large directory.
-  // Desktop handles use one listing instead of an IPC request for every candidate.
-  if (!cached && !dirHandle.nativePath) {
-    for (const base of preferredBases) {
-      for (const ext of CONFIG.IMAGE_EXTENSIONS) {
-        try {
-          const handle = await dirHandle.getFileHandle(`${base}${ext}`);
-          return { handle, path: [handle.name] };
-        } catch {
-          // Missing preferred names are expected.
-        }
-      }
-    }
-  }
-  const items = cached?.items ?? (await buildDirectoryCache(dirHandle)).items;
-  const preferred = items.find(
-    (item): item is DirectoryCacheImageItem =>
-      isImageItem(item) && preferredNames.has(item.nameLower),
-  );
-  if (preferred) return { handle: preferred.handle, path: [preferred.name] };
+  // Selection must see newly added covers, even when the gallery listing is cached.
+  const items = (await buildDirectoryCache(dirHandle)).items;
+  const preferred = preferredNames
+    .map((name) =>
+      items.find(
+        (item): item is DirectoryCacheImageItem => isImageItem(item) && item.nameLower === name,
+      ),
+    )
+    .find((item) => item !== undefined);
+  if (preferred)
+    return rememberPreferred({ handle: preferred.handle, path: [preferred.name] }, location);
 
   if (location) {
     const previous = await readDirectoryThumbnail(location);
@@ -149,9 +123,7 @@ async function findFirstImageHandle(
   }
 
   // Keep the existing fallback: direct media, then only the first subdirectory.
-  const direct = cached
-    ? (items.find(isImageItem) ?? items.find((item) => item.type === 'pdf'))
-    : items.find((item) => item.type === 'image' || item.type === 'pdf');
+  const direct = items.find((item) => item.type === 'image' || item.type === 'pdf');
   let result: ImageSelection | null = null;
   if (direct) {
     result = { handle: direct.handle, path: [direct.name] };
@@ -169,39 +141,39 @@ async function findFirstImageHandle(
   return result;
 }
 
-export async function getDirectoryPreviewUrl(
+async function rememberPreferred(
+  selected: ImageSelection,
+  location?: DirectoryConfigLocation,
+): Promise<ImageSelection> {
+  if (location) {
+    const previous = await readDirectoryThumbnail(location);
+    if (previous?.path.length !== 1 || previous.path[0] !== selected.path[0])
+      await saveDirectoryThumbnail(location, selected.path);
+  }
+  return selected;
+}
+
+export async function getDirectoryPreview(
   dirHandle: FileSystemDirectoryHandle,
   request: ThumbnailRequest = {},
   location?: DirectoryConfigLocation,
-): Promise<string | null> {
-  const previewCache = state.directoryPreviewCache;
-  const cached = previewCache.get(dirHandle);
-  if (cached && cached.url) {
-    if (CONFIG.ENABLE_DEBUG_LOGS) console.log(`[preview cache hit] ${dirHandle.name}`);
-    return cached.url;
-  }
-
+): Promise<{ url: string; objectUrl: boolean } | null> {
   if (request.shouldContinue?.() === false) return null;
   const selected = await findFirstImageHandle(dirHandle, location);
-  const handle = selected?.handle;
-  if (!handle || request.shouldContinue?.() === false) return null;
+  if (!selected || request.shouldContinue?.() === false) return null;
   try {
-    const tLabel = CONFIG.ENABLE_DEBUG_LOGS ? `previewGen:${dirHandle.name}-${Date.now()}` : null;
-    if (tLabel) console.time(tLabel);
-    const source = await thumbnailCache.get(handle, request.shouldContinue, request.getPriority);
-    if (!source) return null;
-    const url = source.url;
-    if (previewCache !== state.directoryPreviewCache) {
-      if (source.objectUrl) URL.revokeObjectURL(url);
+    const source = await thumbnailCache.get(
+      selected.handle,
+      request.shouldContinue,
+      request.getPriority,
+    );
+    if (request.shouldContinue?.() === false) {
+      if (source?.objectUrl) URL.revokeObjectURL(source.url);
       return null;
     }
-    previewCache.set(dirHandle, { url });
-    state.previewUrls.add(url);
-    if (CONFIG.ENABLE_DEBUG_LOGS) console.log(`[preview set] ${dirHandle.name}`);
-    if (tLabel) console.timeEnd(tLabel);
-    return url;
+    return source;
   } catch (e) {
-    console.error(`プレビューURL生成失敗 (${dirHandle.name}):`, e);
+    console.error(`プレビュー生成失敗 (${dirHandle.name}):`, e);
     return null;
   }
 }

@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildDirectoryCache,
   ensureDirectoryCache,
-  getDirectoryPreviewUrl,
+  getDirectoryPreview,
   invalidateDirectoryCache,
 } from '../../src/services/directoryCache';
+import { thumbnailCache } from '../../src/services/thumbnailCache';
 import { state } from '../../src/services/directoryResources';
 import { MemoryDirectory } from '../helpers/memoryFs';
 import { flushRootConfig, readRootConfig } from '../../src/services/storage';
@@ -16,8 +17,6 @@ vi.mock('../../src/services/thumbnailCache', async () => {
 
 beforeEach(() => {
   state.directoryCache = new WeakMap();
-  state.directoryPreviewCache = new WeakMap();
-  state.previewUrls.clear();
   vi.stubGlobal(
     'URL',
     Object.assign(URL, {
@@ -55,23 +54,73 @@ describe('directory cache and previews', () => {
     expect(refreshed.imageCount).toBe(2);
   });
 
-  it('prefers a named thumbnail and releases its URL on invalidation', async () => {
+  it('selects the preferred file before requesting its thumbnail on every call', async () => {
     const root = new MemoryDirectory('root');
     root.file('ordinary.jpg');
-    root.file('icon.png');
-    const first = await getDirectoryPreviewUrl(root.asHandle());
-    expect(first).toBe('blob:preview');
-    expect(await getDirectoryPreviewUrl(root.asHandle())).toBe(first);
-    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    const preferred = root.file('icon.png');
+    const get = vi.spyOn(thumbnailCache, 'get');
+    const first = await getDirectoryPreview(root.asHandle());
+    expect(first).toEqual({ url: 'blob:preview', objectUrl: true });
+    await getDirectoryPreview(root.asHandle());
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls.map(([handle]) => handle)).toEqual([
+      preferred.asHandle(),
+      preferred.asHandle(),
+    ]);
     invalidateDirectoryCache(root.asHandle());
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
-    expect(state.previewUrls.has('blob:preview')).toBe(false);
+    // The caller owns each URL; invalidating a listing must not revoke displayed URLs.
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+  });
+
+  it.each(['__0.jpg', 'ICON.PNG', 'thumbnail.webp'])(
+    'selects an added %s despite a cached listing, previous preview and persisted path',
+    async (name) => {
+      const root = new MemoryDirectory('root');
+      const old = root.file('ordinary.jpg');
+      const location = { rootHandle: root.asHandle(), path: [] };
+      const get = vi.spyOn(thumbnailCache, 'get');
+      const listing = await ensureDirectoryCache(root.asHandle());
+      await getDirectoryPreview(root.asHandle(), {}, location);
+      expect(get.mock.calls.at(-1)?.[0]).toBe(old.asHandle());
+      const preferred = root.file(name);
+      await getDirectoryPreview(root.asHandle(), {}, location);
+      expect(get.mock.calls.at(-1)?.[0]).toBe(preferred.asHandle());
+      expect(await ensureDirectoryCache(root.asHandle())).toBe(listing);
+      await flushRootConfig(root.asHandle());
+      expect((await readRootConfig(root.asHandle())).directoryThumbnail?.path).toEqual([name]);
+      root.entries.delete(name);
+      await getDirectoryPreview(root.asHandle(), {}, location);
+      expect(get.mock.calls.at(-1)?.[0]).toBe(old.asHandle());
+      await flushRootConfig(root.asHandle());
+    },
+  );
+
+  it('prefers __0 over icon and thumbnail regardless of enumeration order or case', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('thumbnail.jpg');
+    root.file('icon.jpg');
+    const cover = root.file('__0.PNG');
+    const get = vi.spyOn(thumbnailCache, 'get');
+    await getDirectoryPreview(root.asHandle());
+    expect(get.mock.calls.at(-1)?.[0]).toBe(cover.asHandle());
+  });
+
+  it('releases a generated URL if the request is cancelled during generation', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('cover.jpg');
+    let active = true;
+    vi.spyOn(thumbnailCache, 'get').mockImplementationOnce(() => {
+      active = false;
+      return Promise.resolve({ url: 'blob:cancelled', objectUrl: true });
+    });
+    expect(await getDirectoryPreview(root.asHandle(), { shouldContinue: () => active })).toBeNull();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:cancelled');
   });
 
   it('returns null when a directory has no image, including below children', async () => {
     const root = new MemoryDirectory('root');
     root.directory('child').file('video.mp4');
-    expect(await getDirectoryPreviewUrl(root.asHandle())).toBeNull();
+    expect(await getDirectoryPreview(root.asHandle())).toBeNull();
   });
 
   it('persists a relative descendant path and reuses it without scanning descendants or extending expiry', async () => {
@@ -83,7 +132,7 @@ describe('directory cache and previews', () => {
     const location = { rootHandle: root.asHandle(), path: ['album'] };
     const now = Date.now();
     vi.spyOn(Date, 'now').mockReturnValue(now);
-    await getDirectoryPreviewUrl(folder.asHandle(), {}, location);
+    await getDirectoryPreview(folder.asHandle(), {}, location);
     await flushRootConfig(root.asHandle());
     const text = await (await (await root.getFileHandle('.image-viewer.json')).getFile()).text();
     const saved = JSON.parse(text) as {
@@ -101,7 +150,7 @@ describe('directory cache and previews', () => {
     reopenedChild.entries.set(image.name, image);
     const scan = vi.spyOn(reopenedChild, 'values');
     vi.mocked(Date.now).mockReturnValue(now + 1000);
-    await getDirectoryPreviewUrl(
+    await getDirectoryPreview(
       reopenedFolder.asHandle(),
       {},
       { rootHandle: reopened.asHandle(), path: ['album'] },
@@ -137,7 +186,7 @@ describe('directory cache and previews', () => {
       const preferred = scenario === 'preferred' ? root.file('ICON.PNG') : null;
       const files = [newest, old, ...(preferred ? [preferred] : [])];
       const reads = files.map((file) => vi.spyOn(file, 'getFile'));
-      await getDirectoryPreviewUrl(root.asHandle(), {}, { rootHandle: root.asHandle(), path: [] });
+      await getDirectoryPreview(root.asHandle(), {}, { rootHandle: root.asHandle(), path: [] });
       expect(
         files.filter((_, index) => reads[index].mock.calls.length > 0).map((file) => file.name),
       ).toEqual([expected]);
@@ -151,8 +200,8 @@ describe('directory cache and previews', () => {
     const config = root.file('.image-viewer.json', '{invalid');
     root.file('cover.jpg');
     expect(
-      await getDirectoryPreviewUrl(root.asHandle(), {}, { rootHandle: root.asHandle(), path: [] }),
-    ).toBe('blob:preview');
+      await getDirectoryPreview(root.asHandle(), {}, { rootHandle: root.asHandle(), path: [] }),
+    ).toEqual({ url: 'blob:preview', objectUrl: true });
     await flushRootConfig(root.asHandle());
     expect(config.textValue).toBe('{invalid');
   });
