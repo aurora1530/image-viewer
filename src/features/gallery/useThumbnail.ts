@@ -53,11 +53,10 @@ export function useThumbnail(
             result = await media.getThumbnail(item.handle, shouldContinue, getPriority);
           else if (item.type === 'video') result = await media.getMediaSource(item.handle);
           else {
-            const url = await media.getDirectoryPreview(item.handle, {
+            result = await media.getDirectoryPreview(item.handle, {
               shouldContinue,
               getPriority,
             });
-            result = url ? { url, objectUrl: false } : null;
           }
           if (!shouldContinue()) {
             if (result?.objectUrl) URL.revokeObjectURL(result.url);

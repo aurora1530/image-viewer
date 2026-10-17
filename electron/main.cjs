@@ -17,13 +17,10 @@ protocol.registerSchemesAsPrivileged([
 
 const allowedRoots = new Set();
 let library = { recent: [], favorites: [] };
-let directoryCache = {};
-let saveTimer = null;
 let updates;
 let requestUpdateClose;
 
 const libraryPath = () => path.join(app.getPath('userData'), 'library.json');
-const cachePath = () => path.join(app.getPath('userData'), 'directory-cache.json');
 const normalize = (value) => path.resolve(String(value));
 const samePath = (a, b) =>
   process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
@@ -59,11 +56,6 @@ async function saveJson(file, value) {
   const temp = `${file}.tmp`;
   await fs.writeFile(temp, JSON.stringify(value, null, 2), 'utf8');
   await fs.rename(temp, file);
-}
-
-function scheduleCacheSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveJson(cachePath(), directoryCache).catch(console.error), 350);
 }
 
 async function getLibrary() {
@@ -175,23 +167,9 @@ function registerIpc() {
   });
   ipcMain.handle('desktop:list-directory', async (_event, dirPath) => {
     const resolved = requireAllowed(dirPath);
-    const stat = await fs.stat(resolved);
-    const key = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-    const cached = directoryCache[key];
-    if (cached && cached.mtimeMs === stat.mtimeMs) return cached.entries;
-    const entries = (await fs.readdir(resolved, { withFileTypes: true }))
+    return (await fs.readdir(resolved, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory() || entry.isFile())
       .map((entry) => ({ name: entry.name, kind: entry.isDirectory() ? 'directory' : 'file' }));
-    directoryCache[key] = { mtimeMs: stat.mtimeMs, entries, cachedAt: Date.now() };
-    const keys = Object.keys(directoryCache);
-    if (keys.length > 500) {
-      keys
-        .sort((a, b) => directoryCache[a].cachedAt - directoryCache[b].cachedAt)
-        .slice(0, keys.length - 500)
-        .forEach((oldKey) => delete directoryCache[oldKey]);
-    }
-    scheduleCacheSave();
-    return entries;
   });
   ipcMain.handle('desktop:read-file', async (_event, filePath) => {
     const resolved = requireAllowed(filePath);
@@ -326,7 +304,6 @@ app.whenReady().then(async () => {
     requestInstall: () => requestUpdateClose?.() ?? false,
   });
   library = await loadJson(libraryPath(), { recent: [], favorites: [] });
-  directoryCache = await loadJson(cachePath(), {});
   registerIpc();
   protocol.handle('local-media', (request) => {
     const filePath = requireAllowed(decodeMediaUrl(request.url));

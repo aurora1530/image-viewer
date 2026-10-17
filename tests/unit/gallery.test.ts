@@ -49,6 +49,32 @@ beforeEach(() => {
 });
 
 describe('React gallery', () => {
+  it('lets the directory card own and release the selected file thumbnail URL', async () => {
+    const folder = new MemoryDirectory('album');
+    folder.file('__0.png');
+    vi.mocked(thumbnailCache.get).mockResolvedValueOnce({
+      url: 'blob:directory-cover',
+      objectUrl: true,
+    });
+    appStore.setState({
+      entries: [
+        {
+          key: '/album',
+          parent: root.asHandle(),
+          parentPath: '',
+          item: { type: 'directory', handle: folder.asHandle(), name: 'album', nameLower: 'album' },
+        },
+      ],
+    });
+    render(createElement(Gallery));
+    await vi.waitFor(() =>
+      expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:directory-cover'),
+    );
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:directory-cover');
+    flushSync(() => appStore.setState({ entries: [] }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:directory-cover');
+  });
+
   it('clears the previous source and ready flag immediately when a handle changes under the same key', async () => {
     const initial = entry();
     vi.mocked(thumbnailCache.get).mockResolvedValueOnce({ url: 'blob:first', objectUrl: true });

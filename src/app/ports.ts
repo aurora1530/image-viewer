@@ -13,6 +13,6 @@ export type MediaServices = {
   getDirectoryPreview: (
     handle: FileSystemDirectoryHandle,
     options: { shouldContinue: () => boolean; getPriority: () => number },
-  ) => Promise<string | null>;
+  ) => Promise<MediaSource | null>;
   getMediaSource: (handle: FileSystemFileHandle) => Promise<MediaSource>;
 };
