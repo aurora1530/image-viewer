@@ -1,13 +1,12 @@
 import { spawn } from 'node:child_process';
-import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { publishDesktopOutput } from './desktop-output.mjs';
 
 const projectRoot = process.cwd();
 const releaseRoot = path.resolve(projectRoot, 'release');
 const stageRoot = await mkdtemp(path.join(tmpdir(), 'image-viewer-build-'));
-const targetWin = path.resolve(releaseRoot, 'win-unpacked');
-const stagedWin = path.join(stageRoot, 'win-unpacked');
 const targetArgs = process.argv.includes('--dir')
   ? ['--win', '--dir']
   : ['--win', 'nsis', 'portable'];
@@ -27,7 +26,6 @@ function assertInside(parent, target) {
 }
 
 assertInside(projectRoot, releaseRoot);
-assertInside(projectRoot, targetWin);
 assertInside(tmpdir(), stageRoot);
 
 async function runBuilder() {
@@ -43,17 +41,11 @@ async function runBuilder() {
 
 try {
   await runBuilder();
-  await mkdir(releaseRoot, { recursive: true });
-  await rm(targetWin, { recursive: true, force: true });
-  await cp(stagedWin, targetWin, { recursive: true });
-  for (const entry of await readdir(stageRoot)) {
-    if (entry === 'win-unpacked') continue;
-    const source = path.join(stageRoot, entry);
-    if ((await stat(source)).isFile()) {
-      await cp(source, path.join(releaseRoot, entry), { force: true });
-    }
-  }
-  console.log(`Desktop build completed: ${releaseRoot}`);
+  const { buildRoot, executable } = await publishDesktopOutput(stageRoot, releaseRoot, {
+    release: process.argv.includes('--release'),
+  });
+  console.log(`Desktop build completed: ${buildRoot}`);
+  console.log(`Desktop executable: ${executable}`);
 } finally {
   await rm(stageRoot, { recursive: true, force: true }).catch((error) => {
     console.warn(`Could not remove temporary build files: ${stageRoot}`, error);
