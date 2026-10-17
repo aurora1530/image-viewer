@@ -1,7 +1,7 @@
 import { samplePdf } from '../helpers/pdf';
 import type { ConfigNode } from '../../src/services/storage';
 import { _electron as electron, expect, test } from '@playwright/test';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -548,6 +548,100 @@ for (const bundled of [false, true]) {
       await expect(page.locator('#page-counter')).toHaveText('2 / 3');
       await page.keyboard.press('Escape');
       await expect(page.locator('#viewer')).toBeHidden();
+    } finally {
+      await app?.close();
+      await rm(profile, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const bundled of [false, true]) {
+  test(`switches to an added preferred image despite unchanged directory mtime and stale saved listings (${bundled ? 'bundled' : 'dev'})`, async () => {
+    const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-cover-refresh-'));
+    const images = path.join(profile, 'images');
+    const album = path.join(images, 'album');
+    await mkdir(album, { recursive: true });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await writeFile(path.join(album, 'ordinary.png'), png);
+    const fixedTime = new Date('2020-01-01T00:00:00Z');
+    await utimes(album, fixedTime, fixedTime);
+    const mtimeMs = (await stat(album)).mtimeMs;
+    // Seed the same persistent main-process cache that was stale in the reported folder.
+    await writeFile(
+      path.join(profile, 'directory-cache.json'),
+      JSON.stringify({
+        [album.toLowerCase()]: {
+          mtimeMs,
+          cachedAt: Date.now(),
+          entries: [{ name: 'ordinary.png', kind: 'file' }],
+        },
+      }),
+    );
+    let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+    try {
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([, value]) => value !== undefined),
+      ) as Record<string, string>;
+      env.VITE_DEV_SERVER_URL = bundled
+        ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
+        : 'http://127.0.0.1:5173';
+      delete env.ELECTRON_RUN_AS_NODE;
+      app = await electron.launch({
+        executablePath: path.join(
+          process.cwd(),
+          'node_modules',
+          'electron',
+          'dist',
+          'electron.exe',
+        ),
+        args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
+        env,
+      });
+      const page = await app.firstWindow();
+      await expect(page.locator('#home-view')).toBeVisible();
+      await page.evaluate((root) => window.desktopApi!.openRoot(root), images);
+      await page.reload();
+      await page.locator('#recent-roots .library-card').click();
+      const cover = page.locator('#item-list .directory-card img');
+      await expect(cover).toHaveJSProperty('naturalWidth', 1);
+      // Different dimensions prove that the displayed source actually changes.
+      const newPng = await app.evaluate(
+        ({ nativeImage }, base64) =>
+          nativeImage
+            .createFromBuffer(Buffer.from(base64, 'base64'))
+            .resize({ width: 2, height: 1 })
+            .toPNG()
+            .toString('base64'),
+        png.toString('base64'),
+      );
+      await writeFile(path.join(album, '__0.png'), Buffer.from(newPng, 'base64'));
+      await utimes(album, fixedTime, fixedTime);
+      expect((await stat(album)).mtimeMs).toBe(mtimeMs);
+      expect(
+        await page.evaluate((folder) => window.desktopApi!.listDirectory(folder), album),
+      ).toEqual(expect.arrayContaining([{ name: '__0.png', kind: 'file' }]));
+      await page.locator('#reload-btn').click();
+      await expect(cover).toHaveJSProperty('naturalWidth', 2);
+      await expect
+        .poll(async () => {
+          const config = JSON.parse(
+            await readFile(path.join(images, '.image-viewer.json'), 'utf8'),
+          ) as ConfigNode;
+          return config.directories.album?.directoryThumbnail?.path;
+        })
+        .toEqual(['__0.png']);
+      expect(
+        await page.evaluate((folder) => window.desktopApi!.listDirectory(folder), album),
+      ).toEqual(expect.arrayContaining([{ name: '__0.png', kind: 'file' }]));
+      const legacyCache = JSON.parse(
+        await readFile(path.join(profile, 'directory-cache.json'), 'utf8'),
+      ) as Record<string, { entries: Array<{ name: string; kind: string }> }>;
+      expect(legacyCache[album.toLowerCase()].entries).toEqual([
+        { name: 'ordinary.png', kind: 'file' },
+      ]);
     } finally {
       await app?.close();
       await rm(profile, { recursive: true, force: true });
