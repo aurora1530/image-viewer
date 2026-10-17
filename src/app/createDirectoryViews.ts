@@ -19,7 +19,10 @@ import { compareNumericText, isImageFileName } from '../shared/utils';
 
 export function selectGalleryEntries(
   entries: GalleryEntry[],
-  settings: Pick<AppState, 'filterType' | 'searchQuery' | 'listMode' | 'favoriteMode'>,
+  settings: Pick<
+    AppState,
+    'filterType' | 'searchQuery' | 'listMode' | 'favoriteOnly' | 'favoriteFirst'
+  >,
 ) {
   const query = settings.searchQuery.toLowerCase();
   const filtered = entries.filter(({ item }) => {
@@ -32,9 +35,9 @@ export function selectGalleryEntries(
       return false;
     if (query && !item.nameLower.includes(query)) return false;
     if (settings.listMode === 'hidden' ? !item.isHidden : item.isHidden) return false;
-    return settings.favoriteMode !== 'only' || !!item.isFavorite;
+    return !settings.favoriteOnly || !!item.isFavorite;
   });
-  if (settings.favoriteMode === 'first')
+  if (settings.favoriteFirst)
     filtered.sort((a, b) => Number(!!b.item.isFavorite) - Number(!!a.item.isFavorite));
   return filtered;
 }

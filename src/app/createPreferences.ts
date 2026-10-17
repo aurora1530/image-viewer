@@ -1,6 +1,5 @@
 import type { AppStore } from './store';
 import { normalizeThumbnailSize } from './store';
-import type { FavoriteMode } from './store';
 import type { FilterType } from '../shared/model';
 import type { ConfigNode } from '../services/storage';
 
@@ -26,8 +25,8 @@ export function createPreferences(deps: PreferenceDependencies) {
       thumbnailSizeIndex: s.thumbnailSizeIndex,
       sortOrder: s.sortOrder,
       filterType: s.filterType,
-      favoriteFirst: s.favoriteMode === 'first',
-      favoriteOnly: s.favoriteMode === 'only',
+      favoriteFirst: s.favoriteFirst,
+      favoriteOnly: s.favoriteOnly,
     };
   }
   function applySettingsFromConfig(config: ConfigNode | null) {
@@ -50,7 +49,8 @@ export function createPreferences(deps: PreferenceDependencies) {
       thumbnailSizeIndex: next.thumbnailSizeIndex,
       sortOrder: next.sortOrder,
       filterType: next.filterType,
-      favoriteMode: next.favoriteOnly ? 'only' : next.favoriteFirst ? 'first' : 'off',
+      favoriteFirst: next.favoriteFirst,
+      favoriteOnly: next.favoriteOnly,
     });
   }
 
@@ -78,8 +78,13 @@ export function createPreferences(deps: PreferenceDependencies) {
         scheduleSaveCurrentDirectoryConfig();
         scheduleProcessForCurrentDir(0);
       },
-      setFavoriteMode(mode: FavoriteMode) {
-        set({ favoriteMode: mode });
+      toggleFavoriteOnly() {
+        set({ favoriteOnly: !get().favoriteOnly });
+        scheduleSaveCurrentDirectoryConfig();
+        scheduleProcessForCurrentDir(0);
+      },
+      toggleFavoriteFirst() {
+        set({ favoriteFirst: !get().favoriteFirst });
         scheduleSaveCurrentDirectoryConfig();
         scheduleProcessForCurrentDir(0);
       },

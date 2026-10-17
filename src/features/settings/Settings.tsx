@@ -42,6 +42,7 @@ export function Settings() {
     <>
       <button
         type="button"
+        className="ui-btn ghost"
         disabled={!ready && !error}
         onClick={() => {
           setDraft(config);
@@ -50,6 +51,13 @@ export function Settings() {
           dialog.current?.showModal();
         }}
       >
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path
+            fillRule="evenodd"
+            d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
+            clipRule="evenodd"
+          />
+        </svg>
         設定
       </button>
       <dialog
@@ -59,8 +67,19 @@ export function Settings() {
         onClose={() => setOpen(false)}
         onKeyDown={(event) => event.stopPropagation()}
       >
-        <h2 id="settings-title">設定</h2>
+        <div className="settings-header">
+          <h2 id="settings-title">設定</h2>
+          <button
+            type="button"
+            className="ui-btn ghost"
+            disabled={saving}
+            onClick={() => dialog.current?.close()}
+          >
+            閉じる
+          </button>
+        </div>
         <form
+          className="settings-section"
           onSubmit={(event) => {
             event.preventDefault();
             setSaving(true);
@@ -73,7 +92,9 @@ export function Settings() {
           }}
         >
           <h3>キャッシュ</h3>
-          <p>容量上限は MiB 単位です。0 は保持なし。古いキャッシュから自動で解放します。</p>
+          <p className="settings-desc">
+            容量上限は MiB 単位です。0 は保持なし。古いキャッシュから自動で解放します。
+          </p>
           {fields.map(([key, label, bytes]) => (
             <label className="settings-field" key={key}>
               <span>
@@ -82,6 +103,7 @@ export function Settings() {
               </span>
               <input
                 aria-label={`${label}の最大容量（MiB）`}
+                className="ui-input"
                 type="number"
                 min="0"
                 max="1048576"
@@ -100,35 +122,44 @@ export function Settings() {
           </p>
           {usage.path && <p className="settings-note">キャッシュ保存先: {usage.path}</p>}
           <p className="settings-note">設定保存先: {usage.configPath}</p>
-          <p role="status">{error || (saved ? '保存しました。' : '')}</p>
-          <button type="submit" disabled={saving || !ready}>
-            {saving ? '保存中…' : '容量設定を保存'}
-          </button>
+          <div className="settings-footer">
+            <p role="status" className="settings-status">
+              {error || (saved ? '保存しました。' : '')}
+            </p>
+            <button type="submit" className="ui-btn primary" disabled={saving || !ready}>
+              {saving ? '保存中…' : '容量設定を保存'}
+            </button>
+          </div>
         </form>
-        <h3>表示</h3>
-        <label className="settings-field">
-          サムネイルサイズ
-          <select
-            value={size}
-            onChange={(e) => actions.setThumbnailSize(Number(e.currentTarget.value))}
-          >
-            {sizeOptions.map((option, index) => (
-              <option key={index} value={index}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="settings-field">
-          単一ページ表示
-          <input type="checkbox" checked={single} onChange={() => actions.toggleSinglePage()} />
-        </label>
-        <p className="settings-note">
-          表示設定は変更時に保存します。フォルダーを開くと、そのフォルダーのサムネイル設定が優先されます。
-        </p>
-        <button type="button" disabled={saving} onClick={() => dialog.current?.close()}>
-          閉じる
-        </button>
+        <div className="settings-section">
+          <h3>表示</h3>
+          <label className="settings-field">
+            <span>サムネイルサイズ</span>
+            <select
+              className="ui-select"
+              value={size}
+              onChange={(e) => actions.setThumbnailSize(Number(e.currentTarget.value))}
+            >
+              {sizeOptions.map((option, index) => (
+                <option key={index} value={index}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="settings-field">
+            <span>単一ページ表示</span>
+            <input
+              type="checkbox"
+              className="settings-checkbox"
+              checked={single}
+              onChange={() => actions.toggleSinglePage()}
+            />
+          </label>
+          <p className="settings-note">
+            表示設定は変更時に保存します。フォルダーを開くと、そのフォルダーのサムネイル設定が優先されます。
+          </p>
+        </div>
       </dialog>
     </>
   );

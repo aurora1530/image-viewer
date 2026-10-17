@@ -4,7 +4,6 @@ import type { DirectoryCacheItem, FilterType, SortOrder } from '../shared/model'
 import type { ViewerPresentation } from './viewerModel';
 
 export type ListMode = 'directory' | 'recursive' | 'favorites' | 'hidden';
-export type FavoriteMode = 'off' | 'first' | 'only';
 export type GalleryEntry = {
   item: DirectoryCacheItem;
   parent: FileSystemDirectoryHandle | null;
@@ -44,7 +43,8 @@ export function initialAppState() {
     directories: [] as FileSystemDirectoryHandle[],
     library: [] as DesktopLibraryItem[],
     listMode: 'directory' as ListMode,
-    favoriteMode: 'off' as FavoriteMode,
+    favoriteFirst: false,
+    favoriteOnly: false,
     thumbnailSizeIndex: 1,
     sortOrder: 'asc' as SortOrder,
     filterType: 'all' as FilterType,

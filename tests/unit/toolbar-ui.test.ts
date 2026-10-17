@@ -47,7 +47,7 @@ describe('React display preferences', () => {
     expect(element('adjust-spread-btn').style.display).toBe('none');
   });
 
-  it('updates folder controls and disables favorite sorting in the favorite list', () => {
+  it('updates folder controls and disables favorite filter/sort in the favorite list', () => {
     render(createElement(App));
     expect(element('list-toolbar').classList.contains('hidden')).toBe(true);
     const root = new MemoryDirectory('root');
@@ -55,16 +55,20 @@ describe('React display preferences', () => {
       appStore.setState({
         directories: [root.asHandle(), root.directory('chapter').asHandle()],
         listMode: 'favorites',
-        favoriteMode: 'only',
+        favoriteOnly: true,
+        favoriteFirst: true,
         sortOrder: 'desc',
       }),
     );
     expect(element('list-toolbar').classList.contains('hidden')).toBe(false);
     expect(element('up-dir-btn').classList.contains('hidden')).toBe(false);
     expect(element('current-dir-name').textContent).toBe('chapter');
-    expect(element('favorite-list-btn').textContent).toBe('戻る');
-    expect(element<HTMLSelectElement>('favorite-mode-select').disabled).toBe(true);
-    expect(element<HTMLSelectElement>('favorite-mode-select').value).toBe('only');
+    expect(element('favorite-list-btn').getAttribute('aria-pressed')).toBe('true');
+    expect(element('directory-mode-btn').getAttribute('aria-pressed')).toBe('false');
+    expect(element<HTMLButtonElement>('favorite-only-btn').disabled).toBe(true);
+    expect(element('favorite-only-btn').getAttribute('aria-pressed')).toBe('true');
+    expect(element<HTMLButtonElement>('favorite-first-btn').disabled).toBe(true);
+    expect(element('favorite-first-btn').getAttribute('aria-pressed')).toBe('true');
     expect(element('toggle-sort-btn').textContent).toContain('降順');
   });
 });

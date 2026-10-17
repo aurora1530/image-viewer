@@ -561,7 +561,7 @@ test('keeps the complete recursive order when virtual cards are hidden or favori
   await page.keyboard.press('Escape');
   await previous.locator('.favorite-btn').click();
   await expect(previous.locator('.favorite-btn')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('#favorite-mode-select').selectOption('only');
+  await page.locator('#favorite-only-btn').click();
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);
   await expect(previous.locator('img')).toHaveJSProperty('naturalWidth', 1);
 });
@@ -672,7 +672,44 @@ test('shows an image while the recursive list is still scanning', async ({ page 
 
 test('filters, searches and opens the displayed image', async ({ page }) => {
   await expect(page.locator('#item-list .item-card')).toHaveCount(5);
+  const layoutBefore = await page.evaluate(() => {
+    const ids = [
+      'search-input',
+      'filter-select',
+      'favorite-only-btn',
+      'toggle-sort-btn',
+      'favorite-first-btn',
+      'size-select',
+      'ui-visibility-btn',
+    ];
+    const rects = ids.map((id) => {
+      const rect = document.getElementById(id)!.getBoundingClientRect();
+      return { id, top: Math.round(rect.top), height: Math.round(rect.height) };
+    });
+    const selectStyle = getComputedStyle(document.getElementById('filter-select')!);
+    return { rects, color: selectStyle.color, bg: selectStyle.backgroundColor };
+  });
+  for (const item of layoutBefore.rects) {
+    expect(item.height, `${item.id} height`).toBe(layoutBefore.rects[0].height);
+    expect(item.top, `${item.id} single-row top`).toBe(layoutBefore.rects[0].top);
+  }
   await page.locator('#filter-select').selectOption('image');
+  const styleAfter = await page.evaluate(() => {
+    const selectStyle = getComputedStyle(document.getElementById('filter-select')!);
+    const optionStyle = getComputedStyle(
+      document.querySelector('#filter-select option[value="image"]')!,
+    );
+    return {
+      color: selectStyle.color,
+      bg: selectStyle.backgroundColor,
+      optionColor: optionStyle.color,
+      optionBg: optionStyle.backgroundColor,
+    };
+  });
+  expect(styleAfter.color).toBe(layoutBefore.color);
+  expect(styleAfter.bg).toBe(layoutBefore.bg);
+  expect(styleAfter.optionColor).toBe(layoutBefore.color);
+  expect(styleAfter.optionBg).toBe(layoutBefore.bg);
   await expect(page.locator('#item-list .media-card')).toHaveCount(3);
   await page.locator('#search-input').fill('10');
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);
@@ -688,7 +725,7 @@ test('opens child images in recursive mode and returns to the normal list', asyn
   await page.getByRole('button', { name: '全画像一覧' }).click();
   await expect(page.locator('#item-list .media-card')).toHaveCount(4);
   await expect(page.locator('#item-list img[alt="nested.png"]')).toHaveCount(1);
-  await page.getByRole('button', { name: '戻る' }).click();
+  await page.getByRole('button', { name: '通常', exact: true }).click();
   await expect(page.locator('#item-list .item-card')).toHaveCount(5);
 });
 
@@ -699,7 +736,7 @@ test('navigates across the favorite boundary in the all-images list', async ({ p
     has: page.locator('img[alt="nested.png"]'),
   });
   await nested.locator('.favorite-btn').click();
-  await page.locator('#favorite-mode-select').selectOption('first');
+  await page.locator('#favorite-first-btn').click();
   await expect
     .poll(() =>
       page
@@ -764,9 +801,9 @@ test('reuses recursive scans for view controls and rescans changed files on relo
   });
   await nested.locator('.favorite-btn').click();
   await expect(nested.locator('.favorite-btn')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('#favorite-mode-select').selectOption('only');
+  await page.locator('#favorite-only-btn').click();
   await expect.poll(names).toEqual(['nested.png']);
-  await page.locator('#favorite-mode-select').selectOption('off');
+  await page.locator('#favorite-only-btn').click();
   await expect.poll(names).toHaveLength(4);
   await nested.locator('.hidden-toggle-btn').click();
   await expect.poll(names).toHaveLength(3);
@@ -790,10 +827,10 @@ test('favorites can be shown alone and survive another directory render', async 
     has: page.locator('img[alt="cover.gif"]'),
   });
   await cover.locator('.favorite-btn').click();
-  await page.locator('#favorite-mode-select').selectOption('only');
+  await page.locator('#favorite-only-btn').click();
   await expect(page.locator('#item-list .item-card')).toHaveCount(1);
   await expect(page.locator('#item-list img[alt="cover.gif"]')).toHaveCount(1);
-  await page.locator('#favorite-mode-select').selectOption('off');
+  await page.locator('#favorite-only-btn').click();
   await expect(page.locator('#item-list .item-card')).toHaveCount(5);
   await expect(
     page

@@ -262,7 +262,8 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
   async function changeListMode(mode: ListMode) {
     const current = get().directories.at(-1);
     if (!current) return;
-    const next = get().listMode === mode ? 'directory' : mode;
+    const next = mode === 'directory' ? 'directory' : get().listMode === mode ? 'directory' : mode;
+    if (next === get().listMode) return;
     if (
       next === 'recursive' &&
       !confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？')
@@ -392,7 +393,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
             e.key === entry.key ? { ...e, item: { ...e.item, isFavorite: next } } : e,
           ),
         });
-        if (get().favoriteMode !== 'off' || get().listMode === 'favorites')
+        if (get().favoriteFirst || get().favoriteOnly || get().listMode === 'favorites')
           scheduleProcessForCurrentDir(0, true);
       }
     },
