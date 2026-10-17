@@ -50,6 +50,7 @@ export function ListToolbar() {
           <option value="image">画像</option>
           <option value="gif">GIF</option>
           <option value="video">動画</option>
+          <option value="pdf">PDF</option>
         </select>
         <select
           id="favorite-mode-select"

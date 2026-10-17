@@ -24,6 +24,7 @@ function mimeType(name: string) {
     mov: 'video/quicktime',
     ogg: 'video/ogg',
     json: 'application/json',
+    pdf: 'application/pdf',
   };
   return ext ? types[ext] || 'application/octet-stream' : 'application/octet-stream';
 }

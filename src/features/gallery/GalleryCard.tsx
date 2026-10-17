@@ -30,6 +30,7 @@ export const GalleryCard = memo(function GalleryCard({ entry }: { entry: Gallery
   return (
     <div
       ref={card}
+      title={item.name}
       className={`group item-card ${directory ? 'directory-card' : 'media-card'}`}
       data-dir-name={directory ? item.name : undefined}
       data-thumb-ready={ready ? 'true' : undefined}
@@ -87,6 +88,7 @@ export const GalleryCard = memo(function GalleryCard({ entry }: { entry: Gallery
             </div>
           </>
         )}
+        {item.type === 'pdf' && <span className="pdf-badge">PDF</span>}
         {failed &&
           (directory ? (
             <svg className="h-16 w-16 text-gray-500" viewBox="0 0 20 20" fill="currentColor">

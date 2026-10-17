@@ -4,6 +4,7 @@ const { Readable } = require('node:stream');
 const path = require('node:path');
 
 const mimeTypes = {
+  '.pdf': 'application/pdf',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
   '.mov': 'video/quicktime',

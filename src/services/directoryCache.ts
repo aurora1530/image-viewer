@@ -53,6 +53,8 @@ export async function buildDirectoryCache(
         if (isImageFileName(lowerName, CONFIG.IMAGE_EXTENSIONS)) {
           items.push({ type: 'image', handle: entry, name: entry.name, nameLower: lowerName });
           imageCount++;
+        } else if (lowerName.endsWith('.pdf')) {
+          items.push({ type: 'pdf', handle: entry, name: entry.name, nameLower: lowerName });
         } else if (CONFIG.VIDEO_EXTENSIONS.some((ext) => lowerName.endsWith(ext))) {
           items.push({ type: 'video', handle: entry, name: entry.name, nameLower: lowerName });
         }
@@ -110,6 +112,8 @@ async function findFirstImageHandle(
     if (directPreferred) return directPreferred.handle;
     const directAny = cached.items.find((i): i is DirectoryCacheImageItem => isImageItem(i));
     if (directAny) return directAny.handle;
+    const pdf = cached.items.find((item) => item.type === 'pdf');
+    if (pdf && pdf.type === 'pdf') return pdf.handle;
     const firstDir = cached.items.find((i): i is DirectoryCacheDirectoryItem => isDirectoryItem(i));
     if (firstDir) {
       return findFirstImageHandle(firstDir.handle);
@@ -140,7 +144,10 @@ async function findFirstImageHandle(
       : null;
     if (tLabel) console.time(tLabel);
     for (const entry of await listDirectoryEntries(dirHandle)) {
-      if (isFileHandle(entry) && isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS)) {
+      if (
+        isFileHandle(entry) &&
+        (isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS) || /\.pdf$/i.test(entry.name))
+      ) {
         const lower = entry.name.toLowerCase();
         if (preferredNames.has(lower)) {
           if (tLabel) console.timeEnd(tLabel);

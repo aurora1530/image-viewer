@@ -1,3 +1,4 @@
+import type { PdfDocument } from '../../src/services/pdfDocument';
 import { createElement } from 'react';
 import { Viewer } from '../../src/features/viewer/Viewer';
 import { closedViewer } from '../../src/app/store';
@@ -20,6 +21,10 @@ function harness(
   getThumbnailPreview?: (
     handle: FileSystemFileHandle,
   ) => { url: string; objectUrl: boolean } | null,
+  openPdfDocument?: (
+    handle: FileSystemFileHandle,
+    shouldContinue?: () => boolean,
+  ) => Promise<PdfDocument>,
 ) {
   let presentation = { ...closedViewer };
   let singleView = single;
@@ -52,6 +57,7 @@ function harness(
   );
   localStorage.setItem('isSinglePageView', single ? '1' : '0');
   const controller = createViewer({
+    openPdfDocument,
     getThumbnailPreview,
     render: (patch) => {
       presentation = { ...presentation, ...patch };
@@ -91,6 +97,9 @@ function harness(
     setSingle: (value: boolean) => {
       singleView = value;
       update();
+    },
+    setOffset: (value: number) => {
+      offset = value;
     },
     get index() {
       return index;
@@ -398,4 +407,63 @@ describe('image viewer behavior', () => {
     expect(view.left.style.visibility).toBe('hidden');
     view.controller.closeViewer();
   });
+});
+
+describe('PDF viewer lifecycle', () => {
+  it('discards a document that completes after closing and leaves images intact', async () => {
+    let finish!: (document: PdfDocument) => void;
+    const loaded = new Promise<PdfDocument>((resolve) => {
+      finish = resolve;
+    });
+    const document = { pageCount: 3, renderPage: vi.fn(async () => new Blob()), destroy: vi.fn() };
+    const view = harness(true, handles, undefined, () => loaded);
+    const pending = view.controller.openPdf(root.file('book.pdf').asHandle());
+    view.controller.closeViewer();
+    await view.controller.openViewer(root.asHandle(), 0, handles);
+    const image = view.right.dataset.url;
+    finish(document);
+    await pending;
+    expect(document.destroy).toHaveBeenCalledOnce();
+    expect(document.renderPage).not.toHaveBeenCalled();
+    expect(view.right.dataset.url).toBe(image);
+    expect(view.counter.textContent).toBe('1 / 5');
+    view.controller.closeViewer();
+  });
+
+  it('releases rendered PDF pages and destroys the document on close', async () => {
+    const document = { pageCount: 3, renderPage: vi.fn(async () => new Blob()), destroy: vi.fn() };
+    const view = harness(true, handles, undefined, async () => document);
+    const pdf = root.file('book.pdf').asHandle();
+    await view.controller.openPdf(pdf);
+    const url = view.right.dataset.url;
+    expect(view.controller.getCurrentFile()).toBe(pdf);
+    expect(view.files).toEqual([]);
+    expect(view.counter.textContent).toBe('1 / 3');
+    view.controller.closeViewer();
+    expect(document.destroy).toHaveBeenCalledOnce();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(url);
+  });
+});
+
+it('reaches the final PDF page in adjusted even-page spreads and clamps when changing view', async () => {
+  const document = { pageCount: 4, renderPage: vi.fn(async () => new Blob()), destroy: vi.fn() };
+  const view = harness(false, handles, undefined, async () => document);
+  await view.controller.openPdf(root.file('even.pdf').asHandle());
+  view.setOffset(1);
+  await view.controller.displayPages();
+  expect(view.counter.textContent).toBe('1 - - / 4');
+  view.controller.navigatePages(2);
+  await view.controller.displayPages();
+  expect(view.counter.textContent).toBe('3 - 2 / 4');
+  view.controller.navigatePages(2);
+  await view.controller.displayPages();
+  expect(view.counter.textContent).toBe('- - 4 / 4');
+  view.setSingle(true);
+  await view.controller.displayPages();
+  expect(view.counter.textContent).toBe('4 / 4');
+  view.setSingle(false);
+  view.setOffset(0);
+  await view.controller.displayPages();
+  expect(view.counter.textContent).toBe('4 - 3 / 4');
+  view.controller.closeViewer();
 });

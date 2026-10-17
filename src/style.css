@@ -858,3 +858,15 @@ html:fullscreen #viewer-toolbar.hidden {
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
+
+.pdf-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #334155;
+  color: white;
+  font-size: 12px;
+  pointer-events: none;
+}

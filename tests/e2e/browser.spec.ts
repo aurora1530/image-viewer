@@ -1,3 +1,4 @@
+import { samplePdf } from '../helpers/pdf';
 import type { ConfigNode } from '../../src/services/storage';
 import { expect, test } from '@playwright/test';
 
@@ -1208,4 +1209,78 @@ test('central settings validate, persist and restore cache budgets', async ({ pa
   expect(await budget.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+});
+
+test('PDF thumbnails and single/spread navigation stay within the selected document', async ({
+  page,
+}) => {
+  await page.evaluate((content) => {
+    const { __imageViewerTestRoot: root } = window as unknown as {
+      __imageViewerTestRoot: { entries: Map<string, unknown> };
+    };
+    for (const name of ['book.PDF', 'other.pdf'])
+      root.entries.set(name, {
+        kind: 'file',
+        name,
+        getFile: async () => new File([content], name, { type: 'application/pdf' }),
+      });
+    root.entries.set('broken.pdf', {
+      kind: 'file',
+      name: 'broken.pdf',
+      getFile: async () => new File(['invalid pdf'], 'broken.pdf'),
+    });
+  }, samplePdf());
+  await page.locator('#reload-btn').click();
+  await page.locator('#filter-select').selectOption('pdf');
+  await expect(page.locator('.media-card')).toHaveCount(3);
+  const card = page.locator('.media-card').filter({ has: page.locator('img[alt="book.PDF"]') });
+  await expect(card).toHaveAttribute('data-thumb-ready', 'true');
+  await card.click();
+  await expect(page.locator('#page-counter')).toHaveText('2 - 1 / 3');
+  const color = (selector: string) =>
+    page.locator(selector).evaluate((image: HTMLImageElement) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext('2d')!;
+      context.drawImage(image, image.naturalWidth / 2, image.naturalHeight / 2, 1, 1, 0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
+    });
+  await expect.poll(() => color('#right-page')).toEqual([255, 0, 0]);
+  await expect.poll(() => color('#left-page')).toEqual([0, 255, 0]);
+  const whiteTextPixels = await page.locator('#right-page').evaluate((image: HTMLImageElement) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 300;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0, 200, 300);
+    const pixels = context.getImageData(20, 260, 70, 25).data;
+    let white = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] > 220 && pixels[i + 1] > 220 && pixels[i + 2] > 220) white++;
+    }
+    return white;
+  });
+  expect(whiteTextPixels).toBeGreaterThan(20);
+  await page.locator('#toggle-view-btn').click();
+  await expect(page.locator('#page-counter')).toHaveText('1 / 3');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('2 / 3');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('3 / 3');
+  await expect.poll(() => color('#right-page')).toEqual([0, 0, 255]);
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('1 / 3');
+  await page.locator('#toggle-view-btn').click();
+  await page.locator('#adjust-spread-btn').click();
+  await expect(page.locator('#page-counter')).toHaveText('1 - - / 3');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('3 - 2 / 3');
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.locator('#viewer')).toBeHidden();
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.locator('#page-counter')).toHaveText('3 - 2 / 3');
+  await page.keyboard.press('Escape');
+  await page.locator('.media-card[title="broken.pdf"]').click();
+  await expect(page.locator('#viewer')).toBeHidden();
+  await expect(page.locator('#status-area')).toContainText('PDFを開けませんでした');
 });

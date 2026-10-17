@@ -21,7 +21,7 @@ React の画面、操作を調整する処理、キャッシュ・永続化、�
 | `features/library/`                          | ホーム、最近使ったフォルダー、お気に入りフォルダー   |
 | `features/browsing/`                         | フォルダー操作、表示条件、読み込み状態               |
 | `features/gallery/`                          | カード、サムネイルのライフサイクル、仮想一覧との接続 |
-| `features/viewer/`                           | 画像・動画の表示、再生制御、全画面とツールバー       |
+| `features/viewer/`                           | 画像・動画・PDFの表示、再生制御、全画面とツールバー  |
 | `services/`                                  | ファイル設定、ディレクトリ・画像キャッシュ、Worker   |
 | `platform/`                                  | ブラウザー・Electron API、イベント登録、localStorage |
 | `shared/`                                    | モデル・共通関数。上位層に依存しない                 |
@@ -78,3 +78,7 @@ ESLint は UI からインフラへの直接依存、サービス・実行環境
 ## 設計の参照先
 
 [React の Context](https://react.dev/learn/passing-data-deeply-with-context)、[Effect の依存関係](https://react.dev/learn/removing-effect-dependencies)。
+
+## PDFの閲覧
+
+PDFは一覧では1ファイルとして扱い、画像フォルダーの見開き用リストには含めません。`createViewer` が開いたPDFのページ数と閲覧位置を管理し、既存の単一・見開き表示と操作を共有します。`services/pdfDocument.ts` がPDF.jsの遅延ロードとページ描画を担当し、サムネイルには先頭ページを利用します。ページの描画結果は元画像と同じページキャッシュで表示中と近隣ページだけ保持し、閉じるとキャッシュとPDFのWorkerを破棄します。読み込み結果は閲覧セッションに結びつけ、閉じた後や別ファイルに切り替えた後の結果を表示しません。ViteはPDF.jsのCMap・標準フォント・WASMをWeb版とElectron版へ同梱します。

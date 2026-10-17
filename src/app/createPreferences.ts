@@ -13,7 +13,7 @@ type PreferenceDependencies = {
   navigatePages: (direction: number) => void;
 };
 const isFilterType = (value: string): value is FilterType =>
-  ['all', 'directory', 'image', 'gif', 'video'].includes(value);
+  ['all', 'directory', 'image', 'gif', 'video', 'pdf'].includes(value);
 
 export function createPreferences(deps: PreferenceDependencies) {
   const get = deps.store.getState;

@@ -117,3 +117,20 @@ describe('gallery data and state coordination', () => {
     expect(appStore.getState().entries.map((entry) => entry.item.name)).toEqual(['latest.png']);
   });
 });
+
+it('filters favorite PDFs without adding documents to the image spread list', async () => {
+  const root = new MemoryDirectory('root');
+  root.file('cover.png');
+  root.directory('child').file('book.PDF');
+  root.file(
+    '.image-viewer.json',
+    JSON.stringify({ directories: { child: { favorites: ['book.PDF'] } } }),
+  );
+  const { views } = harness(root);
+  appStore.setState({ listMode: 'favorites', filterType: 'pdf' });
+  await views.render(root.asHandle());
+  expect(
+    appStore.getState().entries.map(({ item, parentPath }) => [item.type, item.name, parentPath]),
+  ).toEqual([['pdf', 'book.PDF', 'child']]);
+  expect(appStore.getState().displayImages).toEqual([]);
+});

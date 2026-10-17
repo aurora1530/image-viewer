@@ -282,7 +282,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
   async function copyPath(image = false) {
     if (!get().directories.length) return;
     const path = image
-      ? `${getDisplayPath()}/${get().currentImageFiles[get().currentImageIndex]?.name ?? ''}`
+      ? `${getDisplayPath()}/${viewerController.getCurrentFile()?.name ?? ''}`
       : getDisplayPath();
     try {
       await navigator.clipboard.writeText(path);
@@ -355,6 +355,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       clearForwardHistory();
       if (entry.item.type === 'directory') return enterDirectory(entry.item.handle);
       if (entry.item.type === 'video') return viewerController.openVideoPlayer(entry.item.handle);
+      if (entry.item.type === 'pdf') return viewerController.openPdf(entry.item.handle);
       if (!entry.parent) return;
       const list = get().displayImages;
       const index = list.indexOf(entry.item.handle);

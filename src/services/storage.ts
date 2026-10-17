@@ -30,7 +30,7 @@ export type FavoriteFileHandleEntry = {
 };
 
 type FavoriteKeyItem = {
-  type: 'directory' | 'image' | 'video';
+  type: 'directory' | 'image' | 'video' | 'pdf';
   name: string;
 };
 
@@ -251,8 +251,7 @@ export function makeHiddenSet(config: ConfigNode | null): Set<string> {
 export function getFavoriteKeyForItem(item: FavoriteKeyItem | null | undefined): string | null {
   if (!item) return null;
   if (item.type === 'directory') return buildFavoriteKey('directory', item.name);
-  if (item.type === 'image' || item.type === 'video') return buildFavoriteKey('file', item.name);
-  return null;
+  return buildFavoriteKey('file', item.name);
 }
 
 async function collectFavoriteFilesFromNode(

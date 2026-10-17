@@ -1,3 +1,4 @@
+import { renderPdfThumbnail } from './pdfDocument';
 import {
   encodeThumbnailInWorker,
   refreshThumbnailWorkers,
@@ -55,6 +56,8 @@ async function generate(
   handle: FileSystemFileHandle,
   request: ThumbnailRequest,
 ): Promise<Blob | null> {
+  if (/\.pdf$/i.test(handle.name))
+    return renderPdfThumbnail(handle, () => request.shouldContinue?.() !== false);
   let source: Source | null = null;
   const image = new Image();
   let canvas: HTMLCanvasElement | null = null;
@@ -216,7 +219,9 @@ export function createThumbnailCache({
     if (!shouldContinue()) return null;
     return blob
       ? { url: URL.createObjectURL(blob), objectUrl: true }
-      : getOriginalImageSource(handle);
+      : /\.pdf$/i.test(handle.name)
+        ? null
+        : getOriginalImageSource(handle);
   }
 
   function invalidate(handle: FileSystemFileHandle) {

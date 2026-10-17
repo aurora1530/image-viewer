@@ -30,12 +30,13 @@ describe('directory cache and previews', () => {
   it('classifies supported media and excludes unrelated files', async () => {
     const root = new MemoryDirectory('root');
     root.directory('child');
-    for (const name of ['cover.HEIC', 'clip.MP4', 'notes.txt']) root.file(name);
+    for (const name of ['cover.HEIC', 'clip.MP4', 'book.PDF', 'notes.txt']) root.file(name);
     const cache = await buildDirectoryCache(root.asHandle());
     expect(cache.items.map((item) => [item.type, item.name])).toEqual([
       ['directory', 'child'],
       ['image', 'cover.HEIC'],
       ['video', 'clip.MP4'],
+      ['pdf', 'book.PDF'],
     ]);
     expect(cache.imageCount).toBe(1);
   });

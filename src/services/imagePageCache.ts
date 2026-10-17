@@ -14,7 +14,13 @@ type CacheEntry = {
 };
 
 export function createImagePageCache(getSource = getMediaSource) {
-  const entries = new Map<FileSystemFileHandle, CacheEntry>();
+  return createPageCache(getSource);
+}
+
+export function createPageCache<Key>(
+  getSource: (key: Key) => Promise<{ url: string; objectUrl: boolean }>,
+) {
+  const entries = new Map<Key, CacheEntry>();
 
   function dispose(entry: CacheEntry) {
     entry.disposed = true;
@@ -24,7 +30,7 @@ export function createImagePageCache(getSource = getMediaSource) {
     entry.page = null;
   }
 
-  async function load(handle: FileSystemFileHandle, entry: CacheEntry): Promise<ImagePage | null> {
+  async function load(handle: Key, entry: CacheEntry): Promise<ImagePage | null> {
     try {
       const source = await getSource(handle);
       if (entry.disposed) {
@@ -46,7 +52,7 @@ export function createImagePageCache(getSource = getMediaSource) {
     }
   }
 
-  function get(handle: FileSystemFileHandle): Promise<ImagePage | null> {
+  function get(handle: Key): Promise<ImagePage | null> {
     const cached = entries.get(handle);
     if (cached) return cached.promise;
     const entry: CacheEntry = {
@@ -60,7 +66,7 @@ export function createImagePageCache(getSource = getMediaSource) {
     return entry.promise;
   }
 
-  function retain(handles: FileSystemFileHandle[]) {
+  function retain(handles: Key[]) {
     const retained = new Set(handles);
     for (const [handle, entry] of entries) {
       if (retained.has(handle)) continue;
@@ -86,7 +92,6 @@ export function createImagePageCache(getSource = getMediaSource) {
     retain,
     clear,
     discardPending,
-    peek: (handle: FileSystemFileHandle) =>
-      entries.get(handle)?.ready ? entries.get(handle)!.page : null,
+    peek: (handle: Key) => (entries.get(handle)?.ready ? entries.get(handle)!.page : null),
   };
 }

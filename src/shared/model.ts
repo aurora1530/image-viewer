@@ -1,5 +1,5 @@
 export type SortOrder = 'asc' | 'desc';
-export type FilterType = 'all' | 'directory' | 'image' | 'gif' | 'video';
+export type FilterType = 'all' | 'directory' | 'image' | 'gif' | 'video' | 'pdf';
 
 export type DirectoryCacheDirectoryItem = {
   type: 'directory';
@@ -34,8 +34,13 @@ export type DirectoryCacheVideoItem = {
   isHidden?: boolean;
 };
 
+export type DirectoryCachePdfItem = Omit<DirectoryCacheImageItem, 'type'> & { type: 'pdf' };
+
 export type DirectoryCacheItem =
-  DirectoryCacheDirectoryItem | DirectoryCacheImageItem | DirectoryCacheVideoItem;
+  | DirectoryCacheDirectoryItem
+  | DirectoryCacheImageItem
+  | DirectoryCacheVideoItem
+  | DirectoryCachePdfItem;
 
 export type DirectoryCacheEntry = {
   items: DirectoryCacheItem[];

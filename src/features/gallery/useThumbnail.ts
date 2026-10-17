@@ -49,7 +49,7 @@ export function useThumbnail(
       const load = async () => {
         try {
           let result: MediaSource | null;
-          if (item.type === 'image')
+          if (item.type === 'image' || item.type === 'pdf')
             result = await media.getThumbnail(item.handle, shouldContinue, getPriority);
           else if (item.type === 'video') result = await media.getMediaSource(item.handle);
           else {
@@ -68,7 +68,7 @@ export function useThumbnail(
             handle: item.handle,
             attempt,
             source: result,
-            failed: !result && item.type === 'directory',
+            failed: !result,
           });
         } catch (error) {
           if (!active) return;
@@ -102,7 +102,7 @@ export function useThumbnail(
     setDecoded(source);
   }
   function retry() {
-    if (!card.current?.isConnected || item.type !== 'image') return;
+    if (!card.current?.isConnected || (item.type !== 'image' && item.type !== 'pdf')) return;
     media.invalidateThumbnail(item.handle);
     setRetryState({ handle: item.handle, attempt: attempt + 1 });
   }

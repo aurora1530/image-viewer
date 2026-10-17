@@ -1,3 +1,4 @@
+import { samplePdf } from '../helpers/pdf';
 import type { ConfigNode } from '../../src/services/storage';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -437,6 +438,54 @@ for (const bundled of [false, true]) {
         .toBeGreaterThan(0.5);
       await page.keyboard.press('Escape');
       await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+    } finally {
+      await app?.close();
+      await rm(profile, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const bundled of [false, true]) {
+  test(`opens PDF thumbnails and pages offline (${bundled ? 'bundled' : 'dev'})`, async () => {
+    const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-pdf-'));
+    const books = path.join(profile, 'books');
+    await mkdir(books);
+    await writeFile(path.join(books, 'book.pdf'), samplePdf());
+    let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+    try {
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([, value]) => value !== undefined),
+      ) as Record<string, string>;
+      env.VITE_DEV_SERVER_URL = bundled
+        ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
+        : 'http://127.0.0.1:5173';
+      delete env.ELECTRON_RUN_AS_NODE;
+      app = await electron.launch({
+        executablePath: path.join(
+          process.cwd(),
+          'node_modules',
+          'electron',
+          'dist',
+          'electron.exe',
+        ),
+        args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
+        env,
+      });
+      const page = await app.firstWindow();
+      await expect(page.locator('#home-view')).toBeVisible();
+      await page.evaluate((root) => window.desktopApi!.openRoot(root), books);
+      await page.reload();
+      await page.locator('#recent-roots .library-card').click();
+      const card = page.locator('.media-card[title="book.pdf"]');
+      await expect(card).toHaveAttribute('data-thumb-ready', 'true');
+      await card.click();
+      await expect(page.locator('#page-counter')).toHaveText('2 - 1 / 3');
+      await expect(page.locator('#right-page')).toBeVisible();
+      await page.locator('#toggle-view-btn').click();
+      await page.keyboard.press('ArrowLeft');
+      await expect(page.locator('#page-counter')).toHaveText('2 / 3');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#viewer')).toBeHidden();
     } finally {
       await app?.close();
       await rm(profile, { recursive: true, force: true });

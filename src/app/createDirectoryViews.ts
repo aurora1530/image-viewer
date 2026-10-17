@@ -162,7 +162,9 @@ export function createDirectoryViews(deps: ViewDependencies) {
             ? 'image'
             : CONFIG.VIDEO_EXTENSIONS.some((extension) => nameLower.endsWith(extension))
               ? 'video'
-              : null;
+              : nameLower.endsWith('.pdf')
+                ? 'pdf'
+                : null;
           return type
             ? [
                 entry(
