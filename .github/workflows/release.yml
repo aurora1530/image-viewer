@@ -57,7 +57,24 @@ jobs:
       - run: npm run check
       - run: npx playwright install chromium
       - run: npm run test:e2e
+      # The next Playwright invocation clears test-results, so save each project separately.
+      - name: Save browser failure diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-browser-diagnostics-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - run: npm run test:desktop
+      - name: Save Electron failure diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-desktop-diagnostics-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-pages-artifact@v4
         with:
           name: github-pages-${{ github.run_attempt }}
