@@ -24,7 +24,9 @@ afterEach(async () => {
 describe('desktop config replacement', () => {
   it('replaces existing files and cleans up temporary files', async () => {
     await writeConfigFile(file, '{"favorites":["new.png"]}');
-    expect(JSON.parse(await readFile(file, 'utf8')).favorites).toEqual(['new.png']);
+    expect((JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>).favorites).toEqual(
+      ['new.png'],
+    );
     expect(await readdir(directory)).toEqual(['.image-viewer.json']);
   });
 
@@ -35,14 +37,18 @@ describe('desktop config replacement', () => {
       throw new Error('disk full');
     });
     await expect(writeConfigFile(file, '{"favorites":[]}')).rejects.toThrow('disk full');
-    expect(JSON.parse(await readFile(file, 'utf8')).favorites).toEqual(['old.png']);
+    expect((JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>).favorites).toEqual(
+      ['old.png'],
+    );
     expect(await readdir(directory)).toEqual(['.image-viewer.json']);
   });
 
   it('preserves the original when replacement is denied', async () => {
     vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('access denied'));
     await expect(writeConfigFile(file, '{"favorites":[]}')).rejects.toThrow('access denied');
-    expect(JSON.parse(await readFile(file, 'utf8')).favorites).toEqual(['old.png']);
+    expect((JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>).favorites).toEqual(
+      ['old.png'],
+    );
     expect(await readdir(directory)).toEqual(['.image-viewer.json']);
   });
 });

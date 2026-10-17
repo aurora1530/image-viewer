@@ -8,11 +8,18 @@ class TestWorker {
   onmessageerror: (() => void) | null = null;
   postMessage = vi.fn();
   terminate = vi.fn();
-  constructor() { TestWorker.instances.push(this); }
-  reply(data: { blob?: Blob; error?: string }) { this.onmessage?.({ data } as MessageEvent<typeof data>); }
+  constructor() {
+    TestWorker.instances.push(this);
+  }
+  reply(data: { blob?: Blob; error?: string }) {
+    this.onmessage?.({ data } as MessageEvent<typeof data>);
+  }
 }
 
-beforeEach(() => { TestWorker.instances = []; vi.stubGlobal('Worker', TestWorker); });
+beforeEach(() => {
+  TestWorker.instances = [];
+  vi.stubGlobal('Worker', TestWorker);
+});
 
 describe('thumbnail worker pool', () => {
   it('pauses queued encoding while preserving completed work and resumes on close', async () => {
@@ -23,7 +30,7 @@ describe('thumbnail worker pool', () => {
     const second = pool.encode(new Blob());
     TestWorker.instances[0].reply({ blob: new Blob(['first']) });
     await first;
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(TestWorker.instances[0].postMessage).toHaveBeenCalledOnce();
     pool.setPaused(false);
     await vi.waitFor(() => expect(TestWorker.instances[0].postMessage).toHaveBeenCalledTimes(2));
@@ -68,13 +75,20 @@ describe('thumbnail worker pool', () => {
     const results = Promise.allSettled(jobs);
     await vi.waitFor(() => expect(TestWorker.instances).toHaveLength(1));
     TestWorker.instances[0].onerror?.();
-    expect((await results).every(result => result.status === 'rejected')).toBe(true);
+    expect((await results).every((result) => result.status === 'rejected')).toBe(true);
     expect(TestWorker.instances[0].terminate).toHaveBeenCalledOnce();
     await expect(pool.encode(new Blob())).rejects.toThrow('利用できません');
   });
 
   it('handles worker construction failures without leaving jobs pending', async () => {
-    vi.stubGlobal('Worker', class { constructor() { throw new Error('blocked'); } });
+    vi.stubGlobal(
+      'Worker',
+      class {
+        constructor() {
+          throw new Error('blocked');
+        }
+      },
+    );
     await expect(createThumbnailWorkerPool().encode(new Blob())).rejects.toThrow('起動できません');
   });
 
@@ -100,7 +114,10 @@ describe('thumbnail worker pool', () => {
     expect(worker.postMessage).toHaveBeenLastCalledWith({ blob: targetBlob, format: 'image/jpeg' });
     worker.reply({ blob: output });
     await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledTimes(3));
-    expect(worker.postMessage).toHaveBeenLastCalledWith({ blob: backgroundBlob, format: 'image/webp' });
+    expect(worker.postMessage).toHaveBeenLastCalledWith({
+      blob: backgroundBlob,
+      format: 'image/webp',
+    });
     worker.reply({ blob: output });
     await Promise.all([first, target, background]);
   });

@@ -3,7 +3,10 @@ type Entry = MemoryDirectory | MemoryFile;
 export class MemoryFile {
   readonly kind = 'file' as const;
   textValue: string;
-  constructor(readonly name: string, text = '') {
+  constructor(
+    readonly name: string,
+    text = '',
+  ) {
     this.textValue = text;
   }
   async getFile() {
@@ -11,11 +14,15 @@ export class MemoryFile {
   }
   async createWritable() {
     return {
-      write: async (value: string) => { this.textValue = value; },
-      close: async () => undefined
+      write: async (value: string) => {
+        this.textValue = value;
+      },
+      close: async () => undefined,
     };
   }
-  asHandle() { return this as unknown as FileSystemFileHandle; }
+  asHandle() {
+    return this as unknown as FileSystemFileHandle;
+  }
 }
 
 export class MemoryDirectory {
@@ -46,5 +53,7 @@ export class MemoryDirectory {
     if (!(entry instanceof MemoryDirectory)) throw new DOMException('Not found', 'NotFoundError');
     return entry.asHandle();
   }
-  asHandle() { return this as unknown as FileSystemDirectoryHandle; }
+  asHandle() {
+    return this as unknown as FileSystemDirectoryHandle;
+  }
 }

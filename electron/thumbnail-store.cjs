@@ -2,7 +2,12 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 
-function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 20000, maxBytes = 3 * 1024 * 1024 * 1024 }) {
+function createThumbnailStore({
+  cacheDirectory,
+  requireAllowed,
+  maxEntries = 20000,
+  maxBytes = 3 * 1024 * 1024 * 1024,
+}) {
   let writes = 0;
   const cachedFiles = new Map();
   let indexLoaded = false;
@@ -14,9 +19,11 @@ function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 200
     const stat = await fs.stat(resolved);
     if (!stat.isFile()) throw new Error('画像ファイルではありません。');
     const identity = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
-    const version = createHash('sha256').update(JSON.stringify([
-      'thumbnail-v1-1280-webp', identity, stat.size, stat.mtimeMs, stat.ctimeMs
-    ])).digest('hex');
+    const version = createHash('sha256')
+      .update(
+        JSON.stringify(['thumbnail-v1-1280-webp', identity, stat.size, stat.mtimeMs, stat.ctimeMs]),
+      )
+      .digest('hex');
     return { version, file: path.join(cacheDirectory(), `${version}.webp`) };
   }
 
@@ -27,24 +34,33 @@ function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 200
       // Track recent use without writing timestamps on every disk cache hit.
       cachedFiles.set(file, { size: bytes.byteLength, time: Date.now() });
       return { version, bytes };
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      return { version, bytes: null };
     }
-    catch (error) { if (error.code !== 'ENOENT') throw error; return { version, bytes: null }; }
   }
 
   async function prune() {
     const directory = cacheDirectory();
     if (!indexLoaded) {
-      const files = (await fs.readdir(directory)).filter(name => /^[a-f0-9]{64}\.webp$/.test(name));
+      const files = (await fs.readdir(directory)).filter((name) =>
+        /^[a-f0-9]{64}\.webp$/.test(name),
+      );
       // Read existing metadata once, in bounded batches rather than flooding disk I/O.
       for (let offset = 0; offset < files.length; offset += 32) {
-        await Promise.all(files.slice(offset, offset + 32).map(async name => {
-          const file = path.join(directory, name);
-          if (cachedFiles.has(file)) return;
-          try {
-            const stat = await fs.stat(file);
-            if (!cachedFiles.has(file)) cachedFiles.set(file, { size: stat.size, time: stat.mtimeMs });
-          } catch (error) { if (error.code !== 'ENOENT') throw error; }
-        }));
+        await Promise.all(
+          files.slice(offset, offset + 32).map(async (name) => {
+            const file = path.join(directory, name);
+            if (cachedFiles.has(file)) return;
+            try {
+              const stat = await fs.stat(file);
+              if (!cachedFiles.has(file))
+                cachedFiles.set(file, { size: stat.size, time: stat.mtimeMs });
+            } catch (error) {
+              if (error.code !== 'ENOENT') throw error;
+            }
+          }),
+        );
       }
       indexLoaded = true;
     }
@@ -61,7 +77,9 @@ function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 200
       if (cachedFiles.get(file) !== entry) continue;
       cachedFiles.delete(file);
       bytes -= entry.size;
-      await fs.unlink(file).catch(error => { if (error.code !== 'ENOENT') throw error; });
+      await fs.unlink(file).catch((error) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
     }
   }
 
@@ -74,13 +92,18 @@ function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 200
         pruneRequested = false;
         await prune();
       }
-    })().catch(console.error).finally(() => { pruning = null; });
+    })()
+      .catch(console.error)
+      .finally(() => {
+        pruning = null;
+      });
   }
 
   async function write(filePath, version, bytes) {
     const current = await describe(filePath);
     if (current.version !== version) return false;
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength > 8 * 1024 * 1024) throw new Error('不正なサムネイルです。');
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength > 8 * 1024 * 1024)
+      throw new Error('不正なサムネイルです。');
     await fs.mkdir(cacheDirectory(), { recursive: true });
     const temporary = `${current.file}.${randomUUID()}.tmp`;
     try {
@@ -90,7 +113,9 @@ function createThumbnailStore({ cacheDirectory, requireAllowed, maxEntries = 200
       await fs.rename(temporary, current.file);
       cachedFiles.set(current.file, { size: bytes.byteLength, time: Date.now() });
     } finally {
-      await fs.unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
+      await fs.unlink(temporary).catch((error) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
     }
     if (++writes % 32 === 0) {
       schedulePrune();

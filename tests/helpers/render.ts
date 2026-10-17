@@ -9,9 +9,14 @@ export function render(node: ReactNode) {
   document.body.append(container);
   const root = createRoot(container);
   const update = (next: ReactNode) => flushSync(() => root.render(next));
-  const unmount = () => { flushSync(() => root.unmount()); container.remove(); };
+  const unmount = () => {
+    flushSync(() => root.unmount());
+    container.remove();
+  };
   mounted.push(unmount);
   update(node);
   return { container, update };
 }
-afterEach(() => { for (const unmount of mounted.splice(0)) unmount(); });
+afterEach(() => {
+  for (const unmount of mounted.splice(0)) unmount();
+});

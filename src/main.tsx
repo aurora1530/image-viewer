@@ -6,5 +6,13 @@ import './style.css';
 
 const root = createRoot(document.getElementById('app')!);
 const stop = startApplication();
-root.render(<StrictMode><App /></StrictMode>);
-if (import.meta.hot) import.meta.hot.dispose(() => { root.unmount(); stop(); });
+root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+if (import.meta.hot)
+  import.meta.hot.dispose(() => {
+    root.unmount();
+    stop();
+  });

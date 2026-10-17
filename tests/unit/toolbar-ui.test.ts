@@ -28,7 +28,9 @@ describe('React display preferences', () => {
 
   it('reflects hidden UI and single-page view from shared state', () => {
     render(createElement(App));
-    flushSync(() => appStore.setState({ isUiHidden: true, isUiDockRevealed: true, isSinglePageView: true }));
+    flushSync(() =>
+      appStore.setState({ isUiHidden: true, isUiDockRevealed: true, isSinglePageView: true }),
+    );
     expect(document.body.classList.contains('ui-hidden-mode')).toBe(true);
     expect(document.body.classList.contains('ui-dock-revealed')).toBe(true);
     expect(element('ui-visibility-btn').getAttribute('aria-pressed')).toBe('true');
@@ -40,8 +42,14 @@ describe('React display preferences', () => {
     render(createElement(App));
     expect(element('list-toolbar').classList.contains('hidden')).toBe(true);
     const root = new MemoryDirectory('root');
-    flushSync(() => appStore.setState({ directories: [root.asHandle(), root.directory('chapter').asHandle()],
-      listMode: 'favorites', favoriteMode: 'only', sortOrder: 'desc' }));
+    flushSync(() =>
+      appStore.setState({
+        directories: [root.asHandle(), root.directory('chapter').asHandle()],
+        listMode: 'favorites',
+        favoriteMode: 'only',
+        sortOrder: 'desc',
+      }),
+    );
     expect(element('list-toolbar').classList.contains('hidden')).toBe(false);
     expect(element('up-dir-btn').classList.contains('hidden')).toBe(false);
     expect(element('current-dir-name').textContent).toBe('chapter');

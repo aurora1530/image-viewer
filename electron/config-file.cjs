@@ -8,8 +8,9 @@ async function writeConfigFile(filePath, data) {
     await fs.writeFile(temporary, data, { flag: 'wx' });
     await fs.rename(temporary, filePath);
   } finally {
-    await fs.unlink(temporary).catch(error => {
-      if (error.code !== 'ENOENT') console.error('設定の一時ファイルを削除できませんでした:', error);
+    await fs.unlink(temporary).catch((error) => {
+      if (error.code !== 'ENOENT')
+        console.error('設定の一時ファイルを削除できませんでした:', error);
     });
   }
 }

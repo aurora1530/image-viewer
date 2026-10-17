@@ -5,7 +5,7 @@ import {
   joinRelativePath,
   normalizeDirPathSegments,
   normalizeConfigEntry,
-  normalizeFavoriteEntry
+  normalizeFavoriteEntry,
 } from './utils';
 
 export type ConfigEntry = string | { type?: string; path?: string };
@@ -56,19 +56,15 @@ export function ensureConfigNode(raw: unknown): ConfigNode {
       favorites: [],
       hiddenItems: [],
       settings: {},
-      directories: {}
+      directories: {},
     };
   }
 
   const rawFavorites = raw.favorites;
-  raw.favorites = Array.isArray(rawFavorites)
-    ? rawFavorites.filter(isConfigEntry)
-    : [];
+  raw.favorites = Array.isArray(rawFavorites) ? rawFavorites.filter(isConfigEntry) : [];
 
   const rawHiddenItems = raw.hiddenItems;
-  raw.hiddenItems = Array.isArray(rawHiddenItems)
-    ? rawHiddenItems.filter(isConfigEntry)
-    : [];
+  raw.hiddenItems = Array.isArray(rawHiddenItems) ? rawHiddenItems.filter(isConfigEntry) : [];
 
   const rawSettings = raw.settings;
   raw.settings = isRecord(rawSettings) ? rawSettings : {};
@@ -104,7 +100,7 @@ export function normalizeRootConfig(raw: unknown): ConfigNode {
 export function getConfigNode(
   rootConfig: ConfigNode,
   pathSegments: unknown,
-  { create = false }: { create?: boolean } = {}
+  { create = false }: { create?: boolean } = {},
 ): ConfigNode | null {
   let node = rootConfig;
   const segments = normalizeDirPathSegments(pathSegments);
@@ -125,46 +121,53 @@ type ErrorReporter = (message: string, error?: unknown) => void;
 function getConfigStore(rootHandle: FileSystemDirectoryHandle): ConfigStore<ConfigNode> {
   let store = configStores.get(rootHandle);
   if (!store) {
-    store = new ConfigStore(async () => {
-      let fileHandle: FileSystemFileHandle;
-      try {
-        fileHandle = await rootHandle.getFileHandle(CONFIG.CONFIG_FILENAME);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'NotFoundError') {
-          return normalizeRootConfig(null);
+    store = new ConfigStore(
+      async () => {
+        let fileHandle: FileSystemFileHandle;
+        try {
+          fileHandle = await rootHandle.getFileHandle(CONFIG.CONFIG_FILENAME);
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'NotFoundError') {
+            return normalizeRootConfig(null);
+          }
+          throw error;
         }
-        throw error;
-      }
-      const text = await (await fileHandle.getFile()).text();
-      const raw: unknown = JSON.parse(text);
-      if (!isRecord(raw) || Array.isArray(raw)) throw new Error('設定ファイルの形式が不正です。');
-      if (typeof raw.version === 'number' && raw.version > 3) {
-        throw new Error('この設定ファイルは新しいバージョンのアプリで作成されています。');
-      }
-      return normalizeRootConfig(raw);
-    }, async payload => {
-      const fileHandle = await rootHandle.getFileHandle(CONFIG.CONFIG_FILENAME, { create: true });
-      const writable = await fileHandle.createWritable();
-      try {
-        await writable.write(payload);
-        await writable.close();
-      } catch (error) {
-        await writable.abort?.().catch(() => undefined);
-        throw error;
-      }
-    });
+        const text = await (await fileHandle.getFile()).text();
+        const raw: unknown = JSON.parse(text);
+        if (!isRecord(raw) || Array.isArray(raw)) throw new Error('設定ファイルの形式が不正です。');
+        if (typeof raw.version === 'number' && raw.version > 3) {
+          throw new Error('この設定ファイルは新しいバージョンのアプリで作成されています。');
+        }
+        return normalizeRootConfig(raw);
+      },
+      async (payload) => {
+        const fileHandle = await rootHandle.getFileHandle(CONFIG.CONFIG_FILENAME, { create: true });
+        const writable = await fileHandle.createWritable();
+        try {
+          await writable.write(payload);
+          await writable.close();
+        } catch (error) {
+          await writable.abort?.().catch(() => undefined);
+          throw error;
+        }
+      },
+    );
     configStores.set(rootHandle, store);
   }
   return store;
 }
 
 /** Reads and normalizes once per root; rendering never reads the disk again. */
-export async function readRootConfig(rootHandle: FileSystemDirectoryHandle | null): Promise<ConfigNode> {
+export async function readRootConfig(
+  rootHandle: FileSystemDirectoryHandle | null,
+): Promise<ConfigNode> {
   return rootHandle ? getConfigStore(rootHandle).read() : normalizeRootConfig(null);
 }
 
 /** Explicit refresh: persist local changes before loading external edits. */
-export async function reloadRootConfig(rootHandle: FileSystemDirectoryHandle | null): Promise<ConfigNode> {
+export async function reloadRootConfig(
+  rootHandle: FileSystemDirectoryHandle | null,
+): Promise<ConfigNode> {
   return rootHandle ? getConfigStore(rootHandle).reload() : normalizeRootConfig(null);
 }
 
@@ -176,12 +179,12 @@ export async function flushRootConfig(rootHandle: FileSystemDirectoryHandle | nu
 export async function writeRootConfig(
   rootHandle: FileSystemDirectoryHandle | null,
   config: ConfigNode,
-  onError?: ErrorReporter
+  onError?: ErrorReporter,
 ): Promise<boolean> {
   if (!rootHandle) return false;
   try {
     const store = getConfigStore(rootHandle);
-    await store.update(current => {
+    await store.update((current) => {
       if (current !== config) {
         for (const key of Object.keys(current)) delete (current as Record<string, unknown>)[key];
         Object.assign(current, normalizeRootConfig(config));
@@ -200,17 +203,17 @@ export async function saveDirectorySettings(
   rootHandle: FileSystemDirectoryHandle,
   pathSegments: unknown,
   settings: Record<string, unknown>,
-  onError?: ErrorReporter
+  onError?: ErrorReporter,
 ): Promise<void> {
   const path = normalizeDirPathSegments(pathSegments);
   const snapshot = { ...settings };
   try {
     const store = getConfigStore(rootHandle);
-    await store.update(root => {
+    await store.update((root) => {
       const node = getConfigNode(root, path, { create: true })!;
       node.settings = { ...node.settings, ...snapshot };
     });
-    store.scheduleSave(error => onError?.('コンフィグの保存に失敗しました。', error));
+    store.scheduleSave((error) => onError?.('コンフィグの保存に失敗しました。', error));
   } catch (error) {
     onError?.('コンフィグの読み込みに失敗しました。', error);
   }
@@ -222,7 +225,7 @@ export async function saveDirectorySettings(
 export function makeFavoriteSet(config: ConfigNode | null): Set<string> {
   const set = new Set<string>();
   if (!config || !Array.isArray(config.favorites)) return set;
-  config.favorites.forEach(entry => {
+  config.favorites.forEach((entry) => {
     const key = normalizeFavoriteEntry(entry);
     if (key) set.add(key);
   });
@@ -235,7 +238,7 @@ export function makeFavoriteSet(config: ConfigNode | null): Set<string> {
 export function makeHiddenSet(config: ConfigNode | null): Set<string> {
   const set = new Set<string>();
   if (!config || !Array.isArray(config.hiddenItems)) return set;
-  config.hiddenItems.forEach(entry => {
+  config.hiddenItems.forEach((entry) => {
     const key = normalizeConfigEntry(entry);
     if (key) set.add(key);
   });
@@ -257,7 +260,7 @@ async function collectFavoriteFilesFromNode(
   node: ConfigNode,
   parentPath: string,
   list: FavoriteFileHandleEntry[],
-  favoriteBranches: WeakSet<ConfigNode>
+  favoriteBranches: WeakSet<ConfigNode>,
 ): Promise<void> {
   const hiddenSet = makeHiddenSet(node);
   for (const entry of node.favorites) {
@@ -273,11 +276,14 @@ async function collectFavoriteFilesFromNode(
         name: fileName,
         parentPath,
         path: joinRelativePath(parentPath, fileName),
-        isHidden: hiddenSet.has(key)
+        isHidden: hiddenSet.has(key),
       });
     } catch (e) {
       if (CONFIG.ENABLE_DEBUG_LOGS) {
-        console.warn(`お気に入りファイルを読み込めませんでした: ${joinRelativePath(parentPath, fileName)}`, e);
+        console.warn(
+          `お気に入りファイルを読み込めませんでした: ${joinRelativePath(parentPath, fileName)}`,
+          e,
+        );
       }
     }
   }
@@ -291,11 +297,14 @@ async function collectFavoriteFilesFromNode(
         childNode,
         joinRelativePath(parentPath, dirName),
         list,
-        favoriteBranches
+        favoriteBranches,
       );
     } catch (e) {
       if (CONFIG.ENABLE_DEBUG_LOGS) {
-        console.warn(`お気に入りディレクトリを読み込めませんでした: ${joinRelativePath(parentPath, dirName)}`, e);
+        console.warn(
+          `お気に入りディレクトリを読み込めませんでした: ${joinRelativePath(parentPath, dirName)}`,
+          e,
+        );
       }
     }
   }
@@ -307,13 +316,15 @@ async function collectFavoriteFilesFromNode(
  */
 export async function collectFavoriteFilesFromConfig(
   rootHandle: FileSystemDirectoryHandle | null,
-  rootConfig: ConfigNode | null
+  rootConfig: ConfigNode | null,
 ): Promise<FavoriteFileHandleEntry[]> {
   if (!rootHandle || !rootConfig) return [];
   const list: FavoriteFileHandleEntry[] = [];
   const favoriteBranches = new WeakSet<ConfigNode>();
   const markBranches = (node: ConfigNode): boolean => {
-    let hasFavorites = node.favorites.some(entry => normalizeFavoriteEntry(entry)?.startsWith('file:'));
+    let hasFavorites = node.favorites.some((entry) =>
+      normalizeFavoriteEntry(entry)?.startsWith('file:'),
+    );
     for (const child of Object.values(node.directories)) {
       if (markBranches(child)) hasFavorites = true;
     }
@@ -331,7 +342,7 @@ async function toggleEntry(
   pathSegments: unknown,
   entry: ConfigEntry,
   field: 'favorites' | 'hiddenItems',
-  onError?: ErrorReporter
+  onError?: ErrorReporter,
 ): Promise<boolean> {
   if (!rootHandle) return false;
   const key = normalizeConfigEntry(entry);
@@ -340,9 +351,9 @@ async function toggleEntry(
   const snapshot = typeof entry === 'string' ? entry : { ...entry };
   try {
     const store = getConfigStore(rootHandle);
-    const enabled = await store.update(root => {
+    const enabled = await store.update((root) => {
       const entries = getConfigNode(root, path, { create: true })![field];
-      const index = entries.findIndex(item => normalizeConfigEntry(item) === key);
+      const index = entries.findIndex((item) => normalizeConfigEntry(item) === key);
       if (index >= 0) entries.splice(index, 1);
       else entries.push(snapshot);
       return index < 0;
@@ -359,7 +370,7 @@ export function toggleFavoriteEntry(
   rootHandle: FileSystemDirectoryHandle | null,
   dirPathSegments: unknown,
   entry: FavoriteEntry,
-  onError?: ErrorReporter
+  onError?: ErrorReporter,
 ): Promise<boolean> {
   return toggleEntry(rootHandle, dirPathSegments, entry, 'favorites', onError);
 }
@@ -368,7 +379,7 @@ export function toggleHiddenEntry(
   rootHandle: FileSystemDirectoryHandle | null,
   dirPathSegments: unknown,
   entry: HiddenEntry,
-  onError?: ErrorReporter
+  onError?: ErrorReporter,
 ): Promise<boolean> {
   return toggleEntry(rootHandle, dirPathSegments, entry, 'hiddenItems', onError);
 }

@@ -9,9 +9,17 @@ import { MemoryDirectory } from '../helpers/memoryFs';
 import { originalImageCache } from '../../src/originalImageCache';
 
 const root = new MemoryDirectory('root');
-const handles = ['1.png', '2.png', '3.png', '4.png', '5.png'].map(name => root.file(name).asHandle());
+const handles = ['1.png', '2.png', '3.png', '4.png', '5.png'].map((name) =>
+  root.file(name).asHandle(),
+);
 
-function harness(single = false, files = handles, getThumbnailPreview?: (handle: FileSystemFileHandle) => { url: string; objectUrl: boolean } | null) {
+function harness(
+  single = false,
+  files = handles,
+  getThumbnailPreview?: (
+    handle: FileSystemFileHandle,
+  ) => { url: string; objectUrl: boolean } | null,
+) {
   let presentation = { ...closedViewer };
   let singleView = single;
   const mounted = render(createElement(Viewer, { presentation, single: singleView }));
@@ -25,45 +33,91 @@ function harness(single = false, files = handles, getThumbnailPreview?: (handle:
   let currentFiles: FileSystemFileHandle[] = [];
   let index = 0;
   let offset = 0;
-  const ensureDirectoryCache = vi.fn(async () => ({
-    items: files.map(handle => ({ type: 'image' as const, handle, name: handle.name, nameLower: handle.name.toLowerCase() })),
-    imageCount: files.length, sorted: {}
-  } satisfies DirectoryCacheEntry));
+  const ensureDirectoryCache = vi.fn(
+    async () =>
+      ({
+        items: files.map((handle) => ({
+          type: 'image' as const,
+          handle,
+          name: handle.name,
+          nameLower: handle.name.toLowerCase(),
+        })),
+        imageCount: files.length,
+        sorted: {},
+      }) satisfies DirectoryCacheEntry,
+  );
   localStorage.setItem('isSinglePageView', single ? '1' : '0');
   const controller = createViewer({
     getThumbnailPreview,
-    render: patch => { presentation = { ...presentation, ...patch }; update(); },
+    render: (patch) => {
+      presentation = { ...presentation, ...patch };
+      update();
+    },
     getVideoPlayback: () => ({ time: video.currentTime, paused: video.paused }),
     getCurrentImageFiles: () => currentFiles,
-    setCurrentImageFiles: value => { currentFiles = value; },
+    setCurrentImageFiles: (value) => {
+      currentFiles = value;
+    },
     getCurrentImageIndex: () => index,
-    setCurrentImageIndex: value => { index = value; },
+    setCurrentImageIndex: (value) => {
+      index = value;
+    },
     getPageOffset: () => offset,
-    setPageOffset: value => { offset = value; },
+    setPageOffset: (value) => {
+      offset = value;
+    },
     getSortOrder: () => 'asc',
     getIsSinglePageView: () => singleView,
-    setIsSinglePageView: value => { singleView = value; update(); },
+    setIsSinglePageView: (value) => {
+      singleView = value;
+      update();
+    },
     showStatus: vi.fn(),
-    ensureDirectoryCache
+    ensureDirectoryCache,
   });
-  return { controller, viewer, pages, left, right, counter, video, ensureDirectoryCache,
-    setSingle: (value: boolean) => { singleView = value; update(); },
-    get index() { return index; }, get files() { return currentFiles; } };
+  return {
+    controller,
+    viewer,
+    pages,
+    left,
+    right,
+    counter,
+    video,
+    ensureDirectoryCache,
+    setSingle: (value: boolean) => {
+      singleView = value;
+      update();
+    },
+    get index() {
+      return index;
+    },
+    get files() {
+      return currentFiles;
+    },
+  };
 }
 
 beforeEach(() => {
   originalImageCache.clear();
-  vi.stubGlobal('Image', class {
-    src = '';
-    decoding = '';
-    async decode() {}
-    removeAttribute() { this.src = ''; }
-  });
+  vi.stubGlobal(
+    'Image',
+    class {
+      src = '';
+      decoding = '';
+      async decode() {}
+      removeAttribute() {
+        this.src = '';
+      }
+    },
+  );
   let sequence = 0;
-  vi.stubGlobal('URL', Object.assign(URL, {
-    createObjectURL: vi.fn(() => `blob:image-${++sequence}`),
-    revokeObjectURL: vi.fn()
-  }));
+  vi.stubGlobal(
+    'URL',
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => `blob:image-${++sequence}`),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
@@ -88,8 +142,16 @@ describe('image viewer behavior', () => {
 
   it('shows cached previews immediately and publishes ready spread pages independently', async () => {
     let release!: (file: File) => void;
-    vi.spyOn(handles[1], 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
-    const view = harness(false, handles.slice(0, 2), handle => ({ url: `blob:preview-${handle.name}`, objectUrl: true }));
+    vi.spyOn(handles[1], 'getFile').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const view = harness(false, handles.slice(0, 2), (handle) => ({
+      url: `blob:preview-${handle.name}`,
+      objectUrl: true,
+    }));
     const pending = view.controller.openViewer(root.asHandle(), 0);
     await vi.waitFor(() => expect(view.right.dataset.url).toMatch(/^blob:image-/));
     expect(view.left.dataset.url).toBe('blob:preview-2.png');
@@ -106,7 +168,12 @@ describe('image viewer behavior', () => {
 
   it('cleans up a preview and ignores the original that finishes after closing', async () => {
     let release!: (file: File) => void;
-    vi.spyOn(handles[0], 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(handles[0], 'getFile').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const view = harness(true, [handles[0]], () => ({ url: 'blob:preview', objectUrl: true }));
     const pending = view.controller.openViewer(root.asHandle(), 0);
     await vi.waitFor(() => expect(view.right.dataset.url).toBe('blob:preview'));
@@ -157,7 +224,11 @@ describe('image viewer behavior', () => {
     expect(view.video.src).toContain('blob:image-');
     view.controller.closeViewer();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(imageUrl);
-    await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(vi.mocked(URL.createObjectURL).mock.calls.length));
+    await vi.waitFor(() =>
+      expect(URL.revokeObjectURL).toHaveBeenCalledTimes(
+        vi.mocked(URL.createObjectURL).mock.calls.length,
+      ),
+    );
     expect(view.files).toEqual([]);
     expect(view.viewer.style.display).toBe('none');
   });
@@ -169,23 +240,28 @@ describe('image viewer behavior', () => {
   });
 
   it('preloads neighboring images and reuses their files and URLs when moving back', async () => {
-    const reads = handles.map(handle => vi.spyOn(handle, 'getFile'));
+    const reads = handles.map((handle) => vi.spyOn(handle, 'getFile'));
     const view = harness(true);
     await view.controller.openViewer(root.asHandle(), 0);
     const firstUrl = view.right.dataset.url;
-    await vi.waitFor(() => expect(reads.every(read => read.mock.calls.length === 1)).toBe(true));
+    await vi.waitFor(() => expect(reads.every((read) => read.mock.calls.length === 1)).toBe(true));
     view.controller.navigatePages(1);
     await vi.waitFor(() => expect(view.counter.textContent).toBe('2 / 5'));
     view.controller.navigatePages(-1);
     await vi.waitFor(() => expect(view.counter.textContent).toBe('1 / 5'));
     expect(view.right.dataset.url).toBe(firstUrl);
-    expect(reads.every(read => read.mock.calls.length === 1)).toBe(true);
+    expect(reads.every((read) => read.mock.calls.length === 1)).toBe(true);
     view.controller.closeViewer();
   });
 
   it('does not let a slower old page overwrite a newer page after rapid navigation', async () => {
     let release!: (file: File) => void;
-    vi.spyOn(handles[1], 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(handles[1], 'getFile').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const view = harness(true);
     await view.controller.openViewer(root.asHandle(), 0);
     view.controller.navigatePages(1);
@@ -201,7 +277,12 @@ describe('image viewer behavior', () => {
 
   it('releases an in-flight preload after closing without restoring the image', async () => {
     let release!: (file: File) => void;
-    vi.spyOn(handles[1], 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(handles[1], 'getFile').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const view = harness(true);
     await view.controller.openViewer(root.asHandle(), 0);
     view.controller.closeViewer();
@@ -220,18 +301,32 @@ describe('image viewer behavior', () => {
     await view.controller.openViewer(directory.asHandle(), 0);
     for (let index = 2; index <= 12; index += 2) {
       view.controller.navigatePages(2);
-      await vi.waitFor(() => expect(view.counter.textContent).toBe(`${index + 2} - ${index + 1} / 20`));
-      expect(vi.mocked(URL.createObjectURL).mock.calls.length - vi.mocked(URL.revokeObjectURL).mock.calls.length).toBeLessThanOrEqual(6);
+      await vi.waitFor(() =>
+        expect(view.counter.textContent).toBe(`${index + 2} - ${index + 1} / 20`),
+      );
+      expect(
+        vi.mocked(URL.createObjectURL).mock.calls.length -
+          vi.mocked(URL.revokeObjectURL).mock.calls.length,
+      ).toBeLessThanOrEqual(6);
     }
     view.controller.closeViewer();
     view.controller.clearCache();
-    await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(vi.mocked(URL.createObjectURL).mock.calls.length));
+    await vi.waitFor(() =>
+      expect(URL.revokeObjectURL).toHaveBeenCalledTimes(
+        vi.mocked(URL.createObjectURL).mock.calls.length,
+      ),
+    );
   });
 
   it('discards a video source that finishes loading after the viewer is closed', async () => {
     const videoFile = root.file('late.mp4');
     let release!: (file: File) => void;
-    vi.spyOn(videoFile, 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(videoFile, 'getFile').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const view = harness();
     const pending = view.controller.openVideoPlayer(videoFile.asHandle());
     view.controller.closeViewer();
@@ -246,9 +341,14 @@ describe('image viewer behavior', () => {
   it('does not restore an older directory after another image list is opened', async () => {
     const view = harness(true);
     let release!: () => void;
-    const paused = new Promise<void>(resolve => { release = resolve; });
+    const paused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const original = view.ensureDirectoryCache.getMockImplementation()!;
-    view.ensureDirectoryCache.mockImplementationOnce(async () => { await paused; return original(); });
+    view.ensureDirectoryCache.mockImplementationOnce(async () => {
+      await paused;
+      return original();
+    });
     const oldOpen = view.controller.openViewer(root.asHandle(), 0);
     await view.controller.openViewer(root.asHandle(), 0, [handles[4]]);
     const latestUrl = view.right.dataset.url;
@@ -276,7 +376,12 @@ describe('image viewer behavior', () => {
 
   it('keeps the latest view mode when a spread finishes loading after switching to single view', async () => {
     let release!: (file: File) => void;
-    vi.spyOn(handles[2], 'getFile').mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(handles[2], 'getFile').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const view = harness();
     await view.controller.openViewer(root.asHandle(), 0);
     view.controller.navigatePages(2);

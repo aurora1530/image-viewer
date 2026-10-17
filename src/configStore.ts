@@ -9,17 +9,14 @@ export class ConfigStore<T> {
   private readonly load: () => Promise<T>;
   private readonly save: (payload: string) => Promise<void>;
 
-  constructor(
-    load: () => Promise<T>,
-    save: (payload: string) => Promise<void>
-  ) {
+  constructor(load: () => Promise<T>, save: (payload: string) => Promise<void>) {
     this.load = load;
     this.save = save;
   }
 
   private loadDocument(): Promise<T> {
     if (!this.document) {
-      this.document = this.load().catch(error => {
+      this.document = this.load().catch((error) => {
         this.document = null;
         throw error;
       });
@@ -29,7 +26,10 @@ export class ConfigStore<T> {
 
   private enqueue<R>(operation: () => Promise<R>): Promise<R> {
     const result = this.changes.then(operation);
-    this.changes = result.then(() => undefined, () => undefined);
+    this.changes = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 

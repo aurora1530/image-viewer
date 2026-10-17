@@ -4,16 +4,24 @@ const { Readable } = require('node:stream');
 const path = require('node:path');
 
 const mimeTypes = {
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.ogg': 'video/ogg',
-  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
-  '.webp': 'image/webp', '.bmp': 'image/bmp', '.heic': 'image/heic'
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.ogg': 'video/ogg',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.heic': 'image/heic',
 };
 
 async function serveMedia(request, filePath) {
   const { size } = await stat(filePath);
   const headers = {
     'Accept-Ranges': 'bytes',
-    'Content-Type': mimeTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream'
+    'Content-Type': mimeTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
   };
   const range = request.headers.get('range');
   let start = 0;
@@ -30,15 +38,24 @@ async function serveMedia(request, filePath) {
     } else {
       start = size;
     }
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= size) {
-      return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+    if (
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(end) ||
+      start > end ||
+      start >= size
+    ) {
+      return new Response(null, {
+        status: 416,
+        headers: { ...headers, 'Content-Range': `bytes */${size}` },
+      });
     }
     headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
   }
   headers['Content-Length'] = String(Math.max(0, end - start + 1));
-  const body = request.method === 'HEAD' || size === 0
-    ? null
-    : Readable.toWeb(createReadStream(filePath, { start, end }));
+  const body =
+    request.method === 'HEAD' || size === 0
+      ? null
+      : Readable.toWeb(createReadStream(filePath, { start, end }));
   return new Response(body, { status: range ? 206 : 200, headers });
 }
 

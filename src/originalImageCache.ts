@@ -29,27 +29,36 @@ export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntrie
     const cache = entries;
     const entry: Entry = { promise: Promise.resolve(new Blob()) };
     cache.set(key, entry);
-    entry.promise = read(handle).then(blob => {
-      if (entries === cache && cache.get(key) === entry) {
-        entry.blob = blob;
-        bytes += blob.size;
-        // Pending reads remain shared until completion, even when completed blobs are evicted.
-        for (const [oldKey, old] of cache) {
-          if (bytes <= maxBytes && cache.size <= maxEntries) break;
-          if (!old.blob) continue;
-          bytes -= old.blob.size;
-          cache.delete(oldKey);
+    entry.promise = read(handle).then(
+      (blob) => {
+        if (entries === cache && cache.get(key) === entry) {
+          entry.blob = blob;
+          bytes += blob.size;
+          // Pending reads remain shared until completion, even when completed blobs are evicted.
+          for (const [oldKey, old] of cache) {
+            if (bytes <= maxBytes && cache.size <= maxEntries) break;
+            if (!old.blob) continue;
+            bytes -= old.blob.size;
+            cache.delete(oldKey);
+          }
         }
-      }
-      return blob;
-    }, error => {
-      if (cache.get(key) === entry) cache.delete(key);
-      throw error;
-    });
+        return blob;
+      },
+      (error) => {
+        if (cache.get(key) === entry) cache.delete(key);
+        throw error;
+      },
+    );
     return entry.promise;
   }
 
-  return { get, clear() { entries = new Map(); bytes = 0; } };
+  return {
+    get,
+    clear() {
+      entries = new Map();
+      bytes = 0;
+    },
+  };
 }
 
 export const originalImageCache = createOriginalImageCache();

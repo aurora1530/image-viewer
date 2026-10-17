@@ -49,7 +49,12 @@ export function createImagePageCache(getSource = getMediaSource) {
   function get(handle: FileSystemFileHandle): Promise<ImagePage | null> {
     const cached = entries.get(handle);
     if (cached) return cached.promise;
-    const entry: CacheEntry = { disposed: false, ready: false, page: null, promise: Promise.resolve(null) };
+    const entry: CacheEntry = {
+      disposed: false,
+      ready: false,
+      page: null,
+      promise: Promise.resolve(null),
+    };
     entries.set(handle, entry);
     entry.promise = load(handle, entry);
     return entry.promise;
@@ -76,6 +81,12 @@ export function createImagePageCache(getSource = getMediaSource) {
     }
   }
 
-  return { get, retain, clear, discardPending,
-    peek: (handle: FileSystemFileHandle) => entries.get(handle)?.ready ? entries.get(handle)!.page : null };
+  return {
+    get,
+    retain,
+    clear,
+    discardPending,
+    peek: (handle: FileSystemFileHandle) =>
+      entries.get(handle)?.ready ? entries.get(handle)!.page : null,
+  };
 }

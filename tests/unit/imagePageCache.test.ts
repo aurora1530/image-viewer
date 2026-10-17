@@ -12,13 +12,20 @@ const decode = vi.fn<() => Promise<void>>();
 
 beforeEach(() => {
   decode.mockReset().mockResolvedValue(undefined);
-  vi.mocked(getMediaSource).mockReset().mockImplementation(async handle => ({ url: `blob:${handle.name}`, objectUrl: true }));
-  vi.stubGlobal('Image', class {
-    src = '';
-    decoding = '';
-    decode = decode;
-    removeAttribute() { this.src = ''; }
-  });
+  vi.mocked(getMediaSource)
+    .mockReset()
+    .mockImplementation(async (handle) => ({ url: `blob:${handle.name}`, objectUrl: true }));
+  vi.stubGlobal(
+    'Image',
+    class {
+      src = '';
+      decoding = '';
+      decode = decode;
+      removeAttribute() {
+        this.src = '';
+      }
+    },
+  );
   vi.stubGlobal('URL', Object.assign(URL, { revokeObjectURL: vi.fn() }));
 });
 
@@ -54,7 +61,12 @@ describe('decoded image page cache', () => {
 
   it('releases a source that arrives after its pending entry was cleared', async () => {
     let release!: (source: { url: string; objectUrl: boolean }) => void;
-    vi.mocked(getMediaSource).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    vi.mocked(getMediaSource).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const cache = createImagePageCache();
     const pending = cache.get(first);
     cache.clear();
@@ -67,7 +79,12 @@ describe('decoded image page cache', () => {
 
   it('releases a pending decode without publishing its result', async () => {
     let release!: () => void;
-    decode.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    decode.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const cache = createImagePageCache();
     const pending = cache.get(first);
     await vi.waitFor(() => expect(decode).toHaveBeenCalledOnce());
@@ -89,7 +106,10 @@ describe('decoded image page cache', () => {
   });
 
   it('decodes desktop stream URLs without revoking them on eviction', async () => {
-    vi.mocked(getMediaSource).mockResolvedValue({ url: 'local-media://file/image', objectUrl: false });
+    vi.mocked(getMediaSource).mockResolvedValue({
+      url: 'local-media://file/image',
+      objectUrl: false,
+    });
     const cache = createImagePageCache();
     const page = await cache.get(first);
     cache.clear();

@@ -2,7 +2,7 @@
 export const compareNumericText = new Intl.Collator(undefined, { numeric: true }).compare;
 export const compareBaseNumericText = new Intl.Collator(undefined, {
   numeric: true,
-  sensitivity: 'base'
+  sensitivity: 'base',
 }).compare;
 
 /**
@@ -10,7 +10,7 @@ export const compareBaseNumericText = new Intl.Collator(undefined, {
  */
 export function isImageFileName(name: string, extensions: string[]): boolean {
   const lower = name.toLowerCase();
-  return extensions.some(ext => lower.endsWith(ext));
+  return extensions.some((ext) => lower.endsWith(ext));
 }
 
 /**
@@ -19,6 +19,7 @@ export function isImageFileName(name: string, extensions: string[]): boolean {
 export function normalizeDirPathSegments(path: unknown): string[] {
   if (!path) return [];
   if (Array.isArray(path)) return path.filter(Boolean).map(String);
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve legacy coercion for paths loaded from older configuration files.
   return String(path).split('/').filter(Boolean);
 }
 
@@ -72,7 +73,7 @@ export function sortByFavorite<T extends { isFavorite?: boolean }>(items: T[]): 
       if (a.item.isFavorite === b.item.isFavorite) return a.index - b.index;
       return a.item.isFavorite ? -1 : 1;
     })
-    .map(entry => entry.item);
+    .map((entry) => entry.item);
 }
 
 /**

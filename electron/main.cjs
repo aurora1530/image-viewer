@@ -7,7 +7,10 @@ const { serveMedia } = require('./media-protocol.cjs');
 const { writeConfigFile } = require('./config-file.cjs');
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'local-media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+  {
+    scheme: 'local-media',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+  },
 ]);
 
 const allowedRoots = new Set();
@@ -17,10 +20,9 @@ let saveTimer = null;
 
 const libraryPath = () => path.join(app.getPath('userData'), 'library.json');
 const cachePath = () => path.join(app.getPath('userData'), 'directory-cache.json');
-const normalize = value => path.resolve(String(value));
-const samePath = (a, b) => process.platform === 'win32'
-  ? a.toLowerCase() === b.toLowerCase()
-  : a === b;
+const normalize = (value) => path.resolve(String(value));
+const samePath = (a, b) =>
+  process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
 
 function isInside(root, target) {
   const rel = path.relative(root, target);
@@ -29,7 +31,7 @@ function isInside(root, target) {
 
 function requireAllowed(target) {
   const resolved = normalize(target);
-  if (![...allowedRoots].some(root => isInside(root, resolved))) {
+  if (![...allowedRoots].some((root) => isInside(root, resolved))) {
     throw new Error('このパスへのアクセスは許可されていません。');
   }
   return resolved;
@@ -37,11 +39,15 @@ function requireAllowed(target) {
 
 const thumbnails = createThumbnailStore({
   cacheDirectory: () => path.join(app.getPath('userData'), 'thumbnails'),
-  requireAllowed
+  requireAllowed,
 });
 
 async function loadJson(file, fallback) {
-  try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch { return fallback; }
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
 }
 
 async function saveJson(file, value) {
@@ -61,8 +67,14 @@ async function getLibrary() {
   for (const item of library.recent || []) {
     try {
       const stat = await fs.stat(item.path);
-      if (stat.isDirectory()) existing.push({ ...item, favorite: (library.favorites || []).some(p => samePath(p, item.path)) });
-    } catch { /* unavailable folders remain out of the home screen */ }
+      if (stat.isDirectory())
+        existing.push({
+          ...item,
+          favorite: (library.favorites || []).some((p) => samePath(p, item.path)),
+        });
+    } catch {
+      /* unavailable folders remain out of the home screen */
+    }
   }
   return existing;
 }
@@ -70,23 +82,32 @@ async function getLibrary() {
 async function rememberRoot(rootPath) {
   const resolved = normalize(rootPath);
   allowedRoots.add(resolved);
-  const recent = (library.recent || []).filter(item => !samePath(item.path, resolved));
-  recent.unshift({ path: resolved, name: path.basename(resolved) || resolved, openedAt: Date.now() });
+  const recent = (library.recent || []).filter((item) => !samePath(item.path, resolved));
+  recent.unshift({
+    path: resolved,
+    name: path.basename(resolved) || resolved,
+    openedAt: Date.now(),
+  });
   library.recent = recent.slice(0, 30);
   await saveJson(libraryPath(), library);
   return resolved;
 }
 
 function decodeMediaUrl(url) {
-	const encoded = new URL(url).pathname.replace(/^\//, '');
+  const encoded = new URL(url).pathname.replace(/^\//, '');
   return Buffer.from(encoded, 'base64url').toString('utf8');
 }
 
 function registerIpc() {
   ipcMain.handle('desktop:read-thumbnail', (_event, filePath) => thumbnails.read(filePath));
-  ipcMain.handle('desktop:write-thumbnail', (_event, filePath, version, bytes) => thumbnails.write(filePath, version, bytes));
+  ipcMain.handle('desktop:write-thumbnail', (_event, filePath, version, bytes) =>
+    thumbnails.write(filePath, version, bytes),
+  );
   ipcMain.handle('desktop:choose-directory', async () => {
-    const result = await dialog.showOpenDialog({ properties: ['openDirectory'], title: 'ルートフォルダーを選択' });
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'ルートフォルダーを選択',
+    });
     if (result.canceled || result.filePaths.length === 0) return null;
     return rememberRoot(result.filePaths[0]);
   });
@@ -100,16 +121,17 @@ function registerIpc() {
   ipcMain.handle('desktop:toggle-favorite-root', async (_event, rootPath) => {
     const resolved = normalize(rootPath);
     const favorites = library.favorites || [];
-    const index = favorites.findIndex(item => samePath(item, resolved));
-    if (index >= 0) favorites.splice(index, 1); else favorites.unshift(resolved);
+    const index = favorites.findIndex((item) => samePath(item, resolved));
+    if (index >= 0) favorites.splice(index, 1);
+    else favorites.unshift(resolved);
     library.favorites = favorites;
     await saveJson(libraryPath(), library);
     return index < 0;
   });
   ipcMain.handle('desktop:remove-recent', async (_event, rootPath) => {
     const resolved = normalize(rootPath);
-    library.recent = (library.recent || []).filter(item => !samePath(item.path, resolved));
-    library.favorites = (library.favorites || []).filter(item => !samePath(item, resolved));
+    library.recent = (library.recent || []).filter((item) => !samePath(item.path, resolved));
+    library.favorites = (library.favorites || []).filter((item) => !samePath(item, resolved));
     await saveJson(libraryPath(), library);
   });
   ipcMain.handle('desktop:list-directory', async (_event, dirPath) => {
@@ -119,13 +141,15 @@ function registerIpc() {
     const cached = directoryCache[key];
     if (cached && cached.mtimeMs === stat.mtimeMs) return cached.entries;
     const entries = (await fs.readdir(resolved, { withFileTypes: true }))
-      .filter(entry => entry.isDirectory() || entry.isFile())
-      .map(entry => ({ name: entry.name, kind: entry.isDirectory() ? 'directory' : 'file' }));
+      .filter((entry) => entry.isDirectory() || entry.isFile())
+      .map((entry) => ({ name: entry.name, kind: entry.isDirectory() ? 'directory' : 'file' }));
     directoryCache[key] = { mtimeMs: stat.mtimeMs, entries, cachedAt: Date.now() };
     const keys = Object.keys(directoryCache);
     if (keys.length > 500) {
-      keys.sort((a, b) => directoryCache[a].cachedAt - directoryCache[b].cachedAt)
-        .slice(0, keys.length - 500).forEach(oldKey => delete directoryCache[oldKey]);
+      keys
+        .sort((a, b) => directoryCache[a].cachedAt - directoryCache[b].cachedAt)
+        .slice(0, keys.length - 500)
+        .forEach((oldKey) => delete directoryCache[oldKey]);
     }
     scheduleCacheSave();
     return entries;
@@ -162,20 +186,22 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
-    }
+      sandbox: true,
+    },
   });
-  const devUrl = process.env.VITE_DEV_SERVER_URL || (app.isPackaged ? null : 'http://127.0.0.1:5173');
+  const devUrl =
+    process.env.VITE_DEV_SERVER_URL || (app.isPackaged ? null : 'http://127.0.0.1:5173');
   win.on('app-command', (_event, command) => {
     if (command === 'browser-backward' || command === 'browser-forward') {
       win.webContents.send('desktop:navigate', command === 'browser-backward' ? 'back' : 'forward');
     }
   });
-  if (devUrl) win.loadURL(devUrl); else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  if (devUrl) win.loadURL(devUrl);
+  else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   let readyToClose = false;
   let closing = false;
   let hasCloseHandler = false;
-  const onCloseHandlerReady = event => {
+  const onCloseHandlerReady = (event) => {
     if (event.sender === win.webContents) hasCloseHandler = true;
   };
   const onReadyToClose = (event, saved) => {
@@ -191,8 +217,14 @@ function createWindow() {
   win.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) hasCloseHandler = false;
   });
-  win.on('close', event => {
-    if (readyToClose || !hasCloseHandler || win.webContents.isDestroyed() || win.webContents.isCrashed()) return;
+  win.on('close', (event) => {
+    if (
+      readyToClose ||
+      !hasCloseHandler ||
+      win.webContents.isDestroyed() ||
+      win.webContents.isCrashed()
+    )
+      return;
     event.preventDefault();
     if (!closing) {
       closing = true;
@@ -209,7 +241,7 @@ app.whenReady().then(async () => {
   library = await loadJson(libraryPath(), { recent: [], favorites: [] });
   directoryCache = await loadJson(cachePath(), {});
   registerIpc();
-  protocol.handle('local-media', request => {
+  protocol.handle('local-media', (request) => {
     const filePath = requireAllowed(decodeMediaUrl(request.url));
     // Whole-image reads stay in Chromium's file pipeline instead of copying many
     // small Node stream chunks across processes. Media byte ranges retain the
@@ -220,7 +252,11 @@ app.whenReady().then(async () => {
     return serveMedia(request, filePath);
   });
   createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});

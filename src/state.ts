@@ -35,9 +35,7 @@ export type DirectoryCacheVideoItem = {
 };
 
 export type DirectoryCacheItem =
-  | DirectoryCacheDirectoryItem
-  | DirectoryCacheImageItem
-  | DirectoryCacheVideoItem;
+  DirectoryCacheDirectoryItem | DirectoryCacheImageItem | DirectoryCacheVideoItem;
 
 export type DirectoryCacheEntry = {
   items: DirectoryCacheItem[];
@@ -53,12 +51,12 @@ export const CONFIG = {
   IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.heic'],
   VIDEO_EXTENSIONS: ['.mp4', '.webm', '.mov', '.ogg'],
   CONFIG_FILENAME: '.image-viewer.json',
-  ENABLE_DEBUG_LOGS: true
+  ENABLE_DEBUG_LOGS: true,
 };
 
 // Runtime resources are deliberately independent of the React tree.
 export const state = {
   directoryCache: new WeakMap<FileSystemDirectoryHandle, DirectoryCacheEntry>(),
   directoryPreviewCache: new WeakMap<FileSystemDirectoryHandle, DirectoryPreviewEntry>(),
-  previewUrls: new Set<string>()
+  previewUrls: new Set<string>(),
 };

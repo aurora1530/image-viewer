@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { createOriginalImageCache } from '../../src/originalImageCache';
 
 function file(name: string, size = 4) {
-  return { name, kind: 'file', getFile: vi.fn(async () => new File(['x'.repeat(size)], name)) } as unknown as FileSystemFileHandle;
+  return {
+    name,
+    kind: 'file',
+    getFile: vi.fn(async () => new File(['x'.repeat(size)], name)),
+  } as unknown as FileSystemFileHandle;
 }
 
 describe('shared original image cache', () => {
@@ -17,8 +21,13 @@ describe('shared original image cache', () => {
 
   it('evicts least recently used originals within the byte budget', async () => {
     const cache = createOriginalImageCache(8);
-    const a = file('a.jpg'), b = file('b.jpg'), c = file('c.jpg');
-    await cache.get(a); await cache.get(b); await cache.get(a); await cache.get(c);
+    const a = file('a.jpg'),
+      b = file('b.jpg'),
+      c = file('c.jpg');
+    await cache.get(a);
+    await cache.get(b);
+    await cache.get(a);
+    await cache.get(c);
     await cache.get(a);
     expect(a.getFile).toHaveBeenCalledOnce();
     await cache.get(b);
@@ -29,7 +38,12 @@ describe('shared original image cache', () => {
     const cache = createOriginalImageCache();
     const handle = file('pending.jpg');
     let release!: (file: File) => void;
-    vi.mocked(handle.getFile).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    vi.mocked(handle.getFile).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     const old = cache.get(handle);
     cache.clear();
     await cache.get(handle);

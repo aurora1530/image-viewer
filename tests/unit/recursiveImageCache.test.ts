@@ -18,8 +18,10 @@ describe('recursive image cache', () => {
     first[0].isHidden = true;
     first.pop();
     const second = await cache.get(root.asHandle());
-    expect(second.map(item => item.path)).toEqual(['2.png', '10.png', 'child/nested.gif']);
-    expect(second.every(item => item.isFavorite === undefined && item.isHidden === undefined)).toBe(true);
+    expect(second.map((item) => item.path)).toEqual(['2.png', '10.png', 'child/nested.gif']);
+    expect(
+      second.every((item) => item.isFavorite === undefined && item.isHidden === undefined),
+    ).toBe(true);
     expect(readRoot).toHaveBeenCalledOnce();
     expect(readChild).toHaveBeenCalledOnce();
   });
@@ -47,10 +49,16 @@ describe('recursive image cache', () => {
     await cache.get(child.asHandle(), 'child');
     root.entries.delete('old.png');
     child.file('new.png');
-    expect((await cache.get(root.asHandle())).map(item => item.path)).toContain('old.png');
+    expect((await cache.get(root.asHandle())).map((item) => item.path)).toContain('old.png');
     cache.clear();
-    expect((await cache.get(root.asHandle())).map(item => item.path)).toEqual(['child/new.png', 'child/one.png']);
-    expect((await cache.get(child.asHandle(), 'child')).map(item => item.path)).toEqual(['child/new.png', 'child/one.png']);
+    expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual([
+      'child/new.png',
+      'child/one.png',
+    ]);
+    expect((await cache.get(child.asHandle(), 'child')).map((item) => item.path)).toEqual([
+      'child/new.png',
+      'child/one.png',
+    ]);
   });
 
   it('does not cache collections interrupted by a new view', async () => {
@@ -62,9 +70,14 @@ describe('recursive image cache', () => {
     let active = true;
     await cache.get(root.asHandle(), '', {
       shouldContinue: () => active,
-      onFirstImages: () => { active = false; }
+      onFirstImages: () => {
+        active = false;
+      },
     });
-    expect((await cache.get(root.asHandle())).map(item => item.path)).toEqual(['cover.png', 'child/nested.png']);
+    expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual([
+      'cover.png',
+      'child/nested.png',
+    ]);
   });
 
   it('retries unreadable subfolders instead of caching partial results', async () => {
@@ -72,11 +85,16 @@ describe('recursive image cache', () => {
     root.file('cover.png');
     const child = root.directory('child');
     child.file('nested.png');
-    const read = vi.spyOn(child, 'values').mockImplementationOnce(async function* () { throw new Error('unreadable'); });
+    const read = vi.spyOn(child, 'values').mockImplementationOnce(async function* () {
+      throw new Error('unreadable');
+    });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const cache = createRecursiveImageCache();
-    expect((await cache.get(root.asHandle())).map(item => item.path)).toEqual(['cover.png']);
-    expect((await cache.get(root.asHandle())).map(item => item.path)).toEqual(['cover.png', 'child/nested.png']);
+    expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual(['cover.png']);
+    expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual([
+      'cover.png',
+      'child/nested.png',
+    ]);
     expect(read).toHaveBeenCalledTimes(2);
   });
 
@@ -85,7 +103,9 @@ describe('recursive image cache', () => {
     root.file('old.png');
     const originalValues = root.values.bind(root);
     let release!: () => void;
-    const paused = new Promise<void>(resolve => { release = resolve; });
+    const paused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const read = vi.spyOn(root, 'values').mockImplementationOnce(async function* () {
       yield* originalValues();
       await paused;
@@ -98,7 +118,7 @@ describe('recursive image cache', () => {
     root.file('new.png');
     release();
     await pending;
-    expect((await cache.get(root.asHandle())).map(item => item.path)).toEqual(['new.png']);
+    expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual(['new.png']);
     expect(read).toHaveBeenCalledTimes(2);
   });
 });

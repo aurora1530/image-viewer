@@ -46,7 +46,7 @@ try {
   }
   console.log(`Desktop build completed: ${releaseRoot}`);
 } finally {
-  await rm(stageRoot, { recursive: true, force: true }).catch(error => {
+  await rm(stageRoot, { recursive: true, force: true }).catch((error) => {
     console.warn(`Could not remove temporary build files: ${stageRoot}`, error);
   });
 }

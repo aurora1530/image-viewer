@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildDirectoryCache, ensureDirectoryCache, getDirectoryPreviewUrl, invalidateDirectoryCache } from '../../src/directoryCache';
+import {
+  buildDirectoryCache,
+  ensureDirectoryCache,
+  getDirectoryPreviewUrl,
+  invalidateDirectoryCache,
+} from '../../src/directoryCache';
 import { state } from '../../src/state';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
@@ -12,10 +17,13 @@ beforeEach(() => {
   state.directoryCache = new WeakMap();
   state.directoryPreviewCache = new WeakMap();
   state.previewUrls.clear();
-  vi.stubGlobal('URL', Object.assign(URL, {
-    createObjectURL: vi.fn(() => 'blob:preview'),
-    revokeObjectURL: vi.fn()
-  }));
+  vi.stubGlobal(
+    'URL',
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:preview'),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
 });
 
 describe('directory cache and previews', () => {
@@ -24,8 +32,10 @@ describe('directory cache and previews', () => {
     root.directory('child');
     for (const name of ['cover.HEIC', 'clip.MP4', 'notes.txt']) root.file(name);
     const cache = await buildDirectoryCache(root.asHandle());
-    expect(cache.items.map(item => [item.type, item.name])).toEqual([
-      ['directory', 'child'], ['image', 'cover.HEIC'], ['video', 'clip.MP4']
+    expect(cache.items.map((item) => [item.type, item.name])).toEqual([
+      ['directory', 'child'],
+      ['image', 'cover.HEIC'],
+      ['video', 'clip.MP4'],
     ]);
     expect(cache.imageCount).toBe(1);
   });

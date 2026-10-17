@@ -12,7 +12,13 @@ export type GalleryEntry = {
 };
 export type ViewerState = ViewerPresentation;
 export const closedViewer: ViewerState = {
-  mode: 'closed', left: null, right: null, video: null, loading: '', counter: '', playback: null
+  mode: 'closed',
+  left: null,
+  right: null,
+  video: null,
+  loading: '',
+  counter: '',
+  playback: null,
 };
 
 export const sizeOptions = [
@@ -21,7 +27,7 @@ export const sizeOptions = [
   { name: '大', minWidth: 230, gap: 14, originalAspect: false },
   { name: '元サイズ 小', minWidth: 280, gap: 14, originalAspect: true },
   { name: '元サイズ 中', minWidth: 390, gap: 16, originalAspect: true },
-  { name: '元サイズ 大', minWidth: 520, gap: 16, originalAspect: true }
+  { name: '元サイズ 大', minWidth: 520, gap: 16, originalAspect: true },
 ];
 export function normalizeThumbnailSize(value: number) {
   return Number.isInteger(value) ? Math.min(Math.max(value, 0), sizeOptions.length - 1) : 1;
@@ -34,7 +40,9 @@ export function initialAppState() {
     library: [] as DesktopLibraryItem[],
     listMode: 'directory' as ListMode,
     favoriteMode: 'off' as FavoriteMode,
-    thumbnailSizeIndex: normalizeThumbnailSize(Number.parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10)),
+    thumbnailSizeIndex: normalizeThumbnailSize(
+      Number.parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10),
+    ),
     sortOrder: 'asc' as SortOrder,
     filterType: 'all' as FilterType,
     searchQuery: '',
@@ -48,7 +56,7 @@ export function initialAppState() {
     pageOffset: 0,
     viewer: { ...closedViewer },
     status: { message: '', type: 'clear' as 'info' | 'error' | 'loading' | 'clear' },
-    scanPreview: null as { url: string; name: string; open: () => void } | null
+    scanPreview: null as { url: string; name: string; open: () => void } | null,
   };
 }
 
@@ -57,6 +65,9 @@ export function initialAppState() {
 export const appStore = createStore(initialAppState);
 export type AppState = ReturnType<typeof initialAppState>;
 export const setFavoriteMode = (favoriteMode: FavoriteMode) => appStore.setState({ favoriteMode });
-export function showStatus(message: string, type: ReturnType<typeof initialAppState>['status']['type']) {
+export function showStatus(
+  message: string,
+  type: ReturnType<typeof initialAppState>['status']['type'],
+) {
   appStore.setState({ status: { message, type }, scanPreview: null });
 }

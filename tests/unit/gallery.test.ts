@@ -11,15 +11,30 @@ import { render } from '../helpers/render';
 
 vi.mock('../../src/thumbnailCache', async () => {
   const { getMediaSource } = await import('../../src/nativeFs');
-  return { thumbnailCache: { get: vi.fn(getMediaSource), peek: vi.fn(), clear: vi.fn(), invalidate: vi.fn(), setPaused: vi.fn() } };
+  return {
+    thumbnailCache: {
+      get: vi.fn(getMediaSource),
+      peek: vi.fn(),
+      clear: vi.fn(),
+      invalidate: vi.fn(),
+      setPaused: vi.fn(),
+    },
+  };
 });
 const root = new MemoryDirectory('root');
 const first = root.file('first.png').asHandle();
 const second = root.file('second.png').asHandle();
-const entry = (handle = first, parentPath = ''): GalleryEntry => ({ key: `${parentPath}/${handle.name}`, parent: root.asHandle(), parentPath,
-  item: { type: 'image', handle, name: handle.name, nameLower: handle.name.toLowerCase() } });
+const entry = (handle = first, parentPath = ''): GalleryEntry => ({
+  key: `${parentPath}/${handle.name}`,
+  parent: root.asHandle(),
+  parentPath,
+  item: { type: 'image', handle, name: handle.name, nameLower: handle.name.toLowerCase() },
+});
 beforeEach(() => {
-  appStore.setState({ ...initialAppState(), directories: [root.asHandle()], displayImages: [second, first] }, true);
+  appStore.setState(
+    { ...initialAppState(), directories: [root.asHandle()], displayImages: [second, first] },
+    true,
+  );
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:thumbnail');
   vi.spyOn(URL, 'revokeObjectURL');
 });
@@ -37,20 +52,24 @@ describe('React gallery', () => {
 
   it('toggles favorites without opening the viewer and reflects the resulting shared state', async () => {
     const open = vi.spyOn(actions, 'openEntry').mockImplementation(() => undefined);
-    const toggle = vi.spyOn(actions, 'toggleEntry').mockImplementation(async item => {
+    const toggle = vi.spyOn(actions, 'toggleEntry').mockImplementation(async (item) => {
       appStore.setState({ entries: [{ ...item, item: { ...item.item, isFavorite: true } }] });
     });
     const item = entry(first, 'chapter');
     appStore.setState({ entries: [item] });
     render(createElement(Gallery));
     (document.querySelector('.favorite-btn') as HTMLButtonElement).click();
-    await vi.waitFor(() => expect(document.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true'));
+    await vi.waitFor(() =>
+      expect(document.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true'),
+    );
     expect(toggle).toHaveBeenCalledWith(item, 'favorite');
     expect(open).not.toHaveBeenCalled();
   });
 
   it('removes hidden entries through shared state without opening the viewer', async () => {
-    vi.spyOn(actions, 'toggleEntry').mockImplementation(async () => { appStore.setState({ entries: [], displayImages: [second] }); });
+    vi.spyOn(actions, 'toggleEntry').mockImplementation(async () => {
+      appStore.setState({ entries: [], displayImages: [second] });
+    });
     appStore.setState({ entries: [entry(first, 'chapter')] });
     render(createElement(Gallery));
     (document.querySelector('.hidden-toggle-btn') as HTMLButtonElement).click();
@@ -60,7 +79,12 @@ describe('React gallery', () => {
 
   it('releases a source that completes after its card has unmounted, including StrictMode setup', async () => {
     const releases: Array<(source: { url: string; objectUrl: boolean }) => void> = [];
-    vi.mocked(thumbnailCache.get).mockImplementation(() => new Promise(resolve => { releases.push(resolve); }));
+    vi.mocked(thumbnailCache.get).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(resolve);
+        }),
+    );
     const revoke = vi.spyOn(URL, 'revokeObjectURL');
     appStore.setState({ entries: [entry()] });
     render(createElement(StrictMode, null, createElement(Gallery)));
@@ -75,10 +99,16 @@ describe('React gallery', () => {
     vi.mocked(thumbnailCache.get).mockResolvedValue({ url: 'blob:retry', objectUrl: true });
     appStore.setState({ entries: [entry()] });
     render(createElement(Gallery));
-    const firstImage = await vi.waitFor(() => { const image = document.querySelector('img'); expect(image).not.toBeNull(); return image!; });
+    const firstImage = await vi.waitFor(() => {
+      const image = document.querySelector('img');
+      expect(image).not.toBeNull();
+      return image!;
+    });
     firstImage.dispatchEvent(new Event('error'));
     await vi.waitFor(() => {
-      const image = document.querySelector('img'); expect(image).not.toBeNull(); expect(image).not.toBe(firstImage);
+      const image = document.querySelector('img');
+      expect(image).not.toBeNull();
+      expect(image).not.toBe(firstImage);
     });
     expect(thumbnailCache.invalidate).toHaveBeenCalledWith(first);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:retry');
@@ -90,9 +120,19 @@ describe('React gallery', () => {
     const entries = Array.from({ length: 300 }, (_, index) => ({ ...entry(), key: String(index) }));
     appStore.setState({ entries });
     render(createElement(Gallery));
-    const image = await vi.waitFor(() => { const image = document.querySelector('img'); expect(image).not.toBeNull(); return image!; });
+    const image = await vi.waitFor(() => {
+      const image = document.querySelector('img');
+      expect(image).not.toBeNull();
+      return image!;
+    });
     const card = image.closest('.item-card');
-    flushSync(() => appStore.setState({ entries: entries.map((value, index) => index === 0 ? { ...value, item: { ...value.item, isFavorite: true } } : value) }));
+    flushSync(() =>
+      appStore.setState({
+        entries: entries.map((value, index) =>
+          index === 0 ? { ...value, item: { ...value.item, isFavorite: true } } : value,
+        ),
+      }),
+    );
     expect(document.querySelector('.item-card')).toBe(card);
     expect(document.querySelector('img')).toBe(image);
     expect(card?.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true');

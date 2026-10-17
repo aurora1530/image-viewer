@@ -27,37 +27,53 @@ export function createThumbnailQueue(concurrency: number) {
       let priority = waiting[0].request.getPriority?.() ?? 0;
       for (let i = 1; i < waiting.length; i++) {
         const candidate = waiting[i].request.getPriority?.() ?? 0;
-        if (candidate < priority) { best = i; priority = candidate; }
+        if (candidate < priority) {
+          best = i;
+          priority = candidate;
+        }
       }
       const job = waiting.splice(best, 1)[0];
       active++;
-      void Promise.resolve().then(job.work).then(job.resolve, job.reject).finally(() => {
-        active--;
-        refresh();
-      });
+      void Promise.resolve()
+        .then(job.work)
+        .then(job.resolve, job.reject)
+        .finally(() => {
+          active--;
+          refresh();
+        });
     }
   }
 
   function refresh() {
     // Cards created in a fragment must be attached before checking shouldContinue.
-    if (!scheduled) { scheduled = true; queueMicrotask(pump); }
+    if (!scheduled) {
+      scheduled = true;
+      queueMicrotask(pump);
+    }
   }
 
   return {
     enqueue<T>(work: () => Promise<T>, request: ThumbnailRequest = {}): Promise<T | null> {
       return new Promise((resolve, reject) => {
-        waiting.push({ work, resolve: value => resolve(value as T | null), reject, request });
+        waiting.push({ work, resolve: (value) => resolve(value as T | null), reject, request });
         refresh();
       });
     },
     refresh,
-    setPaused(value: boolean) { paused = value; refresh(); },
-    hasVisibleWaiting: () => waiting.some(job => job.request.shouldContinue?.() !== false && (job.request.getPriority?.() ?? 0) <= 0),
+    setPaused(value: boolean) {
+      paused = value;
+      refresh();
+    },
+    hasVisibleWaiting: () =>
+      waiting.some(
+        (job) =>
+          job.request.shouldContinue?.() !== false && (job.request.getPriority?.() ?? 0) <= 0,
+      ),
     clear(error?: Error) {
       for (const job of waiting.splice(0)) {
         if (error) job.reject(error);
         else job.resolve(null);
       }
-    }
+    },
   };
 }
