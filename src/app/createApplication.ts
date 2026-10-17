@@ -28,6 +28,7 @@ import {
   chooseNativeDirectory,
   isDesktopApp,
   openNativeDirectory,
+  openDirectoryExternally,
   getMediaSource,
 } from '../platform/nativeFs';
 import { createViewer } from './createViewer';
@@ -316,6 +317,16 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
     navigate,
     changeListMode,
     copyPath,
+    async openCurrentDirectoryExternally() {
+      const current = get().directories.at(-1);
+      if (!current) return;
+      try {
+        await openDirectoryExternally(current);
+      } catch (error) {
+        console.error(error);
+        showStatus('フォルダーを外部で開けませんでした。', 'error');
+      }
+    },
     attachPlaybackReader: (reader: PlaybackReader | null) => {
       readPlayback = reader;
     },

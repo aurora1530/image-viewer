@@ -25,6 +25,7 @@ interface Window {
     cacheStats(): Promise<{ bytes: number; path: string; configPath: string }>;
     chooseDirectory(): Promise<string | null>;
     openRoot(path: string): Promise<string>;
+    openDirectoryExternally(path: string): Promise<void>;
     getLibrary(): Promise<DesktopLibraryItem[]>;
     toggleFavoriteRoot(path: string): Promise<boolean>;
     removeRecent(path: string): Promise<void>;

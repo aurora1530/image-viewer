@@ -6,6 +6,7 @@ test('shows the built version and links to its release from the header and setti
   page,
 }) => {
   await page.goto('/');
+  await expect(page.locator('#open-directory-externally-btn')).toHaveCount(0);
   const badge = page.locator('.version-badge a');
   await expect(badge).toHaveText(/^v\d+\.\d+\.\d+$/);
   await expect(badge).toHaveAttribute(

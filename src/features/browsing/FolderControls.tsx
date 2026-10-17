@@ -139,6 +139,22 @@ export function FolderControls() {
             </svg>
             パスをコピー
           </button>
+          {capabilities.desktop && (
+            <button
+              id="open-directory-externally-btn"
+              type="button"
+              className="ui-btn ghost"
+              title="現在のフォルダーをエクスプローラーやFinderなどで開きます"
+              onClick={() => {
+                void actions.openCurrentDirectoryExternally();
+              }}
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M2 4a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V4zm9 3v2h3l-4 4 1.5 1.5 4-4V13h2V7H11z" />
+              </svg>
+              フォルダーを外部で開く
+            </button>
+          )}
         </div>
       </div>
     </div>

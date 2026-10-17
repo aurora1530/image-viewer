@@ -149,6 +149,14 @@ function registerIpc() {
     return rememberRoot(resolved);
   });
   ipcMain.handle('desktop:get-library', () => getLibrary());
+  ipcMain.handle('desktop:open-directory-externally', async (_event, dirPath) => {
+    if (typeof dirPath !== 'string' || !path.isAbsolute(dirPath))
+      throw new Error('不正なフォルダーパスです。');
+    const resolved = requireAllowed(dirPath);
+    if (!(await fs.stat(resolved)).isDirectory()) throw new Error('フォルダーではありません。');
+    const error = await shell.openPath(resolved);
+    if (error) throw new Error(error);
+  });
   ipcMain.handle('desktop:toggle-favorite-root', async (_event, rootPath) => {
     const resolved = normalize(rootPath);
     const favorites = library.favorites || [];

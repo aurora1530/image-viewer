@@ -10,6 +10,8 @@ test('flushes pending config changes before acknowledging a desktop close reques
   const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-config-close-'));
   const images = path.join(profile, 'images');
   await mkdir(images);
+  const child = path.join(images, '子フォルダー');
+  await mkdir(child);
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     const env = Object.fromEntries(
@@ -25,6 +27,7 @@ test('flushes pending config changes before acknowledging a desktop close reques
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('#home-view')).toBeVisible();
+    await expect(page.locator('#open-directory-externally-btn')).toBeHidden();
     await expect(page.locator('.version-badge a')).toHaveText(/^v\d+\.\d+\.\d+$/);
     expect(await page.evaluate(() => window.desktopApi!.getUpdateState())).toEqual({
       status: 'manual',
@@ -36,7 +39,57 @@ test('flushes pending config changes before acknowledging a desktop close reques
     await expect(page.locator('#recent-roots .library-card')).toHaveCount(1);
     await page.locator('#recent-roots .library-card').click();
     await expect(page.locator('#current-dir-name')).toHaveText('images');
-    await expect(page.locator('#status-area')).toContainText('表示できるアイテム');
+    await app.evaluate(({ shell }) => {
+      const state = globalThis as typeof globalThis & { openedDirectories: string[] };
+      state.openedDirectories = [];
+      shell.openPath = (target) => {
+        state.openedDirectories.push(target);
+        return Promise.resolve('');
+      };
+    });
+    await page.locator('#open-directory-externally-btn').click();
+    await expect
+      .poll(() =>
+        app!.evaluate(
+          () =>
+            (globalThis as typeof globalThis & { openedDirectories: string[] }).openedDirectories,
+        ),
+      )
+      .toEqual([images]);
+    await page.getByText('子フォルダー', { exact: true }).first().click();
+    await expect(page.locator('#current-dir-name')).toHaveText('子フォルダー');
+    await page.locator('#open-directory-externally-btn').click();
+    await expect
+      .poll(() =>
+        app!.evaluate(
+          () =>
+            (globalThis as typeof globalThis & { openedDirectories: string[] }).openedDirectories,
+        ),
+      )
+      .toEqual([images, child]);
+    // Reject files and paths outside the selected root before invoking the OS.
+    await writeFile(path.join(images, 'plain.txt'), 'test');
+    for (const target of [profile, path.join(images, 'plain.txt'), 'relative']) {
+      expect(
+        await page.evaluate(async (target) => {
+          try {
+            await window.desktopApi!.openDirectoryExternally(target);
+            return false;
+          } catch {
+            return true;
+          }
+        }, target),
+      ).toBe(true);
+    }
+    await app.evaluate(({ shell }) => {
+      shell.openPath = () => Promise.resolve('Cannot open folder');
+    });
+    await page.locator('#open-directory-externally-btn').click();
+    await expect(page.locator('#status-area')).toContainText(
+      'フォルダーを外部で開けませんでした。',
+    );
+    await page.locator('#up-dir-btn').click();
+    await expect(page.locator('#current-dir-name')).toHaveText('images');
     await page.evaluate(() => {
       document.querySelector<HTMLButtonElement>('#toggle-sort-btn')!.click();
     });
