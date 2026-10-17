@@ -28,6 +28,7 @@ describe('desktop and browser file access', () => {
       writeThumbnail: async () => true,
       chooseDirectory: async () => 'C:\\photos',
       openRoot: async (path) => path,
+      openDirectoryExternally: async () => {},
       getLibrary: async () => [],
       toggleFavoriteRoot: async () => true,
       removeRecent: async () => undefined,

@@ -129,6 +129,11 @@ export async function openNativeDirectory(dirPath: string) {
   return asDirectoryHandle(new NativeDirectoryHandle(selected));
 }
 
+export async function openDirectoryExternally(handle: FileSystemDirectoryHandle) {
+  if (!window.desktopApi || !handle.nativePath) return;
+  await window.desktopApi.openDirectoryExternally(handle.nativePath);
+}
+
 export async function listDirectoryEntries(
   dirHandle: FileSystemDirectoryHandle,
 ): Promise<Array<FileSystemDirectoryHandle | FileSystemFileHandle>> {
