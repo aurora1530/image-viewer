@@ -1189,3 +1189,23 @@ for (const originalAspect of [false, true]) {
     });
   }
 }
+
+test('central settings validate, persist and restore cache budgets', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '設定' });
+  await expect(dialog).toBeVisible();
+  const budget = dialog.getByRole('spinbutton', { name: 'サムネイルのメモリの最大容量（MiB）' });
+  await budget.fill('24');
+  await dialog.getByRole('button', { name: '容量設定を保存' }).click();
+  await expect(dialog.getByRole('status')).toHaveText('保存しました。');
+  await page.reload();
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  await expect(budget).toHaveValue('24');
+  await expect(dialog).not.toContainText('サムネイルのディスク');
+  await budget.fill('-1');
+  await dialog.getByRole('button', { name: '容量設定を保存' }).click();
+  expect(await budget.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+});

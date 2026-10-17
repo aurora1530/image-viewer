@@ -14,6 +14,9 @@ interface Window {
     onNavigate(callback: (direction: 'back' | 'forward') => void): () => void;
     readThumbnail(path: string): Promise<{ version: string; bytes: Uint8Array | null }>;
     writeThumbnail(path: string, version: string, bytes: Uint8Array): Promise<boolean>;
+    readAppConfig(): Promise<unknown>;
+    writeAppConfig(config: import('./shared/appConfig').AppConfig): Promise<void>;
+    cacheStats(): Promise<{ bytes: number; path: string; configPath: string }>;
     chooseDirectory(): Promise<string | null>;
     openRoot(path: string): Promise<string>;
     getLibrary(): Promise<DesktopLibraryItem[]>;

@@ -118,6 +118,22 @@ for (const bundled of [false, true]) {
       });
       await page.reload();
       await expect(page.locator('#home-view')).toBeVisible();
+      await page.getByRole('button', { name: '設定', exact: true }).click();
+      const settings = page.getByRole('dialog', { name: '設定' });
+      const budget = settings.getByRole('spinbutton', {
+        name: 'サムネイルのディスクの最大容量（MiB）',
+      });
+      await budget.fill('64');
+      await settings.getByRole('button', { name: '容量設定を保存' }).click();
+      await expect(settings.getByRole('status')).toHaveText('保存しました。');
+      const saved = JSON.parse(await readFile(path.join(profile, 'settings.json'), 'utf8')) as {
+        thumbnailDiskMiB: number;
+      };
+      expect(saved.thumbnailDiskMiB).toBe(64);
+      await page.reload();
+      await page.getByRole('button', { name: '設定', exact: true }).click();
+      await expect(budget).toHaveValue('64');
+      await settings.getByRole('button', { name: '閉じる', exact: true }).click();
       await page.evaluate((root) => window.desktopApi!.openRoot(root), images);
       await page.reload();
       await expect(page.locator('#recent-roots .library-card')).toHaveCount(1);

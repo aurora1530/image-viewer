@@ -13,6 +13,8 @@ const { createThumbnailStore } = createRequire(import.meta.url)(
     maxEntries?: number;
     maxBytes?: number;
   }): {
+    configure(value: number): Promise<void>;
+    stats(): Promise<{ bytes: number }>;
     read(file: string): Promise<{ version: string; bytes: Uint8Array | null }>;
     write(file: string, version: string, bytes: Uint8Array): Promise<boolean>;
   };
@@ -43,6 +45,17 @@ afterEach(async () => {
 });
 
 describe('persistent desktop thumbnails', () => {
+  it('reports existing disk data and releases it when disabled at runtime', async () => {
+    const cache = store();
+    const { version } = await cache.read(source);
+    await cache.write(source, version, bytes);
+    const reopened = store();
+    expect(await reopened.stats()).toEqual({ bytes: 3 });
+    await reopened.configure(0);
+    expect(await reopened.stats()).toEqual({ bytes: 0 });
+    expect((await reopened.read(source)).bytes).toBeNull();
+    expect(await reopened.write(source, version, bytes)).toBe(false);
+  });
   it('reuses thumbnails across store instances and invalidates modified originals', async () => {
     const initial = await store().read(source);
     expect(initial.bytes).toBeNull();

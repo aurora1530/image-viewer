@@ -1,3 +1,4 @@
+import { Settings } from '../features/settings/Settings';
 import { useApplication, useAppState } from './ApplicationProvider';
 import { Home } from '../features/library/Home';
 import { FolderControls } from '../features/browsing/FolderControls';
@@ -19,6 +20,7 @@ export function App() {
             <span className="eyebrow">DESKTOP LIBRARY</span>
             <h1>ローカル画像ビューワー</h1>
           </div>
+          <Settings />
           <span
             id="desktop-badge"
             className={`desktop-badge${capabilities.desktop ? '' : ' hidden'}`}

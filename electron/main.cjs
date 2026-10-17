@@ -99,6 +99,30 @@ function decodeMediaUrl(url) {
 }
 
 function registerIpc() {
+  const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
+  ipcMain.handle('desktop:read-app-config', async () => {
+    const config = await loadJson(settingsPath(), {});
+    const value = config.thumbnailDiskMiB;
+    if (Number.isInteger(value) && value >= 0 && value <= 1048576)
+      await thumbnails.configure(value * 1024 * 1024);
+    return config;
+  });
+  ipcMain.handle('desktop:write-app-config', async (_event, config) => {
+    const clean = {};
+    for (const key of ['thumbnailMemoryMiB', 'originalMemoryMiB', 'thumbnailDiskMiB']) {
+      const value = config?.[key];
+      if (!Number.isInteger(value) || value < 0 || value > 1048576)
+        throw new Error('不正な設定です。');
+      clean[key] = value;
+    }
+    await saveJson(settingsPath(), clean);
+    await thumbnails.configure(clean.thumbnailDiskMiB * 1024 * 1024);
+  });
+  ipcMain.handle('desktop:cache-stats', async () => ({
+    ...(await thumbnails.stats()),
+    path: path.join(app.getPath('userData'), 'thumbnails'),
+    configPath: settingsPath(),
+  }));
   ipcMain.handle('desktop:read-thumbnail', (_event, filePath) => thumbnails.read(filePath));
   ipcMain.handle('desktop:write-thumbnail', (_event, filePath, version, bytes) =>
     thumbnails.write(filePath, version, bytes),

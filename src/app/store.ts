@@ -1,3 +1,4 @@
+import { defaultAppConfig } from '../shared/appConfig';
 import { createStore } from 'zustand/vanilla';
 import type { DirectoryCacheItem, FilterType, SortOrder } from '../shared/model';
 import type { ViewerPresentation } from './viewerModel';
@@ -35,6 +36,10 @@ export function normalizeThumbnailSize(value: number) {
 
 export function initialAppState() {
   return {
+    config: { ...defaultAppConfig },
+    configReady: false,
+    configError: '',
+    cacheUsage: { thumbnail: 0, original: 0, disk: 0, path: '', configPath: '' },
     screen: 'directory' as 'home' | 'directory',
     directories: [] as FileSystemDirectoryHandle[],
     library: [] as DesktopLibraryItem[],

@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('desktopApi', {
   readThumbnail: (path) => ipcRenderer.invoke('desktop:read-thumbnail', path),
   writeThumbnail: (path, version, bytes) =>
     ipcRenderer.invoke('desktop:write-thumbnail', path, version, bytes),
+  readAppConfig: () => ipcRenderer.invoke('desktop:read-app-config'),
+  writeAppConfig: (config) => ipcRenderer.invoke('desktop:write-app-config', config),
+  cacheStats: () => ipcRenderer.invoke('desktop:cache-stats'),
   chooseDirectory: () => ipcRenderer.invoke('desktop:choose-directory'),
   openRoot: (path) => ipcRenderer.invoke('desktop:open-root', path),
   getLibrary: () => ipcRenderer.invoke('desktop:get-library'),

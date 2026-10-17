@@ -1,3 +1,4 @@
+import { createConfig } from './createConfig';
 import { createAppStore } from './store';
 import { readPreferences, writePreference } from '../platform/preferences';
 import type { AppStore, AppState } from './store';
@@ -32,6 +33,7 @@ import {
 import { createViewer } from './createViewer';
 
 export function createApplication(store: AppStore = createAppStore(readPreferences())) {
+  const config = createConfig(store);
   const get = store.getState;
   const set = store.setState;
   const showStatus = (message: string, type: AppState['status']['type']) =>
@@ -305,6 +307,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
   };
 
   const actions = {
+    ...config.actions,
     selectRootDirectory,
     showHome: () => showHome(),
     navigate,
@@ -397,6 +400,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
   let stop: (() => void) | undefined;
   function start() {
     if (stop) return stop;
+    void config.load();
     const detach = registerApplicationEvents({
       getViewerMode: () => get().viewer.mode,
       navigate,

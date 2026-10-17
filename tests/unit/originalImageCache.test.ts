@@ -10,6 +10,17 @@ function file(name: string, size = 4) {
 }
 
 describe('shared original image cache', () => {
+  it('releases retained blobs immediately when the budget is reduced to zero', async () => {
+    const cache = createOriginalImageCache();
+    const handle = file('runtime.jpg');
+    await cache.get(handle);
+    expect(cache.stats().retainedBytes).toBe(4);
+    cache.setMaxBytes(0);
+    expect(cache.stats().retainedBytes).toBe(0);
+    await cache.get(handle);
+    expect(handle.getFile).toHaveBeenCalledTimes(2);
+    expect(cache.stats().retainedBytes).toBe(0);
+  });
   it('shares pending reads between thumbnail and viewer and retains the result', async () => {
     const cache = createOriginalImageCache();
     const handle = file('shared.jpg');

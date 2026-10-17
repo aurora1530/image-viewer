@@ -11,8 +11,7 @@ import type { ThumbnailRequest } from './thumbnailQueue';
 import { getOriginalImageSource, originalImageCache } from './originalImageCache';
 
 const MAX_EDGE = 1280;
-const MAX_ENTRIES = 10000;
-const MAX_BYTES = 512 * 1024 * 1024;
+
 type Source = { url: string; objectUrl: boolean };
 type Entry = {
   promise: Promise<Blob | null>;
@@ -103,6 +102,7 @@ export function createThumbnailCache({
 }: { concurrency?: number } = {}) {
   let entries = new Map<string | FileSystemFileHandle, Entry>();
   let retainedBytes = 0;
+  let maxBytes = 512 * 1024 * 1024;
   const skipStored = new Set<string | FileSystemFileHandle>();
   // Disk hits must not wait for unrelated image encoding to finish.
   const reads = createThumbnailQueue(Math.max(4, concurrency));
@@ -110,7 +110,7 @@ export function createThumbnailCache({
   const counters = { memoryHits: 0, diskHits: 0, generated: 0, sharedRequests: 0 };
 
   function trim() {
-    while (entries.size > MAX_ENTRIES || retainedBytes > MAX_BYTES) {
+    while (retainedBytes > maxBytes) {
       const key = entries.keys().next().value!;
       retainedBytes -= entries.get(key)?.blob?.size || 0;
       entries.delete(key);
@@ -250,6 +250,10 @@ export function createThumbnailCache({
     peek(handle: FileSystemFileHandle): Source | null {
       const blob = entries.get(handle.nativePath || handle)?.blob;
       return blob ? { url: URL.createObjectURL(blob), objectUrl: true } : null;
+    },
+    setMaxBytes(value: number) {
+      maxBytes = value;
+      trim();
     },
     stats: () => ({ ...counters, entries: entries.size, retainedBytes }),
   };

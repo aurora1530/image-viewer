@@ -825,3 +825,36 @@ html:fullscreen #viewer-toolbar.hidden {
     transform: rotate(360deg);
   }
 }
+
+.settings-dialog {
+  width: min(600px, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow: auto;
+  border: 1px solid #64748b;
+  border-radius: 16px;
+  padding: 24px;
+  background: #18202f;
+  color: #f1f5f9;
+}
+.settings-dialog::backdrop {
+  background: #0009;
+}
+.settings-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0;
+}
+.settings-field small {
+  display: block;
+  color: #cbd5e1;
+}
+.settings-field input[type='number'] {
+  width: 110px;
+}
+.settings-note {
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}

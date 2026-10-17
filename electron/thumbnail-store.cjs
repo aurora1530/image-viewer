@@ -5,7 +5,7 @@ const { createHash, randomUUID } = require('node:crypto');
 function createThumbnailStore({
   cacheDirectory,
   requireAllowed,
-  maxEntries = 20000,
+  maxEntries = Infinity,
   maxBytes = 3 * 1024 * 1024 * 1024,
 }) {
   let writes = 0;
@@ -43,6 +43,7 @@ function createThumbnailStore({
   async function prune() {
     const directory = cacheDirectory();
     if (!indexLoaded) {
+      await fs.mkdir(directory, { recursive: true });
       const files = (await fs.readdir(directory)).filter((name) =>
         /^[a-f0-9]{64}\.webp$/.test(name),
       );
@@ -85,18 +86,17 @@ function createThumbnailStore({
 
   function schedulePrune() {
     pruneRequested = true;
-    if (pruning) return;
+    if (pruning) return pruning;
     // Coalesce requests during a busy burst instead of queuing full cache scans.
     pruning = (async () => {
       while (pruneRequested) {
         pruneRequested = false;
         await prune();
       }
-    })()
-      .catch(console.error)
-      .finally(() => {
-        pruning = null;
-      });
+    })().finally(() => {
+      pruning = null;
+    });
+    return pruning;
   }
 
   async function write(filePath, version, bytes) {
@@ -104,6 +104,7 @@ function createThumbnailStore({
     if (current.version !== version) return false;
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > 8 * 1024 * 1024)
       throw new Error('不正なサムネイルです。');
+    if (maxBytes === 0 || bytes.byteLength > maxBytes) return false;
     await fs.mkdir(cacheDirectory(), { recursive: true });
     const temporary = `${current.file}.${randomUUID()}.tmp`;
     try {
@@ -117,13 +118,23 @@ function createThumbnailStore({
         if (error.code !== 'ENOENT') throw error;
       });
     }
-    if (++writes % 32 === 0) {
-      schedulePrune();
-    }
+    if (++writes % 32 === 0) void schedulePrune().catch(console.error);
     return true;
   }
 
-  return { read, write };
+  return {
+    read,
+    write,
+    async configure(value) {
+      if (!Number.isSafeInteger(value) || value < 0) throw new Error('不正な容量です。');
+      maxBytes = value;
+      await schedulePrune();
+    },
+    async stats() {
+      await schedulePrune();
+      return { bytes: [...cachedFiles.values()].reduce((sum, entry) => sum + entry.size, 0) };
+    },
+  };
 }
 
 module.exports = { createThumbnailStore };

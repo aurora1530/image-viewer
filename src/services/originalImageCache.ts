@@ -1,7 +1,7 @@
 import { getMediaSource } from '../platform/nativeFs';
 
 // Share compressed originals between thumbnail generation and the full-size viewer.
-export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntries = 256) {
+export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntries = Infinity) {
   type Entry = { promise: Promise<Blob>; blob?: Blob };
   let entries = new Map<string | FileSystemFileHandle, Entry>();
   let bytes = 0;
@@ -34,13 +34,7 @@ export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntrie
         if (entries === cache && cache.get(key) === entry) {
           entry.blob = blob;
           bytes += blob.size;
-          // Pending reads remain shared until completion, even when completed blobs are evicted.
-          for (const [oldKey, old] of cache) {
-            if (bytes <= maxBytes && cache.size <= maxEntries) break;
-            if (!old.blob) continue;
-            bytes -= old.blob.size;
-            cache.delete(oldKey);
-          }
+          trim();
         }
         return blob;
       },
@@ -52,8 +46,23 @@ export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntrie
     return entry.promise;
   }
 
+  function trim() {
+    // Pending reads stay shared until completion.
+    for (const [key, entry] of entries) {
+      if (bytes <= maxBytes && entries.size <= maxEntries) break;
+      if (!entry.blob) continue;
+      bytes -= entry.blob.size;
+      entries.delete(key);
+    }
+  }
+
   return {
     get,
+    stats: () => ({ retainedBytes: bytes }),
+    setMaxBytes(value: number) {
+      maxBytes = value;
+      trim();
+    },
     clear() {
       entries = new Map();
       bytes = 0;
