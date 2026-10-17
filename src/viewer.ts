@@ -3,7 +3,7 @@ import type {
 	DirectoryCacheImageItem,
 	DirectoryCacheItem
 } from './state';
-import type { StatusType } from './ui';
+type StatusType = 'info' | 'error' | 'loading' | 'clear';
 import { getMediaSource } from './nativeFs';
 import { compareNumericText } from './utils';
 import { createImagePageCache } from './imagePageCache';
@@ -14,19 +14,22 @@ type Source = { url: string; objectUrl: boolean };
 type CacheItem = DirectoryCacheItem;
 type CacheEntry = DirectoryCacheEntry;
 
+export type ViewerPresentation = {
+  mode: 'closed' | 'image' | 'video';
+  left: string | null;
+  right: string | null;
+  video: string | null;
+  loading: string;
+  counter: string;
+  playback: { time: number; paused: boolean } | null;
+};
+
 type ViewerDeps = {
 	getImageSource?: (handle: FileSystemFileHandle) => Promise<Source>;
 	getThumbnailPreview?: (handle: FileSystemFileHandle) => Source | null;
 	setBackgroundWorkPaused?: (paused: boolean) => void;
-	viewer: HTMLElement;
-	viewerPages: HTMLElement;
-	viewerVideoContainer: HTMLElement;
-	viewerToolbar: HTMLElement;
-	listToolbar: HTMLElement;
-	leftPageImg: HTMLImageElement;
-	rightPageImg: HTMLImageElement;
-	viewerVideo: HTMLVideoElement;
-	pageCounter: HTMLElement;
+	render: (patch: Partial<ViewerPresentation>) => void;
+	getVideoPlayback?: () => { time: number; paused: boolean };
 	getCurrentImageFiles: () => FileSystemFileHandle[];
 	setCurrentImageFiles: (files: FileSystemFileHandle[]) => void;
 	getCurrentImageIndex: () => number;
@@ -36,22 +39,12 @@ type ViewerDeps = {
 	getSortOrder: () => 'asc' | 'desc';
 	getIsSinglePageView: () => boolean;
 	setIsSinglePageView: (value: boolean) => void;
-	updateViewModeUI: () => void;
 	showStatus: (message: string, type: StatusType) => void;
 	ensureDirectoryCache: (dirHandle: FileSystemDirectoryHandle) => Promise<CacheEntry>;
 };
 
 export function createViewer(deps: ViewerDeps) {
 	const {
-		viewer,
-		viewerPages,
-		viewerVideoContainer,
-		viewerToolbar,
-		listToolbar,
-		leftPageImg,
-		rightPageImg,
-		viewerVideo,
-		pageCounter,
 		getCurrentImageFiles,
 		setCurrentImageFiles,
 		getCurrentImageIndex,
@@ -61,20 +54,16 @@ export function createViewer(deps: ViewerDeps) {
 		getSortOrder,
 		getIsSinglePageView,
 		setIsSinglePageView,
-		updateViewModeUI,
 		showStatus,
 		ensureDirectoryCache
 	} = deps;
 
 	const imageCache = createImagePageCache(deps.getImageSource ?? getOriginalImageSource);
-	const previews = new Map<HTMLImageElement, Source>();
-	const loading = document.createElement('div');
-	loading.className = 'viewer-loading';
-	loading.setAttribute('role', 'status');
-	loading.hidden = true;
-	viewer.append(loading);
+	const previews = new Map<'left' | 'right', Source>();
+	let loadingMessage = '';
+	const render = deps.render;
 
-	function clearPreview(element: HTMLImageElement) {
+	function clearPreview(element: 'left' | 'right') {
 		const source = previews.get(element);
 		if (source?.objectUrl) URL.revokeObjectURL(source.url);
 		previews.delete(element);
@@ -89,18 +78,10 @@ export function createViewer(deps: ViewerDeps) {
 	function captureView(): (() => Promise<void>) | null {
 		if (mediaMode === 'video' && currentVideo) {
 			const handle = currentVideo;
-			const time = viewerVideo.currentTime;
-			const paused = viewerVideo.paused;
+			const playback = deps.getVideoPlayback?.() ?? { time: 0, paused: true };
 			return async () => {
 				await openVideoPlayer(handle);
-				const session = viewerSession;
-				const restorePlayback = () => {
-					if (session !== viewerSession) return;
-					viewerVideo.currentTime = time;
-					if (paused) viewerVideo.pause();
-				};
-				if (viewerVideo.readyState >= 1) restorePlayback();
-				else viewerVideo.addEventListener('loadedmetadata', restorePlayback, { once: true });
+				render({ playback });
 			};
 		}
 		if (mediaMode !== 'image' || !currentImageDirectory) return null;
@@ -114,7 +95,6 @@ export function createViewer(deps: ViewerDeps) {
 			await openViewer(directory, index, files);
 			setPageOffset(offset);
 			setIsSinglePageView(single);
-			updateViewModeUI();
 			await displayPages();
 		};
 	}
@@ -124,21 +104,12 @@ export function createViewer(deps: ViewerDeps) {
 		displayToken++;
 		mediaMode = 'closed';
 		currentVideo = null;
-		leftPageImg.removeAttribute('src');
-		rightPageImg.removeAttribute('src');
-		leftPageImg.dataset.url = '';
-		rightPageImg.dataset.url = '';
-		clearPreview(leftPageImg);
-		clearPreview(rightPageImg);
-		loading.hidden = true;
+		clearPreview('left');
+		clearPreview('right');
+		render({ mode: 'closed', left: null, right: null, video: null, loading: '', counter: '', playback: null });
 		imageCache.discardPending();
 		setCurrentImageFiles([]);
-		pageCounter.textContent = '';
-		if (videoSource || viewerVideo.hasAttribute('src')) {
-			viewerVideo.pause();
-			viewerVideo.removeAttribute('src');
-			viewerVideo.load();
-		}
+
 		if (videoSource?.objectUrl) URL.revokeObjectURL(videoSource.url);
 		videoSource = null;
 		return viewerSession;
@@ -154,7 +125,7 @@ export function createViewer(deps: ViewerDeps) {
 		mediaMode = 'image';
 		deps.setBackgroundWorkPaused?.(true);
 		try {
-			showStatus('<div class="loader mx-auto"></div><p class="mt-2">画像を読み込んでいます...</p>', 'loading');
+			showStatus('画像を読み込んでいます...', 'loading');
 			if (Array.isArray(overrideImageList) && overrideImageList.length > 0) {
 				setCurrentImageFiles(overrideImageList.slice());
 			} else {
@@ -186,14 +157,7 @@ export function createViewer(deps: ViewerDeps) {
 			setCurrentImageIndex(startIndex);
 			setPageOffset(0);
 			setIsSinglePageView(localStorage.getItem('isSinglePageView') === '1');
-			viewer.style.display = 'flex';
-			viewerPages.style.display = 'flex';
-			viewerVideoContainer.classList.add('hidden');
-			viewerToolbar.style.display = 'flex';
-			listToolbar.style.display = 'none';
-			document.body.classList.add('viewer-open');
-			document.body.style.overflow = 'hidden';
-			updateViewModeUI();
+			render({ mode: 'image' });
 			await displayPages();
 			if (session === viewerSession) showStatus('', 'clear');
 		} catch (err) {
@@ -211,13 +175,7 @@ export function createViewer(deps: ViewerDeps) {
 		imageCache.clear();
 		deps.setBackgroundWorkPaused?.(true);
 		try {
-			viewer.style.display = 'flex';
-			viewerPages.style.display = 'none';
-			viewerVideoContainer.classList.remove('hidden');
-			viewerToolbar.style.display = 'none';
-			listToolbar.style.display = 'none';
-			document.body.classList.add('viewer-open');
-			document.body.style.overflow = 'hidden';
+			render({ mode: 'video' });
 			const source = await getMediaSource(videoHandle);
 			if (session !== viewerSession) {
 				if (source.objectUrl) URL.revokeObjectURL(source.url);
@@ -225,11 +183,7 @@ export function createViewer(deps: ViewerDeps) {
 			}
 			const url = source.url;
 			videoSource = source;
-			viewerVideo.loop = true;
-			viewerVideo.src = url;
-			void viewerVideo.play().catch(error => {
-				if (session === viewerSession) console.error('動画の再生を開始できませんでした:', error);
-			});
+			render({ video: url });
 		} catch (err) {
 			if (session !== viewerSession) return;
 			console.error("動画再生エラー:", err);
@@ -240,10 +194,7 @@ export function createViewer(deps: ViewerDeps) {
 
 	function closeViewer() {
 		resetMedia();
-		viewer.style.display = 'none';
-		listToolbar.style.display = '';
-		document.body.style.overflow = 'auto';
-		document.body.classList.remove('viewer-open');
+
 		deps.setBackgroundWorkPaused?.(false);
 		if (document.fullscreenElement) document.exitFullscreen();
 	}
@@ -283,23 +234,12 @@ export function createViewer(deps: ViewerDeps) {
 			}
 		};
 		const current = () => session === viewerSession && token === displayToken;
-		viewerPages.classList.toggle('single-view', single);
 		let pending = visible.length;
-		loading.textContent = '元画像を読み込んでいます…';
-		loading.hidden = pending === 0;
-		const show = (element: HTMLImageElement, source: Source | null) => {
-			if (source) {
-				if (element.dataset.url !== source.url) element.src = source.url;
-				element.dataset.url = source.url;
-				element.style.visibility = 'visible';
-			} else {
-				element.removeAttribute('src');
-				element.dataset.url = '';
-				element.style.visibility = 'hidden';
-			}
-		};
+		loadingMessage = pending ? '元画像を読み込んでいます…' : '';
+		render({ loading: loadingMessage });
+		const show = (element: 'left' | 'right', source: Source | null) => render({ [element]: source?.url ?? null });
 		// A slow second page must not block the ready page or its cached preview.
-		await Promise.all(([[rightPageImg, rightIndex], [leftPageImg, leftIndex]] as const).map(async ([element, i]) => {
+		await Promise.all(([['right', rightIndex], ['left', leftIndex]] as const).map(async ([element, i]) => {
 			clearPreview(element);
 			if (i < 0 || i >= total) { show(element, null); return; }
 			const ready = imageCache.peek(files[i]);
@@ -309,13 +249,14 @@ export function createViewer(deps: ViewerDeps) {
 			const page = await load(i);
 			if (!current()) return;
 			if (page) { show(element, page); clearPreview(element); }
-			else loading.textContent = '元画像の読み込みに失敗しました。';
+			else loadingMessage = '元画像の読み込みに失敗しました。';
 			pending--;
-			if (pending === 0 && loading.textContent === '元画像を読み込んでいます…') loading.hidden = true;
+			if (pending === 0 && loadingMessage === '元画像を読み込んでいます…') loadingMessage = '';
+			render({ loading: loadingMessage });
 		}));
 		if (!current()) return;
 		const pageNumber = (i: number) => i >= 0 && i < total ? i + 1 : '-';
-		pageCounter.textContent = single ? `${index + 1} / ${total}` : `${pageNumber(leftIndex)} - ${pageNumber(rightIndex)} / ${total}`;
+		render({ counter: single ? `${index + 1} / ${total}` : `${pageNumber(leftIndex)} - ${pageNumber(rightIndex)} / ${total}` });
 		void preloadNeighbors(neighbors, session, token);
 	}
 

@@ -752,3 +752,57 @@ test('opens video in the player and closes it with Escape', async ({ page }) => 
   await page.keyboard.press('Escape');
   await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
 });
+
+for (const originalAspect of [false, true]) {
+for (const hiddenUi of [false, true]) {
+test(`recursive scrolling keeps row order when reversing direction (${originalAspect ? 'original aspect' : 'fixed aspect'}, UI ${hiddenUi ? 'hidden' : 'visible'})`, async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.evaluate(async () => {
+    const root = (window as unknown as { __imageViewerTestRoot: { directory(name: string): { entries: Map<string, unknown> } } }).__imageViewerTestRoot;
+    const bulk = root.directory('bulk');
+    const images: Blob[] = [];
+    for (const [width, height] of [[400, 100], [100, 400], [240, 180]]) {
+      const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+      images.push(await new Promise<Blob>(resolve => canvas.toBlob(value => resolve(value!))));
+    }
+    for (let index = 0; index < 1800; index++) {
+      const name = `image-${index}.png`;
+      bulk.entries.set(name, { kind: 'file', name, getFile: async () => {
+        await new Promise(resolve => setTimeout(resolve, index % 3 * 10));
+        return new File([images[index % images.length]], name, { type: 'image/png' });
+      } });
+    }
+  });
+  await page.locator('#size-select').selectOption(originalAspect ? '3' : '1');
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('#recursive-btn').click();
+  await expect(page.locator('#item-list')).toHaveAttribute('data-virtual', 'true');
+  if (hiddenUi) await page.locator('#ui-visibility-btn').click();
+  await page.evaluate(() => {
+    const state = window as unknown as { __emptyGalleryFrames: number };
+    state.__emptyGalleryFrames = 0;
+    window.addEventListener('scroll', () => requestAnimationFrame(() => {
+      if (Array.from(document.querySelectorAll('#item-list .gallery-slot')).some(slot => !slot.firstElementChild)) state.__emptyGalleryFrames++;
+    }));
+  });
+  await page.evaluate(() => window.scrollTo(0, 20000));
+  await page.mouse.move(600, 400);
+  for (const delta of [800, 800, ...Array<number>(12).fill(originalAspect ? -600 : -240)]) {
+    const before = await page.evaluate(() => window.scrollY);
+    await page.mouse.wheel(0, delta);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).not.toBe(before);
+    await page.evaluate(() => new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }));
+    const snapshot = await page.evaluate(() => ({
+      y: window.scrollY,
+      order: Array.from(document.querySelectorAll<HTMLElement>('#item-list [data-item-index]'), element => Number(element.dataset.itemIndex))
+    }));
+    expect(snapshot.y).toBeGreaterThan(10000);
+    expect(snapshot.order).toEqual([...snapshot.order].sort((a, b) => a - b));
+  }
+  await expect(page.locator('#status-area')).not.toContainText('読み込んでいます');
+  expect(await page.evaluate(() => (window as unknown as { __emptyGalleryFrames: number }).__emptyGalleryFrames)).toBe(0);
+});
+}
+}

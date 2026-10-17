@@ -1,167 +1,101 @@
+import { createElement, StrictMode } from 'react';
+import { flushSync } from 'react-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGallery } from '../../src/gallery';
+import { Gallery } from '../../src/Gallery';
+import { appStore, initialAppState } from '../../src/appStore';
+import type { GalleryEntry } from '../../src/appStore';
+import { actions } from '../../src/application';
+import { thumbnailCache } from '../../src/thumbnailCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
+import { render } from '../helpers/render';
 
 vi.mock('../../src/thumbnailCache', async () => {
   const { getMediaSource } = await import('../../src/nativeFs');
-  return { thumbnailCache: { get: getMediaSource, clear: vi.fn(), invalidate: vi.fn() } };
+  return { thumbnailCache: { get: vi.fn(getMediaSource), peek: vi.fn(), clear: vi.fn(), invalidate: vi.fn(), setPaused: vi.fn() } };
 });
-
 const root = new MemoryDirectory('root');
 const first = root.file('first.png').asHandle();
 const second = root.file('second.png').asHandle();
-
-function harness() {
-  const itemList = document.querySelector<HTMLElement>('#item-list')!;
-  let displayList = [second, first];
-  let renderToken = 1;
-  const idleCallbacks: Array<() => void> = [];
-  const openViewer = vi.fn();
-  const openVideoPlayer = vi.fn();
-  const enterDirectory = vi.fn(async () => undefined);
-  const toggleFavoriteEntry = vi.fn(async () => true);
-  const toggleHiddenEntry = vi.fn(async () => true);
-  const scheduleProcessForCurrentDir = vi.fn();
-  const showStatus = vi.fn();
-  const createdUrls = new Set<string>();
-  const gallery = createGallery({
-    itemList,
-    createdUrls,
-    RIC: callback => { idleCallbacks.push(callback); return idleCallbacks.length; },
-    enableDebugLogs: false,
-    ensureLazyLoadObserver: vi.fn(),
-    getLazyLoadObserver: () => null,
-    getCurrentDisplayImageList: () => displayList,
-    setCurrentDisplayImageList: list => { displayList = list; },
-    openViewer, openVideoPlayer, enterDirectory,
-    getDirectoryPreviewUrl: async () => null,
-    setFavoriteButtonState: (button, active) => button.setAttribute('aria-pressed', String(active)),
-    setHiddenButtonState: (button, hidden) => button.setAttribute('aria-pressed', String(hidden)),
-    toggleFavoriteEntry, toggleHiddenEntry,
-    getRootDirHandle: () => root.asHandle(),
-    normalizeDirPathSegments: path => String(path).split('/').filter(Boolean),
-    scheduleProcessForCurrentDir,
-    getFavoriteFirst: () => true,
-    getFavoriteOnly: () => false,
-    getIsFavoriteListMode: () => false,
-    getIsHiddenMode: () => false,
-    getRenderToken: () => renderToken,
-    showStatus
-  });
-  return {
-    gallery, itemList, openViewer, openVideoPlayer, enterDirectory,
-    toggleFavoriteEntry, toggleHiddenEntry, scheduleProcessForCurrentDir,
-    showStatus, idleCallbacks, createdUrls,
-    get displayList() { return displayList; },
-    set renderToken(value: number) { renderToken = value; }
-  };
-}
-
+const entry = (handle = first, parentPath = ''): GalleryEntry => ({ key: `${parentPath}/${handle.name}`, parent: root.asHandle(), parentPath,
+  item: { type: 'image', handle, name: handle.name, nameLower: handle.name.toLowerCase() } });
 beforeEach(() => {
+  appStore.setState({ ...initialAppState(), directories: [root.asHandle()], displayImages: [second, first] }, true);
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:thumbnail');
+  vi.spyOn(URL, 'revokeObjectURL');
 });
 
-describe('gallery cards and batching', () => {
-  it('opens an image at its index in the displayed, filtered list', () => {
-    const view = harness();
-    view.gallery.createItemCard({ type: 'image', handle: first, name: 'first.png' }, root.asHandle(), 0, true);
-    view.itemList.querySelector('.media-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(view.openViewer).toHaveBeenCalledWith(root.asHandle(), 1, [second, first]);
+describe('React gallery', () => {
+  it('passes the clicked entry to the application without changing the displayed order', () => {
+    const open = vi.spyOn(actions, 'openEntry').mockImplementation(() => undefined);
+    const item = entry();
+    appStore.setState({ entries: [item] });
+    render(createElement(Gallery));
+    (document.querySelector('.media-card') as HTMLElement).click();
+    expect(open).toHaveBeenCalledWith(item);
+    expect(appStore.getState().displayImages).toEqual([second, first]);
   });
 
-  it('uses the favorite-first all-images order across directories for navigation', async () => {
-    const view = harness();
-    const child = root.directory('child');
-    const favorite = child.file('favorite.png').asHandle();
-    const items = [
-      { handle: favorite, name: favorite.name, parentHandle: child.asHandle(), imageIndex: 0, parentPath: 'child', path: 'child/favorite.png', isFavorite: true },
-      { handle: first, name: first.name, parentHandle: root.asHandle(), imageIndex: 0, parentPath: '', path: 'first.png', isFavorite: false },
-      { handle: second, name: second.name, parentHandle: root.asHandle(), imageIndex: 1, parentPath: '', path: 'second.png', isFavorite: false }
-    ];
-    await view.gallery.renderRecursiveItemsInBatches(items, true);
-    expect(view.displayList).toEqual([favorite, first, second]);
-    view.itemList.querySelector('.media-card')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(view.openViewer).toHaveBeenCalledWith(child.asHandle(), 0, [favorite, first, second]);
+  it('toggles favorites without opening the viewer and reflects the resulting shared state', async () => {
+    const open = vi.spyOn(actions, 'openEntry').mockImplementation(() => undefined);
+    const toggle = vi.spyOn(actions, 'toggleEntry').mockImplementation(async item => {
+      appStore.setState({ entries: [{ ...item, item: { ...item.item, isFavorite: true } }] });
+    });
+    const item = entry(first, 'chapter');
+    appStore.setState({ entries: [item] });
+    render(createElement(Gallery));
+    (document.querySelector('.favorite-btn') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(document.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true'));
+    expect(toggle).toHaveBeenCalledWith(item, 'favorite');
+    expect(open).not.toHaveBeenCalled();
   });
 
-  it('changes the favorite without opening the viewer, then schedules a fresh list', async () => {
-    const view = harness();
-    view.gallery.createItemCard({ type: 'image', handle: first, name: 'first.png' }, root.asHandle(), 0, true, null, 'chapter');
-    (view.itemList.querySelector('.favorite-btn') as HTMLButtonElement).click();
-    await vi.waitFor(() => expect(view.toggleFavoriteEntry).toHaveBeenCalledWith(
-      root.asHandle(), ['chapter'], { type: 'file', path: 'first.png' }, expect.any(Function)
-    ));
-    expect(view.openViewer).not.toHaveBeenCalled();
-    expect(view.itemList.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true');
-    expect(view.scheduleProcessForCurrentDir).toHaveBeenCalledWith(0, true);
+  it('removes hidden entries through shared state without opening the viewer', async () => {
+    vi.spyOn(actions, 'toggleEntry').mockImplementation(async () => { appStore.setState({ entries: [], displayImages: [second] }); });
+    appStore.setState({ entries: [entry(first, 'chapter')] });
+    render(createElement(Gallery));
+    (document.querySelector('.hidden-toggle-btn') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(document.querySelector('.media-card')).toBeNull());
+    expect(appStore.getState().displayImages).toEqual([second]);
   });
 
-  it('removes a newly hidden image from the visible list', async () => {
-    const view = harness();
-    view.gallery.createItemCard({ type: 'image', handle: first, name: 'first.png' }, root.asHandle(), 0, true, null, 'chapter');
-    (view.itemList.querySelector('.hidden-toggle-btn') as HTMLButtonElement).click();
-    await vi.waitFor(() => expect(view.itemList.querySelector('.media-card')).toBeNull());
-    expect(view.toggleHiddenEntry).toHaveBeenCalledWith(
-      root.asHandle(), ['chapter'], { type: 'file', path: 'first.png' }, expect.any(Function)
-    );
-    expect(view.displayList).toEqual([second]);
-    expect(view.openViewer).not.toHaveBeenCalled();
-    expect(view.showStatus).toHaveBeenCalledWith('表示できるアイテムがありません。', 'info');
-  });
-
-  it('stops a queued batch when a newer render starts', async () => {
-    const view = harness();
-    const items = Array.from({ length: 150 }, (_, index) => ({
-      type: 'image' as const, handle: first, name: `image-${index}.png`
-    }));
-    const rendering = view.gallery.renderItemsInBatches(items, root.asHandle(), true);
-    expect(view.itemList.querySelectorAll('.item-card')).toHaveLength(24);
-    expect(view.idleCallbacks).toHaveLength(1);
-    view.renderToken = 2;
-    view.idleCallbacks.shift()!();
-    await rendering;
-    expect(view.itemList.querySelectorAll('.item-card')).toHaveLength(24);
-  });
-
-  it('releases card-owned thumbnail URLs when a large list scrolls away', async () => {
-    const view = harness();
-    let serial = 0;
-    vi.mocked(URL.createObjectURL).mockImplementation(() => `blob:thumbnail-${serial++}`);
+  it('releases a source that completes after its card has unmounted, including StrictMode setup', async () => {
+    const releases: Array<(source: { url: string; objectUrl: boolean }) => void> = [];
+    vi.mocked(thumbnailCache.get).mockImplementation(() => new Promise(resolve => { releases.push(resolve); }));
     const revoke = vi.spyOn(URL, 'revokeObjectURL');
-    Object.defineProperty(view.itemList, 'clientWidth', { configurable: true, value: 1024 });
-    vi.spyOn(window, 'scrollTo').mockImplementation((_x, y) => {
-      Object.defineProperty(window, 'scrollY', { configurable: true, value: y || 0 });
-    });
-    window.scrollTo(0, 0);
-    vi.spyOn(view.itemList, 'getBoundingClientRect').mockImplementation(() => ({ top: -window.scrollY } as DOMRect));
-    const images = Array.from({ length: 1000 }, (_, index) => ({ type: 'image' as const, handle: first, name: `image-${index}.png` }));
-    const child = root.directory('last-folder').asHandle();
-    await view.gallery.renderItemsInBatches([...images, { type: 'directory', handle: child, name: child.name }], root.asHandle(), false);
-    await vi.waitFor(() => expect(view.itemList.querySelector('img')).not.toBeNull());
-    const oldUrls = Array.from(view.createdUrls);
-    expect(oldUrls.length).toBeGreaterThan(0);
-    expect(view.gallery.scrollToDirectory(child.name)?.dataset.dirName).toBe(child.name);
-    for (const url of oldUrls) {
-      expect(revoke).toHaveBeenCalledWith(url);
-      expect(view.createdUrls.has(url)).toBe(false);
-    }
-    view.gallery.resetVirtualView();
-    window.scrollTo(0, 0);
+    appStore.setState({ entries: [entry()] });
+    render(createElement(StrictMode, null, createElement(Gallery)));
+    flushSync(() => appStore.setState({ entries: [] }));
+    releases.forEach((release, i) => release({ url: `blob:late-${i}`, objectUrl: true }));
+    await vi.waitFor(() => expect(revoke).toHaveBeenCalledTimes(releases.length));
+    releases.forEach((_, i) => expect(revoke).toHaveBeenCalledWith(`blob:late-${i}`));
+    expect(document.querySelector('img')).toBeNull();
   });
 
-  it('retries a failed thumbnail instead of leaving a blank card', async () => {
-    const view = harness();
-    view.gallery.createItemCard({ type: 'image', handle: first, name: 'first.png' }, root.asHandle(), 0);
-    const firstImage = await vi.waitFor(() => {
-      const image = view.itemList.querySelector('img');
-      expect(image).not.toBeNull();
-      return image!;
-    });
+  it('retries a failed thumbnail and releases its replaced URL', async () => {
+    vi.mocked(thumbnailCache.get).mockResolvedValue({ url: 'blob:retry', objectUrl: true });
+    appStore.setState({ entries: [entry()] });
+    render(createElement(Gallery));
+    const firstImage = await vi.waitFor(() => { const image = document.querySelector('img'); expect(image).not.toBeNull(); return image!; });
     firstImage.dispatchEvent(new Event('error'));
     await vi.waitFor(() => {
-      const retryImage = view.itemList.querySelector('img');
-      expect(retryImage).not.toBeNull();
-      expect(retryImage).not.toBe(firstImage);
+      const image = document.querySelector('img'); expect(image).not.toBeNull(); expect(image).not.toBe(firstImage);
     });
+    expect(thumbnailCache.invalidate).toHaveBeenCalledWith(first);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:retry');
+  });
+
+  it('retains mounted virtual cards and their thumbnails when favorite metadata changes', async () => {
+    vi.mocked(thumbnailCache.get).mockResolvedValue({ url: 'blob:retained', objectUrl: true });
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1024);
+    const entries = Array.from({ length: 300 }, (_, index) => ({ ...entry(), key: String(index) }));
+    appStore.setState({ entries });
+    render(createElement(Gallery));
+    const image = await vi.waitFor(() => { const image = document.querySelector('img'); expect(image).not.toBeNull(); return image!; });
+    const card = image.closest('.item-card');
+    flushSync(() => appStore.setState({ entries: entries.map((value, index) => index === 0 ? { ...value, item: { ...value.item, isFavorite: true } } : value) }));
+    expect(document.querySelector('.item-card')).toBe(card);
+    expect(document.querySelector('img')).toBe(image);
+    expect(card?.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true');
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:retained');
   });
 });

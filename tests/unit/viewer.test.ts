@@ -1,3 +1,7 @@
+import { createElement } from 'react';
+import { Viewer } from '../../src/ViewerPanel';
+import { closedViewer } from '../../src/appStore';
+import { render } from '../helpers/render';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createViewer } from '../../src/viewer';
 import type { DirectoryCacheEntry } from '../../src/state';
@@ -8,11 +12,12 @@ const root = new MemoryDirectory('root');
 const handles = ['1.png', '2.png', '3.png', '4.png', '5.png'].map(name => root.file(name).asHandle());
 
 function harness(single = false, files = handles, getThumbnailPreview?: (handle: FileSystemFileHandle) => { url: string; objectUrl: boolean } | null) {
+  let presentation = { ...closedViewer };
+  let singleView = single;
+  const mounted = render(createElement(Viewer, { presentation, single: singleView }));
+  const update = () => mounted.update(createElement(Viewer, { presentation, single: singleView }));
   const viewer = document.querySelector<HTMLElement>('#viewer')!;
   const pages = document.querySelector<HTMLElement>('#viewer-pages')!;
-  const videoContainer = document.querySelector<HTMLElement>('#viewer-video-container')!;
-  const toolbar = document.querySelector<HTMLElement>('#viewer-toolbar')!;
-  const listToolbar = document.querySelector<HTMLElement>('#list-toolbar')!;
   const left = document.querySelector<HTMLImageElement>('#left-page')!;
   const right = document.querySelector<HTMLImageElement>('#right-page')!;
   const video = document.querySelector<HTMLVideoElement>('#viewer-video')!;
@@ -20,7 +25,6 @@ function harness(single = false, files = handles, getThumbnailPreview?: (handle:
   let currentFiles: FileSystemFileHandle[] = [];
   let index = 0;
   let offset = 0;
-  let singleView = single;
   const ensureDirectoryCache = vi.fn(async () => ({
     items: files.map(handle => ({ type: 'image' as const, handle, name: handle.name, nameLower: handle.name.toLowerCase() })),
     imageCount: files.length, sorted: {}
@@ -28,9 +32,8 @@ function harness(single = false, files = handles, getThumbnailPreview?: (handle:
   localStorage.setItem('isSinglePageView', single ? '1' : '0');
   const controller = createViewer({
     getThumbnailPreview,
-    viewer, viewerPages: pages, viewerVideoContainer: videoContainer,
-    viewerToolbar: toolbar, listToolbar, leftPageImg: left, rightPageImg: right,
-    viewerVideo: video, pageCounter: counter,
+    render: patch => { presentation = { ...presentation, ...patch }; update(); },
+    getVideoPlayback: () => ({ time: video.currentTime, paused: video.paused }),
     getCurrentImageFiles: () => currentFiles,
     setCurrentImageFiles: value => { currentFiles = value; },
     getCurrentImageIndex: () => index,
@@ -39,12 +42,12 @@ function harness(single = false, files = handles, getThumbnailPreview?: (handle:
     setPageOffset: value => { offset = value; },
     getSortOrder: () => 'asc',
     getIsSinglePageView: () => singleView,
-    setIsSinglePageView: value => { singleView = value; },
-    updateViewModeUI: vi.fn(), showStatus: vi.fn(),
+    setIsSinglePageView: value => { singleView = value; update(); },
+    showStatus: vi.fn(),
     ensureDirectoryCache
   });
   return { controller, viewer, pages, left, right, counter, video, ensureDirectoryCache,
-    setSingle: (value: boolean) => { singleView = value; },
+    setSingle: (value: boolean) => { singleView = value; update(); },
     get index() { return index; }, get files() { return currentFiles; } };
 }
 
@@ -254,6 +257,20 @@ describe('image viewer behavior', () => {
     expect(view.files).toEqual([handles[4]]);
     expect(view.counter.textContent).toBe('1 / 1');
     expect(view.right.dataset.url).toBe(latestUrl);
+    view.controller.closeViewer();
+  });
+
+  it('keeps the video source attached when restoring playback state', async () => {
+    const view = harness();
+    await view.controller.openVideoPlayer(root.file('restore.webm').asHandle());
+    Object.defineProperty(view.video, 'readyState', { configurable: true, value: 1 });
+    Object.defineProperty(view.video, 'paused', { configurable: true, value: true });
+    view.video.currentTime = 0.5;
+    const restore = view.controller.captureView()!;
+    view.controller.closeViewer();
+    await restore();
+    expect(view.video.hasAttribute('src')).toBe(true);
+    expect(view.video.currentTime).toBe(0.5);
     view.controller.closeViewer();
   });
 

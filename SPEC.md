@@ -80,23 +80,27 @@
 ### その他
 
 - 検索ボックスに文字を入力すると部分一致でアイテムを絞り込み。
-- `reload-btn` でキャッシュを利用しつつ再描画。
+- `reload-btn` でディレクトリ・画像キャッシュと外部で変更された設定を再取得。
 - `Alt + ←` でビューワー閉鎖または上位ディレクトリへ戻るショートカット。
-- ページ離脱時 (`beforeunload`) に生成した Object URL をすべて解放。
+- Object URL はカードのアンマウント、画像の置き換え、キャッシュの破棄時に所有者が解放。遅れて完了した読み込みも不要になった URL を解放。
 
 ## ファイル構成
 
-- `index.html` – アプリの HTML レイアウトと各種ボタン・コンテナ定義。
-- `style.css` – Tailwind に加え、スクロールバー・サムネイル・ビューワー等のカスタムスタイルを記述。
-- `script.js` – 上記機能の実装。約800行の ES6 スクリプト。
+- `index.html`・`src/main.tsx` – React の起動とアプリのライフサイクル管理。
+- `src/App.tsx`・`src/Gallery.tsx`・`src/ViewerPanel.tsx` – ホーム、ツールバー、一覧カード、画像・動画ビューワー。
+- `src/appStore.ts` – Zustand の共有状態。一覧モードとお気に入り表示方式はそれぞれ一つの値で管理。
+- `src/application.ts` – 画面操作、履歴復元、設定保存と各処理の調整。
+- `src/directoryViews.ts` – データ取得と一覧の検索・絞り込み・表示順。古い読み込み結果の破棄。
+- `src/virtualGallery.ts` – 仮想スクロールの配置計算。カードの内容は React が描画。
+- `src/style.css` – ローカルのスタイルとユーティリティ。外部 CDN への依存はない。
+- 画像キャッシュ、Worker、ファイルアクセス、設定保存は独立した TypeScript モジュールとして保持。
 - `README.md` – 日本語による簡易説明と機能一覧。
 
 ## 動作環境
 
 - File System Access API が利用可能な Chromium 系ブラウザ（Chrome, Edge 等）
-- HTML/JS/CSS をそのまま開くだけで動作。サーバは不要です。
+- Web 版は Vite で起動・ビルド。Electron 版はビルド済みの画面をローカルで読み込み、外部サーバなしで動作。
 
 ## ライセンス
 
 - MIT License
-

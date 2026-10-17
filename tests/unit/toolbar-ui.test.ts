@@ -1,84 +1,53 @@
+import { createElement } from 'react';
+import { flushSync } from 'react-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createToolbar } from '../../src/toolbar';
-import { DOM, state } from '../../src/state';
-import { populateSizeSelect, updateThumbnailSize, updateUiVisibilityUI, updateViewModeUI } from '../../src/ui';
+import { App } from '../../src/App';
+import { appStore, initialAppState } from '../../src/appStore';
+import { actions } from '../../src/application';
+import { MemoryDirectory } from '../helpers/memoryFs';
+import { render } from '../helpers/render';
 
 beforeEach(() => {
-  state.thumbnailSizeIndex = 1;
-  state.isUiHidden = false;
-  state.isUiDockRevealed = false;
-  state.isSinglePageView = false;
+  appStore.setState(initialAppState(), true);
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
 });
+const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-describe('display preferences', () => {
-  it('clamps an invalid thumbnail size and applies the selected layout', () => {
-    populateSizeSelect();
-    state.thumbnailSizeIndex = 999;
-    updateThumbnailSize();
-    expect(DOM.sizeSelect.value).toBe('5');
-    expect(DOM.itemList.style.getPropertyValue('--thumbnail-min-width')).toBe('520px');
-    expect(DOM.itemList.classList.contains('original-aspect')).toBe(true);
-    state.thumbnailSizeIndex = Number.NaN;
-    updateThumbnailSize();
-    expect(DOM.sizeSelect.value).toBe('1');
-    expect(DOM.itemList.classList.contains('original-aspect')).toBe(false);
+describe('React display preferences', () => {
+  it('clamps invalid thumbnail sizes and updates both the control and gallery', () => {
+    render(createElement(App));
+    flushSync(() => actions.setThumbnailSize(999));
+    expect(element<HTMLSelectElement>('size-select').value).toBe('5');
+    expect(element('item-list').style.getPropertyValue('--thumbnail-min-width')).toBe('520px');
+    expect(element('item-list').classList.contains('original-aspect')).toBe(true);
+    flushSync(() => actions.setThumbnailSize(Number.NaN));
+    expect(element<HTMLSelectElement>('size-select').value).toBe('1');
+    expect(element('item-list').classList.contains('original-aspect')).toBe(false);
   });
 
-  it('reflects hidden UI and single-page view for users', () => {
-    state.isUiHidden = true;
-    state.isUiDockRevealed = true;
-    updateUiVisibilityUI();
+  it('reflects hidden UI and single-page view from shared state', () => {
+    render(createElement(App));
+    flushSync(() => appStore.setState({ isUiHidden: true, isUiDockRevealed: true, isSinglePageView: true }));
     expect(document.body.classList.contains('ui-hidden-mode')).toBe(true);
     expect(document.body.classList.contains('ui-dock-revealed')).toBe(true);
-    expect(DOM.uiVisibilityBtn.getAttribute('aria-pressed')).toBe('true');
-    state.isSinglePageView = true;
-    updateViewModeUI();
-    expect(DOM.toggleViewBtn.textContent).toBe('見開きに戻す');
-    expect(DOM.adjustSpreadBtn.style.display).toBe('none');
+    expect(element('ui-visibility-btn').getAttribute('aria-pressed')).toBe('true');
+    expect(element('toggle-view-btn').textContent).toBe('見開きに戻す');
+    expect(element('adjust-spread-btn').style.display).toBe('none');
   });
-});
 
-describe('toolbar navigation', () => {
-  it('shows folder controls only after entering a folder and disables favorite sorting in the favorite list', () => {
-    let historyLength = 0;
-    let favoriteList = false;
-    const toolbar = createToolbar({
-      upDirBtn: DOM.upDirBtn,
-      copyPathBtn: DOM.copyPathBtn,
-      reloadBtn: DOM.reloadBtn,
-      listToolbar: DOM.listToolbar,
-      currentDirName: DOM.currentDirName,
-      recursiveBtn: DOM.recursiveBtn,
-      favoriteListBtn: DOM.favoriteListBtn,
-      toggleSortBtn: DOM.toggleSortBtn,
-      favoriteModeSelect: DOM.favoriteModeSelect,
-      hiddenModeBtn: DOM.hiddenModeBtn,
-      uiVisibilityBtn: DOM.uiVisibilityBtn,
-      viewerToolbar: DOM.viewerToolbar,
-      getDirectoryHistoryLength: () => historyLength,
-      getCurrentDirName: () => 'chapter',
-      getIsRecursiveMode: () => false,
-      getIsFavoriteListMode: () => favoriteList,
-      setIsRecursiveMode: vi.fn(),
-      getSortOrder: () => 'desc',
-      getFavoriteFirst: () => false,
-      getFavoriteOnly: () => true,
-      getIsHiddenMode: () => false,
-      getIsUiHidden: () => false,
-      setToolbarHideTimer: vi.fn(),
-      getToolbarHideTimer: () => null
-    });
-    toolbar.updateNavigationUI();
-    expect(DOM.listToolbar.classList.contains('hidden')).toBe(true);
-    historyLength = 2;
-    favoriteList = true;
-    toolbar.updateNavigationUI();
-    expect(DOM.listToolbar.classList.contains('hidden')).toBe(false);
-    expect(DOM.upDirBtn.classList.contains('hidden')).toBe(false);
-    expect(DOM.currentDirName.textContent).toBe('chapter');
-    expect(DOM.favoriteListBtn.textContent).toBe('戻る');
-    expect(DOM.favoriteModeSelect.disabled).toBe(true);
-    expect(DOM.favoriteModeSelect.value).toBe('only');
-    expect(DOM.toggleSortBtn.textContent).toContain('降順');
+  it('updates folder controls and disables favorite sorting in the favorite list', () => {
+    render(createElement(App));
+    expect(element('list-toolbar').classList.contains('hidden')).toBe(true);
+    const root = new MemoryDirectory('root');
+    flushSync(() => appStore.setState({ directories: [root.asHandle(), root.directory('chapter').asHandle()],
+      listMode: 'favorites', favoriteMode: 'only', sortOrder: 'desc' }));
+    expect(element('list-toolbar').classList.contains('hidden')).toBe(false);
+    expect(element('up-dir-btn').classList.contains('hidden')).toBe(false);
+    expect(element('current-dir-name').textContent).toBe('chapter');
+    expect(element('favorite-list-btn').textContent).toBe('戻る');
+    expect(element<HTMLSelectElement>('favorite-mode-select').disabled).toBe(true);
+    expect(element<HTMLSelectElement>('favorite-mode-select').value).toBe('only');
+    expect(element('toggle-sort-btn').textContent).toContain('降順');
   });
 });

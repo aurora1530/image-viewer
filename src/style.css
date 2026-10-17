@@ -163,6 +163,8 @@ body.mono-body {
     display: grid;
     align-items: stretch;
 }
+.gallery-slot { min-width: 0; }
+.gallery-slot > .item-card { height: 100%; }
 #item-list[data-virtual].original-aspect .media-card:not([data-thumb-ready]) .thumbnail-container {
     aspect-ratio: var(--thumbnail-aspect, 4 / 3);
 }

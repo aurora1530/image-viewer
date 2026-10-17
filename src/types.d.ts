@@ -7,10 +7,6 @@ interface FileSystemFileHandle {
 	nativePath?: string;
 }
 
-interface HTMLDivElement {
-	_loadThumb?: () => void;
-}
-
 interface Window {
 	showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
 	desktopApi?: {

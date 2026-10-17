@@ -5,7 +5,8 @@ export function createVirtualGallery(
 	createCard: (index: number, row: HTMLElement) => HTMLElement,
 	disposeCard: (card: HTMLElement) => void,
 	isCurrent: () => boolean,
-	estimateCardHeight: (index: number, width: number) => number = (_index, width) => width * 0.75 + 2
+	estimateCardHeight: (index: number, width: number) => number = (_index, width) => width * 0.75 + 2,
+	commitCards: () => void = () => {}
 ) {
 	container.dataset.virtual = 'true';
 	const top = document.createElement('div');
@@ -25,6 +26,7 @@ export function createVirtualGallery(
 	let layoutKey = '';
 	let frame = 0;
 	let disposed = false;
+	let cardsChanged = false;
 	const overscan = 800;
 
 	function updateOffsets() {
@@ -48,6 +50,7 @@ export function createVirtualGallery(
 		for (const card of Array.from(row.children)) disposeCard(card as HTMLElement);
 		row.remove();
 		rows.delete(index);
+		cardsChanged = true;
 	}
 
 	function render() {
@@ -102,14 +105,27 @@ export function createVirtualGallery(
 					card.dataset.itemIndex = String(item);
 				}
 				rows.set(index, row);
+				cardsChanged = true;
 				// Insert without detaching retained rows (pending thumbnails depend on isConnected).
-				const next = Array.from(rows.entries()).find(([key]) => key > index)?.[1] || bottom;
+				// Map iteration follows mount order, which stops matching item order
+				// after scrolling upwards. Find the closest following row instead.
+				let nextIndex = Infinity;
+				let next: HTMLElement = bottom;
+				for (const [key, mounted] of rows) {
+					if (key > index && key < nextIndex) { nextIndex = key; next = mounted; }
+				}
 				container.insertBefore(row, next);
 				resizeObserver?.observe(row);
 			}
 		}
 		top.style.height = `${offsets[start]}px`;
 		bottom.style.height = `${Math.max(0, offsets[heights.length] - offsets[end] - (end < heights.length ? gap : 0))}px`;
+		if (cardsChanged) {
+			cardsChanged = false;
+			// Deferred renderers must fill the slots before the browser measures
+			// this frame; empty rows temporarily shorten the scrollable document.
+			commitCards();
+		}
 	}
 
 	function schedule() {

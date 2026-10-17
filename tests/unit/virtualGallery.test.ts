@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createVirtualGallery } from '../../src/virtualGallery';
 
-function harness() {
-	const container = document.querySelector<HTMLElement>('#item-list')!;
+function harness(commitCards: (container: HTMLElement) => void = () => {}) {
+	const container = document.createElement('div');
+	container.id = 'item-list';
+	document.body.append(container);
 	Object.defineProperty(container, 'clientWidth', { configurable: true, value: 1024 });
 	container.style.setProperty('--thumbnail-min-width', '170px');
 	vi.spyOn(window, 'scrollTo').mockImplementation((_x, y) => {
@@ -17,7 +19,7 @@ function harness() {
 		card.textContent = String(index);
 		row.append(card);
 		return card;
-	}, disposeCard, () => current);
+	}, disposeCard, () => current, undefined, () => commitCards(container));
 	return { container, view, disposeCard, invalidate() { current = false; } };
 }
 
@@ -45,5 +47,32 @@ describe('virtual gallery', () => {
 		view.dispose();
 		window.dispatchEvent(new Event('scroll'));
 		expect(container.children.length).toBe(0);
+	});
+
+	it('keeps rows in item order while repeatedly scrolling upwards', () => {
+		const { container, view } = harness();
+		try {
+			for (const index of [600, 570, 540, 510, 480]) {
+				view.scrollToItem(index);
+				const mounted = Array.from(container.querySelectorAll<HTMLElement>('[data-item-index]'), card => Number(card.dataset.itemIndex));
+				expect(mounted).toEqual([...mounted].sort((a, b) => a - b));
+			}
+		} finally { view.dispose(); }
+	});
+
+	it('commits deferred cards once per changed viewport after attaching their rows', () => {
+		const commit = vi.fn((container: HTMLElement) => {
+			expect(container.querySelector('[data-item-index]')?.isConnected).toBe(true);
+		});
+		const { view } = harness(commit);
+		try {
+			expect(commit).toHaveBeenCalledTimes(1);
+			view.scrollToItem(600);
+			expect(commit).toHaveBeenCalledTimes(2);
+			view.scrollToItem(600);
+			expect(commit).toHaveBeenCalledTimes(2);
+			view.scrollToItem(570);
+			expect(commit).toHaveBeenCalledTimes(3);
+		} finally { view.dispose(); }
 	});
 });

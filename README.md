@@ -88,10 +88,14 @@ npm run test:coverage    # 単体・統合テストのカバレッジ
 
 ## 技術仕様
 
-- HTML5 + CSS3 + JavaScript（ES6+）
+- React + TypeScript + Vite
+- Zustand による共有状態管理（一覧モード、表示条件、閲覧状態）
+- Electron によるデスクトップ版
 - ローカルCSS（外部CDN不要）
 - File System Access API
-- スタイルシート(`style.css`)とスクリプト(`script.js`)を分割
+- `App.tsx`・`Gallery.tsx`・`ViewerPanel.tsx` が画面を描画し、`application.ts` が操作とデータ取得を調整
+- `directoryViews.ts` で通常・再帰・お気に入り一覧の検索、絞り込み、表示順を共通管理
+- 画像キャッシュ・Worker・設定保存は React から独立した処理として保持
 
 - レスポンシブデザイン対応
 
