@@ -4,7 +4,7 @@ import {
   getMediaSource,
   isDesktopApp,
   openNativeDirectory,
-} from '../../src/nativeFs';
+} from '../../src/platform/nativeFs';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
 afterEach(() => {

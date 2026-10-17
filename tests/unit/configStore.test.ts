@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../src/configStore';
+import { ConfigStore } from '../../src/services/configStore';
 
 afterEach(() => vi.useRealTimers());
 

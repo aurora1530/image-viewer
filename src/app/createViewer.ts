@@ -1,24 +1,20 @@
-import type { DirectoryCacheEntry, DirectoryCacheImageItem, DirectoryCacheItem } from './state';
-type StatusType = 'info' | 'error' | 'loading' | 'clear';
-import { getMediaSource } from './nativeFs';
-import { compareNumericText } from './utils';
-import { createImagePageCache } from './imagePageCache';
-import { getOriginalImageSource } from './originalImageCache';
+import type {
+  DirectoryCacheEntry,
+  DirectoryCacheImageItem,
+  DirectoryCacheItem,
+} from '../shared/model';
+import { getMediaSource } from '../platform/nativeFs';
+import { compareNumericText } from '../shared/utils';
+import { createImagePageCache } from '../services/imagePageCache';
+import { getOriginalImageSource } from '../services/originalImageCache';
 
+import type { ViewerPresentation } from './viewerModel';
+
+type StatusType = 'info' | 'error' | 'loading' | 'clear';
 type Source = { url: string; objectUrl: boolean };
 
 type CacheItem = DirectoryCacheItem;
 type CacheEntry = DirectoryCacheEntry;
-
-export type ViewerPresentation = {
-  mode: 'closed' | 'image' | 'video';
-  left: string | null;
-  right: string | null;
-  video: string | null;
-  loading: string;
-  counter: string;
-  playback: { time: number; paused: boolean } | null;
-};
 
 type ViewerDeps = {
   getImageSource?: (handle: FileSystemFileHandle) => Promise<Source>;
@@ -160,7 +156,6 @@ export function createViewer(deps: ViewerDeps) {
       }
       setCurrentImageIndex(startIndex);
       setPageOffset(0);
-      setIsSinglePageView(localStorage.getItem('isSinglePageView') === '1');
       render({ mode: 'image' });
       await displayPages();
       if (session === viewerSession) showStatus('', 'clear');
@@ -200,7 +195,6 @@ export function createViewer(deps: ViewerDeps) {
     resetMedia();
 
     deps.setBackgroundWorkPaused?.(false);
-    if (document.fullscreenElement) void document.exitFullscreen();
   }
 
   async function displayPages() {

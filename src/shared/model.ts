@@ -53,10 +53,3 @@ export const CONFIG = {
   CONFIG_FILENAME: '.image-viewer.json',
   ENABLE_DEBUG_LOGS: true,
 };
-
-// Runtime resources are deliberately independent of the React tree.
-export const state = {
-  directoryCache: new WeakMap<FileSystemDirectoryHandle, DirectoryCacheEntry>(),
-  directoryPreviewCache: new WeakMap<FileSystemDirectoryHandle, DirectoryPreviewEntry>(),
-  previewUrls: new Set<string>(),
-};

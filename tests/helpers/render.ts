@@ -1,5 +1,8 @@
 import { afterEach } from 'vitest';
+import { createElement } from 'react';
 import type { ReactNode } from 'react';
+import { ApplicationProvider } from '../../src/app/ApplicationProvider';
+import type { Application } from '../../src/app/createApplication';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
@@ -20,3 +23,10 @@ export function render(node: ReactNode) {
 afterEach(() => {
   for (const unmount of mounted.splice(0)) unmount();
 });
+
+export function renderApplication(node: ReactNode, application: Application) {
+  const wrap = (child: ReactNode) =>
+    createElement(ApplicationProvider, { application, children: child });
+  const mounted = render(wrap(node));
+  return { ...mounted, update: (next: ReactNode) => mounted.update(wrap(next)) };
+}

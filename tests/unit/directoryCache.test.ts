@@ -4,12 +4,12 @@ import {
   ensureDirectoryCache,
   getDirectoryPreviewUrl,
   invalidateDirectoryCache,
-} from '../../src/directoryCache';
-import { state } from '../../src/state';
+} from '../../src/services/directoryCache';
+import { state } from '../../src/services/directoryResources';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
-vi.mock('../../src/thumbnailCache', async () => {
-  const { getMediaSource } = await import('../../src/nativeFs');
+vi.mock('../../src/services/thumbnailCache', async () => {
+  const { getMediaSource } = await import('../../src/platform/nativeFs');
   return { thumbnailCache: { get: getMediaSource, clear: vi.fn() } };
 });
 

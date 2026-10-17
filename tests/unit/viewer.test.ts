@@ -1,12 +1,13 @@
 import { createElement } from 'react';
-import { Viewer } from '../../src/ViewerPanel';
-import { closedViewer } from '../../src/appStore';
-import { render } from '../helpers/render';
+import { Viewer } from '../../src/features/viewer/Viewer';
+import { closedViewer } from '../../src/app/store';
+import { renderApplication } from '../helpers/render';
+import { createApplication } from '../../src/app/createApplication';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createViewer } from '../../src/viewer';
-import type { DirectoryCacheEntry } from '../../src/state';
+import { createViewer } from '../../src/app/createViewer';
+import type { DirectoryCacheEntry } from '../../src/shared/model';
 import { MemoryDirectory } from '../helpers/memoryFs';
-import { originalImageCache } from '../../src/originalImageCache';
+import { originalImageCache } from '../../src/services/originalImageCache';
 
 const root = new MemoryDirectory('root');
 const handles = ['1.png', '2.png', '3.png', '4.png', '5.png'].map((name) =>
@@ -22,7 +23,10 @@ function harness(
 ) {
   let presentation = { ...closedViewer };
   let singleView = single;
-  const mounted = render(createElement(Viewer, { presentation, single: singleView }));
+  const mounted = renderApplication(
+    createElement(Viewer, { presentation, single: singleView }),
+    createApplication(),
+  );
   const update = () => mounted.update(createElement(Viewer, { presentation, single: singleView }));
   const viewer = document.querySelector<HTMLElement>('#viewer')!;
   const pages = document.querySelector<HTMLElement>('#viewer-pages')!;

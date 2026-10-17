@@ -1,13 +1,22 @@
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { App } from '../../src/App';
-import { appStore, initialAppState } from '../../src/appStore';
-import { actions } from '../../src/application';
+import { App } from '../../src/app/App';
+import { createAppStore, initialAppState } from '../../src/app/store';
+import { createApplication } from '../../src/app/createApplication';
 import { MemoryDirectory } from '../helpers/memoryFs';
-import { render } from '../helpers/render';
+import { renderApplication } from '../helpers/render';
+import type { ReactNode } from 'react';
+
+let application: ReturnType<typeof createApplication>;
+let appStore: ReturnType<typeof createAppStore>;
+let actions: ReturnType<typeof createApplication>['actions'];
+const render = (node: ReactNode) => renderApplication(node, application);
 
 beforeEach(() => {
+  appStore = createAppStore();
+  application = createApplication(appStore);
+  actions = application.actions;
   appStore.setState(initialAppState(), true);
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);

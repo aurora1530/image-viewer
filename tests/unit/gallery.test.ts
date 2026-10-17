@@ -1,16 +1,22 @@
 import { createElement, StrictMode } from 'react';
 import { flushSync } from 'react-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Gallery } from '../../src/Gallery';
-import { appStore, initialAppState } from '../../src/appStore';
-import type { GalleryEntry } from '../../src/appStore';
-import { actions } from '../../src/application';
-import { thumbnailCache } from '../../src/thumbnailCache';
+import { Gallery } from '../../src/features/gallery/Gallery';
+import { createAppStore, initialAppState } from '../../src/app/store';
+import type { GalleryEntry } from '../../src/app/store';
+import { createApplication } from '../../src/app/createApplication';
+import { thumbnailCache } from '../../src/services/thumbnailCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
-import { render } from '../helpers/render';
+import { renderApplication } from '../helpers/render';
+import type { ReactNode } from 'react';
 
-vi.mock('../../src/thumbnailCache', async () => {
-  const { getMediaSource } = await import('../../src/nativeFs');
+let application: ReturnType<typeof createApplication>;
+let appStore: ReturnType<typeof createAppStore>;
+let actions: ReturnType<typeof createApplication>['actions'];
+const render = (node: ReactNode) => renderApplication(node, application);
+
+vi.mock('../../src/services/thumbnailCache', async () => {
+  const { getMediaSource } = await import('../../src/platform/nativeFs');
   return {
     thumbnailCache: {
       get: vi.fn(getMediaSource),
@@ -31,6 +37,9 @@ const entry = (handle = first, parentPath = ''): GalleryEntry => ({
   item: { type: 'image', handle, name: handle.name, nameLower: handle.name.toLowerCase() },
 });
 beforeEach(() => {
+  appStore = createAppStore();
+  application = createApplication(appStore);
+  actions = application.actions;
   appStore.setState(
     { ...initialAppState(), directories: [root.asHandle()], displayImages: [second, first] },
     true,
@@ -40,6 +49,57 @@ beforeEach(() => {
 });
 
 describe('React gallery', () => {
+  it('clears the previous source and ready flag immediately when a handle changes under the same key', async () => {
+    const initial = entry();
+    vi.mocked(thumbnailCache.get).mockResolvedValueOnce({ url: 'blob:first', objectUrl: true });
+    let complete!: (source: { url: string; objectUrl: boolean }) => void;
+    vi.mocked(thumbnailCache.get).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    appStore.setState({ entries: [initial] });
+    render(createElement(Gallery));
+    const image = await vi.waitFor(() => {
+      const image = document.querySelector('img');
+      expect(image?.getAttribute('src')).toBe('blob:first');
+      return image!;
+    });
+    flushSync(() => image.dispatchEvent(new Event('load')));
+    expect(document.querySelector('.item-card')?.getAttribute('data-thumb-ready')).toBe('true');
+    flushSync(() => appStore.setState({ entries: [{ ...entry(second), key: initial.key }] }));
+    expect(document.querySelector('img')).toBeNull();
+    expect(document.querySelector('.item-card')?.hasAttribute('data-thumb-ready')).toBe(false);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:first');
+    complete({ url: 'blob:second', objectUrl: true });
+    await vi.waitFor(() =>
+      expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:second'),
+    );
+  });
+
+  it('discards a late result from a replaced handle while retaining the newer thumbnail', async () => {
+    let completeOld!: (source: { url: string; objectUrl: boolean }) => void;
+    vi.mocked(thumbnailCache.get).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeOld = resolve;
+        }),
+    );
+    vi.mocked(thumbnailCache.get).mockResolvedValueOnce({ url: 'blob:new', objectUrl: true });
+    const initial = entry();
+    appStore.setState({ entries: [initial] });
+    render(createElement(Gallery));
+    flushSync(() => appStore.setState({ entries: [{ ...entry(second), key: initial.key }] }));
+    await vi.waitFor(() =>
+      expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:new'),
+    );
+    completeOld({ url: 'blob:old', objectUrl: true });
+    await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:old'));
+    expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:new');
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:new');
+  });
+
   it('passes the clicked entry to the application without changing the displayed order', () => {
     const open = vi.spyOn(actions, 'openEntry').mockImplementation(() => undefined);
     const item = entry();

@@ -8,7 +8,7 @@ import {
   normalizeConfigEntry,
   normalizeDirPathSegments,
   sortByFavorite,
-} from '../../src/utils';
+} from '../../src/shared/utils';
 
 describe('legacy config keys and paths', () => {
   it('preserves numeric and multilingual sorting in both directions, including ties', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRecursiveImageCache } from '../../src/recursiveImageCache';
+import { createRecursiveImageCache } from '../../src/services/recursiveImageCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
 describe('recursive image cache', () => {

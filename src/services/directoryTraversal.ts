@@ -1,12 +1,12 @@
-import { CONFIG } from './state';
+import { CONFIG } from '../shared/model';
 import {
   compareBaseNumericText,
   compareNumericText,
   isImageFileName,
   joinRelativePath,
-} from './utils';
-import type { SortOrder } from './state';
-import { listDirectoryEntries } from './nativeFs';
+} from '../shared/utils';
+import type { SortOrder } from '../shared/model';
+import { listDirectoryEntries } from '../platform/nativeFs';
 
 export type RecursiveImageItem = {
   handle: FileSystemFileHandle;

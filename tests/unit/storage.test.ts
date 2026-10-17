@@ -1,4 +1,4 @@
-import type { ConfigNode } from '../../src/storage';
+import type { ConfigNode } from '../../src/services/storage';
 import { describe, expect, it, vi } from 'vitest';
 import {
   collectFavoriteFilesFromConfig,
@@ -14,7 +14,7 @@ import {
   flushRootConfig,
   reloadRootConfig,
   saveDirectorySettings,
-} from '../../src/storage';
+} from '../../src/services/storage';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
 describe('folder configuration', () => {

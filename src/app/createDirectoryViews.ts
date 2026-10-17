@@ -1,10 +1,10 @@
-import { appStore, showStatus } from './appStore';
-import type { AppState, GalleryEntry } from './appStore';
-import { CONFIG } from './state';
-import type { DirectoryCacheItem } from './state';
-import { ensureDirectoryCache } from './directoryCache';
-import { createRecursiveImageCache } from './recursiveImageCache';
-import { getMediaSource } from './nativeFs';
+import type { AppStore } from './store';
+import type { AppState, GalleryEntry } from './store';
+import { CONFIG } from '../shared/model';
+import type { DirectoryCacheItem } from '../shared/model';
+import { ensureDirectoryCache } from '../services/directoryCache';
+import { createRecursiveImageCache } from '../services/recursiveImageCache';
+import { getMediaSource } from '../platform/nativeFs';
 import {
   collectFavoriteFilesFromConfig,
   ensureConfigNode,
@@ -13,9 +13,9 @@ import {
   makeFavoriteSet,
   makeHiddenSet,
   readRootConfig,
-} from './storage';
-import type { ConfigNode } from './storage';
-import { compareNumericText, isImageFileName } from './utils';
+} from '../services/storage';
+import type { ConfigNode } from '../services/storage';
+import { compareNumericText, isImageFileName } from '../shared/utils';
 
 export function selectGalleryEntries(
   entries: GalleryEntry[],
@@ -40,6 +40,7 @@ export function selectGalleryEntries(
 }
 
 type ViewDependencies = {
+  store: AppStore;
   getRoot: () => FileSystemDirectoryHandle | null;
   getPathSegments: () => string[];
   applySettings: (config: ConfigNode | null) => void;
@@ -51,8 +52,10 @@ type RenderOptions = { forceRefresh?: boolean; useConfig?: boolean };
 export function createDirectoryViews(deps: ViewDependencies) {
   const scans = createRecursiveImageCache();
   let generation = 0;
-  const get = appStore.getState;
-  const set = appStore.setState;
+  const get = deps.store.getState;
+  const set = deps.store.setState;
+  const showStatus = (message: string, type: AppState['status']['type']) =>
+    set({ status: { message, type }, scanPreview: null });
   const entry = (
     item: DirectoryCacheItem,
     parent: FileSystemDirectoryHandle | null,

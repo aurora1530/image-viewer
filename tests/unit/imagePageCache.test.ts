@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createImagePageCache } from '../../src/imagePageCache';
-import { getMediaSource } from '../../src/nativeFs';
+import { createImagePageCache } from '../../src/services/imagePageCache';
+import { getMediaSource } from '../../src/platform/nativeFs';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
-vi.mock('../../src/nativeFs', () => ({ getMediaSource: vi.fn() }));
+vi.mock('../../src/platform/nativeFs', () => ({ getMediaSource: vi.fn() }));
 
 const directory = new MemoryDirectory('root');
 const first = directory.file('one.png').asHandle();

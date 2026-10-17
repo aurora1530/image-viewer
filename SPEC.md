@@ -86,14 +86,20 @@
 
 ## ファイル構成
 
-- `index.html`・`src/main.tsx` – React の起動とアプリのライフサイクル管理。
-- `src/App.tsx`・`src/Gallery.tsx`・`src/ViewerPanel.tsx` – ホーム、ツールバー、一覧カード、画像・動画ビューワー。
-- `src/appStore.ts` – Zustand の共有状態。一覧モードとお気に入り表示方式はそれぞれ一つの値で管理。
-- `src/application.ts` – 画面操作、履歴復元、設定保存と各処理の調整。
-- `src/directoryViews.ts` – データ取得と一覧の検索・絞り込み・表示順。古い読み込み結果の破棄。
-- `src/virtualGallery.ts` – 仮想スクロールの配置計算。カードの内容は React が描画。
+- `index.html`・`src/main.tsx` – React の起動とアプリインスタンスの生成。
+- `src/app/App.tsx`・`ApplicationProvider.tsx` – 画面の組み立て、Context、起動・終了の接続。
+- `src/app/store.ts` – Zustand のストア生成。ブラウザー API に依存しない初期状態。
+- `src/app/createApplication.ts` – 操作、履歴復元、設定保存とサービスの組み立て。
+- `src/app/createPreferences.ts` – 表示設定の検証・変更・保存要求。
+- `src/app/createDirectoryViews.ts` – 一覧の取得・検索・絞り込み・表示順、古い読み込み結果の破棄。
+- `src/app/createViewer.ts` – 閲覧セッション、ページ移動、画像の読み込み・先読み。
+- `src/features/{library,browsing,gallery,viewer}/` – 各画面のコンポーネントと専用 Hook。
+- `src/features/gallery/virtualGallery.ts` – 仮想スクロールの配置計算。カード内容は React が描画。
+- `src/services/` – ディレクトリ・画像キャッシュ、Worker、設定ファイルの読み書き。
+- `src/platform/` – ブラウザー・Electron のファイルアクセス、イベント登録、表示設定の永続化。
+- `src/shared/` – 上位層から独立したモデルと共通関数。
 - `src/style.css` – ローカルのスタイルとユーティリティ。外部 CDN への依存はない。
-- 画像キャッシュ、Worker、ファイルアクセス、設定保存は独立した TypeScript モジュールとして保持。
+- `ARCHITECTURE.md` – 依存方向と処理・リソースの所有関係。
 - `README.md` – 日本語による簡易説明と機能一覧。
 
 ## 動作環境

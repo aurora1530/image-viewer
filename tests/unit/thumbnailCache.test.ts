@@ -1,9 +1,9 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createThumbnailCache, inspectPng, isAnimatedPng } from '../../src/thumbnailCache';
+import { createThumbnailCache, inspectPng, isAnimatedPng } from '../../src/services/thumbnailCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
-import * as workerPool from '../../src/thumbnailWorkerPool';
-import { originalImageCache } from '../../src/originalImageCache';
+import * as workerPool from '../../src/services/thumbnailWorkerPool';
+import { originalImageCache } from '../../src/services/originalImageCache';
 
 const decode = vi.fn<() => Promise<void>>();
 const draw = vi.fn();

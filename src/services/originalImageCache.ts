@@ -1,4 +1,4 @@
-import { getMediaSource } from './nativeFs';
+import { getMediaSource } from '../platform/nativeFs';
 
 // Share compressed originals between thumbnail generation and the full-size viewer.
 export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntries = 256) {

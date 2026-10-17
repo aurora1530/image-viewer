@@ -92,7 +92,7 @@ Prettier はスペース2文字、JavaScript のシングルクォート、セ�
 
 ESLint は flat config と `typescript-eslint` の型情報を使う推奨ルール、React 公式の Hooks 推奨ルールを利用します。ブラウザー・Electron/Node.js・テストの実行環境を分け、TypeScript の解析範囲は `tsconfig.eslint.json` で指定しています。CI でも `npm run check` を実行します。
 
-React 構成の整理に先立つ段階として、カードの Effect 内リセットと仮想一覧の依存配列には理由付きの局所的な例外を残しています。後者はお気に入りなどの更新で行を再生成し、スクロール位置を失うことを防ぐためです。テストでは非同期 API のモックと spy の検証に合わせて一部のルールを調整しています。
+React Hooks のルールは例外なしで適用します。機能別 UI からインフラ実装への直接依存や、サービスから React・アプリ状態への逆依存も ESLint で禁止しています。テストでは非同期 API のモックと spy の検証に合わせて一部のルールを調整しています。
 
 ## 対応ブラウザ
 
@@ -109,11 +109,12 @@ React 構成の整理に先立つ段階として、カードの Effect 内リセ
 - Electron によるデスクトップ版
 - ローカルCSS（外部CDN不要）
 - File System Access API
-- `App.tsx`・`Gallery.tsx`・`ViewerPanel.tsx` が画面を描画し、`application.ts` が操作とデータ取得を調整
-- `directoryViews.ts` で通常・再帰・お気に入り一覧の検索、絞り込み、表示順を共通管理
-- 画像キャッシュ・Worker・設定保存は React から独立した処理として保持
-
+- `features/` にライブラリ・一覧操作・ギャラリー・ビューアーを分割
+- `app/` でストアと操作処理を組み立て、Provider 経由で UI に提供
+- `services/`・`platform/` の画像キャッシュ・Worker・設定保存・ファイルアクセスは React から独立
 - レスポンシブデザイン対応
+
+依存方向と機能追加時の配置先は [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
 
 ## ライセンス
 

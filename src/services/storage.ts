@@ -1,12 +1,12 @@
 import { ConfigStore } from './configStore';
-import { CONFIG } from './state';
+import { CONFIG } from '../shared/model';
 import {
   buildFavoriteKey,
   joinRelativePath,
   normalizeDirPathSegments,
   normalizeConfigEntry,
   normalizeFavoriteEntry,
-} from './utils';
+} from '../shared/utils';
 
 export type ConfigEntry = string | { type?: string; path?: string };
 export type FavoriteEntry = ConfigEntry;

@@ -1,4 +1,4 @@
-import { getMediaSource } from './nativeFs';
+import { getMediaSource } from '../platform/nativeFs';
 
 type ImagePage = {
   url: string;

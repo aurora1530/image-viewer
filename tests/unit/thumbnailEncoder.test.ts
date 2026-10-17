@@ -1,6 +1,6 @@
 import { Blob as NodeBlob } from 'node:buffer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { encodeThumbnail } from '../../src/thumbnailEncoder';
+import { encodeThumbnail } from '../../src/services/thumbnailEncoder';
 
 const bitmapClose = vi.fn();
 const frameClose = vi.fn();

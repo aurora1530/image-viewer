@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createOriginalImageCache } from '../../src/originalImageCache';
+import { createOriginalImageCache } from '../../src/services/originalImageCache';
 
 function file(name: string, size = 4) {
   return {

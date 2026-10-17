@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createNavigationInput } from '../../src/navigationInput';
+import { createNavigationInput } from '../../src/platform/navigationInput';
 
 describe('mouse navigation input', () => {
   it.each(['mouse', 'command'] as const)('accepts %s without the other notification', (source) => {

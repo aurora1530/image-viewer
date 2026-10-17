@@ -1,12 +1,13 @@
-import { CONFIG, state } from './state';
+import { CONFIG } from '../shared/model';
+import { state } from './directoryResources';
 import type {
   DirectoryCacheEntry,
   DirectoryCacheItem,
   DirectoryCacheDirectoryItem,
   DirectoryCacheImageItem,
-} from './state';
-import { isImageFileName } from './utils';
-import { listDirectoryEntries } from './nativeFs';
+} from '../shared/model';
+import { isImageFileName } from '../shared/utils';
+import { listDirectoryEntries } from '../platform/nativeFs';
 import { thumbnailCache } from './thumbnailCache';
 import type { ThumbnailRequest } from './thumbnailQueue';
 import { originalImageCache } from './originalImageCache';

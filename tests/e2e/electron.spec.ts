@@ -1,4 +1,4 @@
-import type { ConfigNode } from '../../src/storage';
+import type { ConfigNode } from '../../src/services/storage';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -318,10 +318,10 @@ for (const bundled of [false, true]) {
 
       if (!bundled) {
         const orientation = await page.evaluate(async () => {
-          const modulePath = '/src/thumbnailEncoder.ts';
+          const modulePath = '/src/services/thumbnailEncoder.ts';
           const { encodeThumbnail } = (await import(
             /* @vite-ignore */ modulePath
-          )) as typeof import('../../src/thumbnailEncoder');
+          )) as typeof import('../../src/services/thumbnailEncoder');
           const canvas = document.createElement('canvas');
           canvas.width = 3200;
           canvas.height = 1600;

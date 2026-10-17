@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla';
-import type { DirectoryCacheItem, FilterType, SortOrder } from './state';
-import type { ViewerPresentation } from './viewer';
+import type { DirectoryCacheItem, FilterType, SortOrder } from '../shared/model';
+import type { ViewerPresentation } from './viewerModel';
 
 export type ListMode = 'directory' | 'recursive' | 'favorites' | 'hidden';
 export type FavoriteMode = 'off' | 'first' | 'only';
@@ -40,14 +40,12 @@ export function initialAppState() {
     library: [] as DesktopLibraryItem[],
     listMode: 'directory' as ListMode,
     favoriteMode: 'off' as FavoriteMode,
-    thumbnailSizeIndex: normalizeThumbnailSize(
-      Number.parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10),
-    ),
+    thumbnailSizeIndex: 1,
     sortOrder: 'asc' as SortOrder,
     filterType: 'all' as FilterType,
     searchQuery: '',
-    isSinglePageView: localStorage.getItem('isSinglePageView') === '1',
-    isUiHidden: localStorage.getItem('isUiHidden') === '1',
+    isSinglePageView: false,
+    isUiHidden: false,
     isUiDockRevealed: false,
     entries: [] as GalleryEntry[],
     displayImages: [] as FileSystemFileHandle[],
@@ -62,12 +60,11 @@ export function initialAppState() {
 
 // Only observable application data lives here. Workers, caches and URL ownership
 // belong to their services and outlive individual React components.
-export const appStore = createStore(initialAppState);
+export const createAppStore = (initial: Partial<AppState> = {}) =>
+  createStore<AppState>(() => ({
+    ...initialAppState(),
+    ...initial,
+    thumbnailSizeIndex: normalizeThumbnailSize(initial.thumbnailSizeIndex ?? 1),
+  }));
+export type AppStore = ReturnType<typeof createAppStore>;
 export type AppState = ReturnType<typeof initialAppState>;
-export const setFavoriteMode = (favoriteMode: FavoriteMode) => appStore.setState({ favoriteMode });
-export function showStatus(
-  message: string,
-  type: ReturnType<typeof initialAppState>['status']['type'],
-) {
-  appStore.setState({ status: { message, type }, scanPreview: null });
-}

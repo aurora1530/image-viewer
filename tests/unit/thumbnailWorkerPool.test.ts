@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createThumbnailWorkerPool } from '../../src/thumbnailWorkerPool';
+import { createThumbnailWorkerPool } from '../../src/services/thumbnailWorkerPool';
 
 class TestWorker {
   static instances: TestWorker[] = [];

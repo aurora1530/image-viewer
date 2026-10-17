@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { collectImagesRecursively, getImageFilesFromDirectory } from '../../src/directoryTraversal';
+import {
+  collectImagesRecursively,
+  getImageFilesFromDirectory,
+} from '../../src/services/directoryTraversal';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
 describe('image traversal', () => {

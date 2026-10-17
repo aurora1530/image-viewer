@@ -1,4 +1,4 @@
-import type { ConfigNode } from '../../src/storage';
+import type { ConfigNode } from '../../src/services/storage';
 import { expect, test } from '@playwright/test';
 
 test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail resolution', async ({
@@ -6,10 +6,10 @@ test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail res
 }) => {
   await page.goto('/');
   const results = await page.evaluate(async () => {
-    const modulePath = '/src/thumbnailEncoder.ts';
+    const modulePath = '/src/services/thumbnailEncoder.ts';
     const { encodeThumbnail } = (await import(
       /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/thumbnailEncoder');
+    )) as typeof import('../../src/services/thumbnailEncoder');
     const original = document.createElement('canvas');
     original.width = 3200;
     original.height = 1600;
@@ -114,10 +114,10 @@ test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail res
 test('large PNG thumbnails preserve transparency and proportional sizing', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
-    const modulePath = '/src/thumbnailEncoder.ts';
+    const modulePath = '/src/services/thumbnailEncoder.ts';
     const { encodeThumbnail } = (await import(
       /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/thumbnailEncoder');
+    )) as typeof import('../../src/services/thumbnailEncoder');
     const canvas = new OffscreenCanvas(3200, 1600);
     const context = canvas.getContext('2d')!;
     context.fillStyle = 'rgba(255,0,0,.5)';
@@ -154,10 +154,10 @@ test('JPEG thumbnails retain proportional sizing for odd, portrait and small ori
   page,
 }) => {
   const results = await page.evaluate(async () => {
-    const modulePath = '/src/thumbnailEncoder.ts';
+    const modulePath = '/src/services/thumbnailEncoder.ts';
     const { encodeThumbnail } = (await import(
       /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/thumbnailEncoder');
+    )) as typeof import('../../src/services/thumbnailEncoder');
     const results = [];
     for (const [width, height] of [
       [6001, 4003],
@@ -527,6 +527,8 @@ test('virtual rows preserve original aspect ratios across resizing and returning
 test('keeps the complete recursive order when virtual cards are hidden or favorited', async ({
   page,
 }) => {
+  // Configure through the control: persisted storage is read only during startup.
+  await page.locator('#toggle-view-btn').dispatchEvent('click');
   await page.evaluate(() => {
     const root = (
       window as unknown as {
@@ -535,7 +537,6 @@ test('keeps the complete recursive order when virtual cards are hidden or favori
     ).__imageViewerTestRoot;
     const child = root.directory('bulk');
     for (let i = 0; i < 500; i++) child.file(`zz-item-${i}.png`);
-    localStorage.setItem('isSinglePageView', '1');
   });
   page.once('dialog', (dialog) => dialog.accept());
   await page.locator('#recursive-btn').click();
@@ -569,10 +570,10 @@ test('keeps wheel scrolling uninterrupted when offscreen thumbnails finish loadi
 }) => {
   await expect(page.locator('#item-list img[alt="2.png"]')).toHaveJSProperty('naturalWidth', 1);
   await page.evaluate(async () => {
-    const modulePath = '/src/virtualGallery.ts';
+    const modulePath = '/src/features/gallery/virtualGallery.ts';
     const { createVirtualGallery } = (await import(
       modulePath
-    )) as typeof import('../../src/virtualGallery');
+    )) as typeof import('../../src/features/gallery/virtualGallery');
     const container = document.querySelector<HTMLElement>('#item-list')!;
     container.replaceChildren();
     const grown = new Set<number>();
@@ -916,6 +917,8 @@ test('saves settings to the original folder when navigating before the save dela
 test('preloads decoded neighboring pages and reuses their sources when navigating back', async ({
   page,
 }) => {
+  // Configure through the control: persisted storage is read only during startup.
+  await page.locator('#toggle-view-btn').dispatchEvent('click');
   await page.locator('#filter-select').selectOption('image');
   await expect
     .poll(() =>
@@ -929,7 +932,6 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
     )
     .toBe(true);
   await page.evaluate(() => {
-    localStorage.setItem('isSinglePageView', '1');
     type TestFile = { getFile(): Promise<File> };
     const state = window as unknown as {
       __imageViewerTestRoot: { entries: Map<string, TestFile> };
@@ -973,6 +975,8 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
 test('keeps the latest page when an older page decode finishes after rapid navigation', async ({
   page,
 }) => {
+  // Configure through the control: persisted storage is read only during startup.
+  await page.locator('#toggle-view-btn').dispatchEvent('click');
   await page.locator('#filter-select').selectOption('image');
   await expect
     .poll(() =>
@@ -986,7 +990,6 @@ test('keeps the latest page when an older page decode finishes after rapid navig
     )
     .toBe(true);
   await page.evaluate(() => {
-    localStorage.setItem('isSinglePageView', '1');
     const state = window as unknown as {
       __imageViewerTestRoot: { entries: Map<string, { getFile(): Promise<File> }> };
       __releaseSlowPage: () => void;
@@ -1028,6 +1031,8 @@ test('keeps the latest page when an older page decode finishes after rapid navig
 test('reuses reduced thumbnails, keeps full viewer resolution and refreshes replaced originals', async ({
   page,
 }) => {
+  // Configure through the control: persisted storage is read only during startup.
+  await page.locator('#toggle-view-btn').dispatchEvent('click');
   await page.evaluate(async () => {
     const canvas = document.createElement('canvas');
     canvas.width = 3000;
@@ -1051,7 +1056,6 @@ test('reuses reduced thumbnails, keeps full viewer resolution and refreshes repl
         return state.__largeFile;
       },
     });
-    localStorage.setItem('isSinglePageView', '1');
   });
   await page.locator('#reload-btn').click();
   const thumbnail = page.locator('#item-list img[alt="large.jpg"]');

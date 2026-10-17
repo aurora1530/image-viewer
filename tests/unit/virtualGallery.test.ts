@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createVirtualGallery } from '../../src/virtualGallery';
+import { createVirtualGallery } from '../../src/features/gallery/virtualGallery';
 
 function harness(commitCards: (container: HTMLElement) => void = () => {}) {
   const container = document.createElement('div');

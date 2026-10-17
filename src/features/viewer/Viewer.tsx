@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useStore } from 'zustand';
-import { appStore } from './appStore';
-import type { ViewerPresentation } from './viewer';
-import { actions } from './application';
+import { useViewerLayout } from './useViewerLayout';
+import { useViewerToolbar } from './useViewerToolbar';
+import { useVideoPlayback } from './useVideoPlayback';
+import { useAppActions } from '../../app/ApplicationProvider';
+import type { ViewerPresentation } from '../../app/viewerModel';
 
 export function Viewer({
   presentation,
@@ -11,58 +11,10 @@ export function Viewer({
   presentation: ViewerPresentation;
   single: boolean;
 }) {
-  const video = useRef<HTMLVideoElement>(null);
-  const [toolbarHidden, setToolbarHidden] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const resetToolbar = () => {
-    clearTimeout(timer.current);
-    setToolbarHidden(false);
-    if (document.fullscreenElement) timer.current = setTimeout(() => setToolbarHidden(true), 2000);
-  };
-  useLayoutEffect(() => {
-    const opened = presentation.mode !== 'closed';
-    document.body.classList.toggle('viewer-open', opened);
-    document.body.style.overflow = opened ? 'hidden' : 'auto';
-    return () => {
-      document.body.classList.remove('viewer-open');
-      document.body.style.overflow = 'auto';
-    };
-  }, [presentation.mode]);
-  useEffect(() => {
-    const onFullscreen = () => resetToolbar();
-    document.addEventListener('fullscreenchange', onFullscreen);
-    return () => {
-      document.removeEventListener('fullscreenchange', onFullscreen);
-      clearTimeout(timer.current);
-    };
-  }, []);
-  useLayoutEffect(() => {
-    const element = video.current!;
-    actions.attachVideo(element);
-    if (presentation.video) {
-      const restore = () => {
-        if (presentation.playback) element.currentTime = presentation.playback.time;
-        if (presentation.playback?.paused) element.pause();
-        else
-          void element
-            .play()
-            .catch((error) => console.error('動画の再生を開始できませんでした:', error));
-      };
-      if (presentation.playback && element.readyState < 1)
-        element.addEventListener('loadedmetadata', restore, { once: true });
-      else restore();
-      return () => {
-        element.removeEventListener('loadedmetadata', restore);
-        element.pause();
-        actions.attachVideo(null);
-      };
-    }
-    element.pause();
-    element.load();
-    return () => {
-      actions.attachVideo(null);
-    };
-  }, [presentation.video, presentation.playback]);
+  const actions = useAppActions();
+  const { toolbarHidden, resetToolbar } = useViewerToolbar();
+  useViewerLayout(presentation.mode !== 'closed');
+  const video = useVideoPlayback(presentation.video, presentation.playback);
   return (
     <div
       id="viewer"
@@ -189,9 +141,4 @@ function Arrow({ direction }: { direction: 'left' | 'right' }) {
       />
     </svg>
   );
-}
-export function ViewerPanel() {
-  const presentation = useStore(appStore, (state) => state.viewer);
-  const single = useStore(appStore, (state) => state.isSinglePageView);
-  return <Viewer presentation={presentation} single={single} />;
 }

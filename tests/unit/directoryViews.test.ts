@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { appStore, initialAppState } from '../../src/appStore';
-import { createDirectoryViews } from '../../src/directoryViews';
+import { createAppStore } from '../../src/app/store';
+import { createDirectoryViews } from '../../src/app/createDirectoryViews';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
-beforeEach(() => appStore.setState(initialAppState(), true));
+let appStore: ReturnType<typeof createAppStore>;
+
+beforeEach(() => {
+  appStore = createAppStore();
+});
 
 function harness(root: MemoryDirectory) {
   let active = root;
   const openPreview = vi.fn();
   const views = createDirectoryViews({
+    store: appStore,
     getRoot: () => active.asHandle(),
     getPathSegments: () => [],
     applySettings: vi.fn(),
