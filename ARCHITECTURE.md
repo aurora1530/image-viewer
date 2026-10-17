@@ -1,4 +1,14 @@
-# コードの構成
+# アーキテクチャ
+
+この文書は、設計上の責務・依存方向を扱います。アプリの機能と使い方は [README.md](README.md)、開発・検証の手順は [CONTRIBUTING.md](CONTRIBUTING.md) を参照してください。具体的な定数、DOM ID、関数の引数などは実装を参照し、ここでは処理を分ける理由と変更時に守る境界を説明します。
+
+## 設計の前提
+
+大量のローカル画像を扱うため、一覧の再描画や画面の切り替えが、ファイルの再走査や画像の再生成につながらないようにします。非同期の読み込みが後から完了する場合も、現在の表示を上書きせず、不要なリソースを解放する必要があります。
+
+このため、画面の寿命、アプリの状態と操作の寿命、キャッシュ・保存処理の寿命を分けます。React コンポーネントの再描画だけでは、サービスの生成・破棄や永続化を行いません。
+
+## 構成と責務
 
 React の画面、操作を調整する処理、キャッシュ・永続化、実行環境の API を分けています。`main.tsx` が `createApplication()` でアプリを一度生成し、`ApplicationProvider` で UI に渡します。モジュールの読み込みだけではストア生成やイベント登録を行いません。
 
@@ -59,6 +69,6 @@ ESLint は UI からインフラへの直接依存、サービス・実行環境
 
 見た目と画面内の操作は該当する `features/` に追加します。外部 API との同期は専用 Hook、画面をまたぐ状態や操作の調整は `app/`、ファイル・キャッシュの処理は `services/`、実行環境の API は `platform/` に置きます。機能間でコンポーネントを直接呼び合う代わりに、アプリの操作と共有状態でつなぎます。
 
-検証は `npm run check`、ブラウザーは `npm run test:e2e`、Electron は `npm run test:desktop` を使います。Provider の状態分離・起動終了の再実行・古いサムネイル結果の破棄は単体テスト、実際のスクロール・ナビゲーション・設定保存は操作テストで確認します。
+## 設計の参照先
 
-設計の参照先: [React の Context](https://react.dev/learn/passing-data-deeply-with-context)、[Effect の依存関係](https://react.dev/learn/removing-effect-dependencies)。
+[React の Context](https://react.dev/learn/passing-data-deeply-with-context)、[Effect の依存関係](https://react.dev/learn/removing-effect-dependencies)。
