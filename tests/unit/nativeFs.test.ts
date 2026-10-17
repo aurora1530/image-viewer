@@ -15,6 +15,10 @@ describe('desktop and browser file access', () => {
   it('opens a selected desktop root and reads children through the IPC adapter', async () => {
     const readFile = vi.fn(async () => new Uint8Array([1, 2, 3]));
     window.desktopApi = {
+      getUpdateState: async () => ({ status: 'manual', version: null }),
+      checkForUpdates: async () => ({ status: 'manual', version: null }),
+      installUpdate: async () => false,
+      onUpdateState: () => () => undefined,
       readAppConfig: async () => ({}),
       writeAppConfig: async () => {},
       cacheStats: async () => ({ bytes: 0, path: '', configPath: '' }),

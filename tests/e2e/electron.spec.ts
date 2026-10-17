@@ -25,8 +25,15 @@ test('flushes pending config changes before acknowledging a desktop close reques
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('#home-view')).toBeVisible();
+    await expect(page.locator('.version-badge a')).toHaveText(/^v\d+\.\d+\.\d+$/);
+    expect(await page.evaluate(() => window.desktopApi!.getUpdateState())).toEqual({
+      status: 'manual',
+      version: null,
+    });
+    expect(await page.evaluate(() => window.desktopApi!.installUpdate())).toBe(false);
     await page.evaluate((root) => window.desktopApi!.openRoot(root), images);
-    await page.reload();
+    await page.evaluate(() => window.location.reload());
+    await expect(page.locator('#recent-roots .library-card')).toHaveCount(1);
     await page.locator('#recent-roots .library-card').click();
     await expect(page.locator('#current-dir-name')).toHaveText('images');
     await expect(page.locator('#status-area')).toContainText('表示できるアイテム');
@@ -126,7 +133,9 @@ for (const bundled of [false, true]) {
       });
       await budget.fill('64');
       await settings.getByRole('button', { name: '容量設定を保存' }).click();
-      await expect(settings.getByRole('status')).toHaveText('保存しました。');
+      await expect(settings.getByRole('status', { name: '容量設定の保存状況' })).toHaveText(
+        '保存しました。',
+      );
       const saved = JSON.parse(await readFile(path.join(profile, 'settings.json'), 'utf8')) as {
         thumbnailDiskMiB: number;
       };

@@ -1,4 +1,6 @@
-const { app, BrowserWindow, dialog, ipcMain, net, protocol } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } = require('electron');
+const { existsSync } = require('node:fs');
+const { createUpdates } = require('./updates.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -17,6 +19,8 @@ const allowedRoots = new Set();
 let library = { recent: [], favorites: [] };
 let directoryCache = {};
 let saveTimer = null;
+let updates;
+let requestUpdateClose;
 
 const libraryPath = () => path.join(app.getPath('userData'), 'library.json');
 const cachePath = () => path.join(app.getPath('userData'), 'directory-cache.json');
@@ -99,6 +103,9 @@ function decodeMediaUrl(url) {
 }
 
 function registerIpc() {
+  ipcMain.handle('desktop:update-state', () => updates.getState());
+  ipcMain.handle('desktop:check-updates', () => updates.check());
+  ipcMain.handle('desktop:install-update', () => updates.install());
   const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
   ipcMain.handle('desktop:read-app-config', async () => {
     const config = await loadJson(settingsPath(), {});
@@ -215,6 +222,20 @@ function createWindow() {
   });
   const devUrl =
     process.env.VITE_DEV_SERVER_URL || (app.isPackaged ? null : 'http://127.0.0.1:5173');
+  // Release links are opened in the system browser; renderer navigation stays local.
+  const openRelease = (url) => {
+    if (/^https:\/\/github\.com\/aurora1530\/image-viewer\/releases(?:\/|$)/.test(url))
+      void shell.openExternal(url);
+  };
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    openRelease(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url === win.webContents.getURL()) return; // Allow reloading the current app page.
+    event.preventDefault();
+    openRelease(url);
+  });
   win.on('app-command', (_event, command) => {
     if (command === 'browser-backward' || command === 'browser-forward') {
       win.webContents.send('desktop:navigate', command === 'browser-backward' ? 'back' : 'forward');
@@ -225,6 +246,14 @@ function createWindow() {
   let readyToClose = false;
   let closing = false;
   let hasCloseHandler = false;
+  let updateAfterSave = false;
+  const closeForUpdate = () => {
+    if (!hasCloseHandler || closing || win.isDestroyed()) return false;
+    updateAfterSave = true;
+    win.close();
+    return true;
+  };
+  requestUpdateClose = closeForUpdate;
   const onCloseHandlerReady = (event) => {
     if (event.sender === win.webContents) hasCloseHandler = true;
   };
@@ -232,8 +261,14 @@ function createWindow() {
     if (event.sender !== win.webContents || !closing) return;
     closing = false;
     if (saved === true) {
-      readyToClose = true;
-      win.close();
+      if (updateAfterSave) readyToClose = updates.finishInstall();
+      else {
+        readyToClose = true;
+        win.close();
+      }
+    } else if (updateAfterSave) {
+      updateAfterSave = false;
+      updates.cancelInstall();
     }
   };
   ipcMain.on('desktop:ready-to-close', onReadyToClose);
@@ -242,6 +277,11 @@ function createWindow() {
     if (isMainFrame && !isInPlace) hasCloseHandler = false;
   });
   win.on('close', (event) => {
+    // An installer failure must not let a later ordinary close skip saving.
+    if (updateAfterSave && updates.getState().status !== 'ready') {
+      updateAfterSave = false;
+      readyToClose = false;
+    }
     if (
       readyToClose ||
       !hasCloseHandler ||
@@ -256,12 +296,27 @@ function createWindow() {
     }
   });
   win.on('closed', () => {
+    if (requestUpdateClose === closeForUpdate) requestUpdateClose = undefined;
     ipcMain.removeListener('desktop:ready-to-close', onReadyToClose);
     ipcMain.removeListener('desktop:close-handler-ready', onCloseHandlerReady);
   });
 }
 
 app.whenReady().then(async () => {
+  const enabled =
+    app.isPackaged &&
+    process.platform === 'win32' &&
+    !process.env.PORTABLE_EXECUTABLE_FILE &&
+    existsSync(path.join(process.resourcesPath, 'nsis-installed'));
+  updates = createUpdates({
+    enabled,
+    updater: enabled ? require('electron-updater').autoUpdater : null,
+    broadcast: (state) => {
+      for (const win of BrowserWindow.getAllWindows())
+        win.webContents.send('desktop:update-state', state);
+    },
+    requestInstall: () => requestUpdateClose?.() ?? false,
+  });
   library = await loadJson(libraryPath(), { recent: [], favorites: [] });
   directoryCache = await loadJson(cachePath(), {});
   registerIpc();
@@ -276,6 +331,8 @@ app.whenReady().then(async () => {
     return serveMedia(request, filePath);
   });
   createWindow();
+  updates.start();
+  app.once('will-quit', () => updates.stop());
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

@@ -1,3 +1,5 @@
+declare const __APP_VERSION__: string;
+
 interface FileSystemDirectoryHandle {
   values(): AsyncIterable<FileSystemDirectoryHandle | FileSystemFileHandle>;
   nativePath?: string;
@@ -10,6 +12,10 @@ interface FileSystemFileHandle {
 interface Window {
   showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
   desktopApi?: {
+    getUpdateState(): Promise<import('./shared/release').UpdateState>;
+    checkForUpdates(): Promise<import('./shared/release').UpdateState>;
+    installUpdate(): Promise<boolean>;
+    onUpdateState(callback: (state: import('./shared/release').UpdateState) => void): () => void;
     onBeforeClose(callback: () => Promise<boolean>): () => void;
     onNavigate(callback: (direction: 'back' | 'forward') => void): () => void;
     readThumbnail(path: string): Promise<{ version: string; bytes: Uint8Array | null }>;

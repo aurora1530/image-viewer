@@ -81,6 +81,16 @@ ESLint は UI からインフラへの直接依存、サービス・実行環境
 
 [React の Context](https://react.dev/learn/passing-data-deeply-with-context)、[Effect の依存関係](https://react.dev/learn/removing-effect-dependencies)。
 
+## バージョン・配布・更新
+
+`package.json`のバージョンをViteがビルド時に埋め込み、同じ値の `version.json` も出力します。UIはProvider経由で `platform/releases.ts` の購読・更新確認を利用します。Webは配信済み `version.json` を確認するため、未リリースのmainやGitHub APIの状態によって新版を通知しません。起動・終了時の購読とタイマーはアプリのライフサイクルに結び付け、終了前の非同期結果は破棄します。
+
+Electronの更新処理はメインプロセスの `updates.cjs` が所有し、preloadの限定したIPCで状態・確認・インストール要求を提供します。NSISインストーラーだけが配置するマーカーがあるWindowsインストール版でのみ `electron-updater` を起動します。Portable版・展開版・開発起動・macOSでは手動更新にします。更新先は固定のpublic GitHub Releasesで、クライアントに認証情報は保持しません。Windowsは未署名配布のためAuthenticode検証を無効にしますが、更新ライブラリのHTTPS・ファイルハッシュ照合は維持します。
+
+更新ボタンから既存の終了前IPCでルート設定の保存を要求し、成功応答後だけ `quitAndInstall` を呼び出します。終了時の自動インストールは無効化し、保存失敗時はインストール要求を取り消して再試行できるようにします。
+
+正式リリースはmainのバージョン更新コミットに付けたタグへ固定します。全プラットフォームのビルド成功後にReleaseを公開し、同じコミットから検証したWeb成果物を配信します。通常のmainへのpushは配信しません。
+
 ## PDFの閲覧
 
 PDFは一覧では1ファイルとして扱い、画像フォルダーの見開き用リストには含めません。`createViewer` が開いたPDFのページ数と閲覧位置を管理し、既存の単一・見開き表示と操作を共有します。`services/pdfDocument.ts` がPDF.jsの遅延ロードとページ描画を担当し、サムネイルには先頭ページを利用します。ページの描画結果は元画像と同じページキャッシュで表示中と近隣ページだけ保持し、閉じるとキャッシュとPDFのWorkerを破棄します。読み込み結果は閲覧セッションに結びつけ、閉じた後や別ファイルに切り替えた後の結果を表示しません。ViteはPDF.jsのCMap・標準フォント・WASMをWeb版とElectron版へ同梱します。

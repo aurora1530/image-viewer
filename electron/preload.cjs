@@ -1,6 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi', {
+  getUpdateState: () => ipcRenderer.invoke('desktop:update-state'),
+  checkForUpdates: () => ipcRenderer.invoke('desktop:check-updates'),
+  installUpdate: () => ipcRenderer.invoke('desktop:install-update'),
+  onUpdateState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('desktop:update-state', listener);
+    return () => ipcRenderer.removeListener('desktop:update-state', listener);
+  },
   onBeforeClose: (callback) => {
     const listener = async () => {
       let saved = false;

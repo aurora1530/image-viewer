@@ -105,20 +105,33 @@ try {
   }
   await cdp.evaluate(`window.desktopApi.openRoot(${JSON.stringify(libraryFolder)})`);
   await cdp.evaluate('location.reload()');
-  await delay(700);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await cdp.evaluate(`document.querySelectorAll('#recent-roots .library-card').length === 1`))
+      break;
+    await delay(100);
+  }
   const historyCount = await cdp.evaluate(
     `document.querySelectorAll('#recent-roots .library-card').length`,
   );
   if (historyCount !== 1) throw new Error('フォルダー履歴がホーム画面に保存されていません。');
   await cdp.evaluate(`document.querySelector('#recent-roots .library-card').click()`);
-  await delay(900);
+  // Thumbnail generation is asynchronous and may return a generated blob URL.
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (
+      await cdp.evaluate(
+        `Boolean(document.querySelector('#item-list .media-card img')?.naturalWidth)`,
+      )
+    )
+      break;
+    await delay(100);
+  }
   const opened = await cdp.evaluate(
-    `({ homeHidden: document.querySelector('#home-view').classList.contains('hidden'), cards: document.querySelectorAll('#item-list .media-card').length, source: document.querySelector('#item-list img')?.src || '', loaded: document.querySelector('#item-list img')?.naturalWidth || 0 })`,
+    `({ homeHidden: document.querySelector('#home-view').classList.contains('hidden'), cards: document.querySelectorAll('#item-list .media-card').length, source: document.querySelector('#item-list .media-card img')?.src || '', loaded: document.querySelector('#item-list .media-card img')?.naturalWidth || 0 })`,
   );
   if (
     !opened.homeHidden ||
     opened.cards !== 1 ||
-    !opened.source.startsWith('local-media://') ||
+    !/^(local-media:\/\/|blob:)/.test(opened.source) ||
     opened.loaded < 1
   ) {
     throw new Error(`履歴からの画像表示に失敗しました: ${JSON.stringify(opened)}`);

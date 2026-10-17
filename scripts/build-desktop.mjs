@@ -8,7 +8,16 @@ const releaseRoot = path.resolve(projectRoot, 'release');
 const stageRoot = await mkdtemp(path.join(tmpdir(), 'image-viewer-build-'));
 const targetWin = path.resolve(releaseRoot, 'win-unpacked');
 const stagedWin = path.join(stageRoot, 'win-unpacked');
-const targetArgs = process.argv.includes('--dir') ? ['--dir'] : ['--win', 'nsis', 'portable'];
+const targetArgs = process.argv.includes('--dir')
+  ? ['--win', '--dir']
+  : ['--win', 'nsis', 'portable'];
+targetArgs.push('--x64', '--publish', 'never');
+if (!process.argv.includes('--release')) {
+  targetArgs.push(
+    '--config.nsis.artifactName=image-viewer-windows-${arch}-setup.${ext}',
+    '--config.portable.artifactName=image-viewer-windows-${arch}-portable.${ext}',
+  );
+}
 
 function assertInside(parent, target) {
   const relative = path.relative(parent, target);

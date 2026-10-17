@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const { version } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
 // Keep PDF.js resources local, with stable names required by its resource loaders.
 const pdfAssets = ['cmaps', 'standard_fonts', 'wasm'].flatMap((directory) => {
   const root = new URL(`./node_modules/pdfjs-dist/${directory}/`, import.meta.url);
@@ -13,6 +17,7 @@ const pdfAssets = ['cmaps', 'standard_fonts', 'wasm'].flatMap((directory) => {
 });
 
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(version) },
   plugins: [
     react(),
     {
@@ -33,6 +38,11 @@ export default defineConfig({
         });
       },
       generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify({ version }),
+        });
         for (const asset of pdfAssets)
           this.emitFile({ type: 'asset', fileName: asset.name, source: readFileSync(asset.path) });
       },

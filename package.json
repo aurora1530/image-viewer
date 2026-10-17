@@ -6,7 +6,9 @@
   "author": "image-viewer contributors",
   "type": "module",
   "main": "electron/main.cjs",
+  "repository": "https://github.com/aurora1530/image-viewer.git",
   "scripts": {
+    "release": "node scripts/release.mjs",
     "prepare": "husky",
     "dev": "vite",
     "desktop:dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && electron .\"",
@@ -15,6 +17,7 @@
     "desktop:pack": "npm run build && node scripts/build-desktop.mjs --dir",
     "desktop:smoke": "node scripts/desktop-smoke.mjs",
     "test": "vitest run --configLoader runner",
+    "test:release": "node --test scripts/prepare-release.test.mjs",
     "test:typecheck": "tsc --project tsconfig.tests.json",
     "test:coverage": "vitest run --configLoader runner --coverage",
     "test:e2e": "playwright test --project=chromium",
@@ -25,7 +28,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:staged": "lint-staged --hide-all --diff-filter=ACMRD",
-    "check": "npm run format:check && npm run lint && npm run test:typecheck && npm run build && npm test"
+    "check": "npm run format:check && npm run lint && npm run test:typecheck && npm run build && npm test && npm run test:release"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -63,20 +66,44 @@
       "package.json"
     ],
     "asar": true,
+    "publish": {
+      "provider": "github",
+      "owner": "aurora1530",
+      "repo": "image-viewer",
+      "releaseType": "release"
+    },
     "win": {
+      "verifyUpdateCodeSignature": false,
       "target": [
         "nsis",
         "portable"
       ]
     },
     "nsis": {
+      "include": "build/installer.nsh",
+      "artifactName": "image-viewer-${version}-windows-${arch}-setup.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "image-viewer-${version}-windows-${arch}-portable.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "notarize": false,
+      "publish": null,
+      "artifactName": "image-viewer-${version}-macos-${arch}.${ext}"
     }
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

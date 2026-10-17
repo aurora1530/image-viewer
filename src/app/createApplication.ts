@@ -31,8 +31,10 @@ import {
   getMediaSource,
 } from '../platform/nativeFs';
 import { createViewer } from './createViewer';
+import { createReleaseClient } from '../platform/releases';
 
 export function createApplication(store: AppStore = createAppStore(readPreferences())) {
+  const releases = createReleaseClient();
   const config = createConfig(store);
   const get = store.getState;
   const set = store.setState;
@@ -402,6 +404,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
   let stop: (() => void) | undefined;
   function start() {
     if (stop) return stop;
+    const detachReleases = releases.start();
     void config.load();
     const detach = registerApplicationEvents({
       getViewerMode: () => get().viewer.mode,
@@ -422,6 +425,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       if (disposed) return;
       disposed = true;
       detach();
+      detachReleases();
       clearTimeout(searchTimer);
       directoryViews.cancel();
       viewerController.closeViewer();
@@ -432,6 +436,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
     return stop;
   }
   return {
+    releases,
     store,
     actions,
     start,

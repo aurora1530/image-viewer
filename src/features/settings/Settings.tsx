@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApplication, useAppActions, useAppState } from '../../app/ApplicationProvider';
 import { sizeOptions } from '../../app/store';
 import { MiB, type AppConfig } from '../../shared/appConfig';
+import { ReleaseInfo } from './ReleaseInfo';
 
 export function Settings() {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -123,7 +124,7 @@ export function Settings() {
           {usage.path && <p className="settings-note">キャッシュ保存先: {usage.path}</p>}
           <p className="settings-note">設定保存先: {usage.configPath}</p>
           <div className="settings-footer">
-            <p role="status" className="settings-status">
+            <p role="status" aria-label="容量設定の保存状況" className="settings-status">
               {error || (saved ? '保存しました。' : '')}
             </p>
             <button type="submit" className="ui-btn primary" disabled={saving || !ready}>
@@ -160,6 +161,7 @@ export function Settings() {
             表示設定は変更時に保存します。フォルダーを開くと、そのフォルダーのサムネイル設定が優先されます。
           </p>
         </div>
+        <ReleaseInfo />
       </dialog>
     </>
   );

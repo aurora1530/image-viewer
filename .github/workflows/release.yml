@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semantic version increment
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Update main version and create an immutable source tag
+        id: version
+        env:
+          RELEASE_BUMP: ${{ inputs.bump }}
+        run: node scripts/prepare-release.mjs "$RELEASE_BUMP"
+
+  verify:
+    needs: prepare
+    runs-on: windows-latest
+    outputs:
+      artifact: github-pages-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install chromium
+      - run: npm run test:e2e
+      - run: npm run test:desktop
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          name: github-pages-${{ github.run_attempt }}
+          path: dist
+
+  desktop:
+    needs: [prepare, verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            arch: x64
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+          - os: macos-latest
+            platform: macos
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Build Windows installer and portable
+        if: matrix.platform == 'windows'
+        run: npm run desktop:build -- --release
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Build macOS manual-update downloads
+        if: matrix.platform == 'macos'
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm run build
+          npx electron-builder --mac dmg zip --"$BUILD_ARCH" --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          overwrite: true
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
+            release/*.dmg
+            release/*.zip
+
+  publish:
+    needs: [prepare, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish only after all platforms succeed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          # Refuse to republish an older version when re-running an old workflow.
+          latest=$(gh api "repos/$GH_REPO/releases?per_page=100" --jq '[.[] | select(.draft == false and .prerelease == false)][0].tag_name // ""')
+          if [ -n "$latest" ] && [ "$latest" != "$RELEASE_TAG" ]; then
+            newest=$(printf '%s\n%s\n' "$latest" "$RELEASE_TAG" | sort -V | tail -n 1)
+            test "$newest" = "$RELEASE_TAG"
+          fi
+          test -f release-assets/latest.yml
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)
+            if [ "$draft" = false ]; then exit 0; fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+
+  deploy:
+    needs: [prepare, verify, publish]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+      artifact: ${{ needs.verify.outputs.artifact }}

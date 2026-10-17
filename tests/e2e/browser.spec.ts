@@ -2,6 +2,24 @@ import { samplePdf } from '../helpers/pdf';
 import type { ConfigNode } from '../../src/services/storage';
 import { expect, test } from '@playwright/test';
 
+test('shows the built version and links to its release from the header and settings', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const badge = page.locator('.version-badge a');
+  await expect(badge).toHaveText(/^v\d+\.\d+\.\d+$/);
+  await expect(badge).toHaveAttribute(
+    'href',
+    `https://github.com/aurora1530/image-viewer/releases/tag/${await badge.textContent()}`,
+  );
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'バージョンと更新' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '最新リリース・ダウンロード' })).toHaveAttribute(
+    'href',
+    'https://github.com/aurora1530/image-viewer/releases/latest',
+  );
+});
+
 test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail resolution', async ({
   page,
 }) => {
@@ -1236,7 +1254,9 @@ test('central settings validate, persist and restore cache budgets', async ({ pa
   const budget = dialog.getByRole('spinbutton', { name: 'サムネイルのメモリの最大容量（MiB）' });
   await budget.fill('24');
   await dialog.getByRole('button', { name: '容量設定を保存' }).click();
-  await expect(dialog.getByRole('status')).toHaveText('保存しました。');
+  await expect(dialog.getByRole('status', { name: '容量設定の保存状況' })).toHaveText(
+    '保存しました。',
+  );
   await page.reload();
   await page.getByRole('button', { name: '設定', exact: true }).click();
   await expect(budget).toHaveValue('24');

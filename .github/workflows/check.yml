@@ -19,12 +19,3 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-
-  deploy:
-    needs: check
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/deploy.yml

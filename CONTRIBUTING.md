@@ -23,7 +23,37 @@ npm run desktop:pack    # Windowsの展開版を生成
 npm run desktop:build   # Windowsのインストーラーとポータブル版を生成
 ```
 
-デスクトップ版の生成物は `release/` に出力されます。Windows で出力フォルダーのリネームに失敗する問題を避けるため、パッケージ化は一時フォルダーで行い、生成物を `release/` にコピーします。
+デスクトップ版の生成物は `release/` に出力されます。Windows x64を対象とし、展開版の `win-unpacked/` と、バージョンを含まない `image-viewer-windows-x64-setup.exe`・`image-viewer-windows-x64-portable.exe` を上書きします。起動中のアプリは終了してからビルドしてください。バージョン更新やGitHubへのアップロードは行いません。Windows で出力フォルダーのリネームに失敗する問題を避けるため、パッケージ化は一時フォルダーで行い、生成物を `release/` にコピーします。
+
+## リリース
+
+GitHub Actions の `Release` をmainで手動実行し、`patch`（修正）・`minor`（互換性のある機能追加）・`major`（互換性を壊す変更）を選びます。GitHub CLIをインストールして `gh auth login` 済みなら、ローカルから同じ処理を開始できます。
+
+```powershell
+npm run release -- patch
+npm run release -- minor
+npm run release -- major
+```
+
+このコマンドはローカルの変更を送信せず、リモートmainをリリースします。必要な変更は先にmainへpushしてください。`package.json`とlockfileのバージョン更新コミット・`vX.Y.Z`タグを作成し、そのコミットを固定して検証します。mainの直接更新を禁止するブランチ保護がある場合は、その運用に合わせた変更が必要です。通常の `GITHUB_TOKEN` を使用し、追加のPATや有料の署名サービスは使用しません。
+
+Windowsの検証後、Windows x64のNSISインストーラー・Portable版と、macOS arm64/x64それぞれのDMG・ZIPを生成します。全ビルドが成功してからGitHub Releaseを公開し、同じコミットから生成・検証済みのWeb成果物をPagesへ配信します。Releaseのファイル名にはバージョンを含め、Windowsの更新用 `latest.yml` と `.blockmap` も添付します。
+
+失敗した場合は新規実行ではなく、その実行の `Re-run all jobs` を使うと同じタグ・バージョンで再試行できます。実行IDをタグに記録しているため、mainが進んでいても同じソースを利用します。公開済みReleaseのファイルは再アップロードせず、新しい正式版がある場合は古い版の再公開・Web配信を拒否します。Release公開とPages配信は別処理なので、Pagesだけ失敗した場合も再実行してください。
+
+GitHub PagesのSourceは `GitHub Actions` に設定してください。デスクトップの自動更新はpublicリポジトリのGitHub Releasesを参照します。アプリにGitHubトークンは同梱しません。標準のGitHub-hosted runnersを使い、privateリポジトリではActionsの無料枠・利用上限を確認してください。
+
+Windowsは未署名のためSmartScreenの警告が出る場合があります。macOSは無料のad-hoc署名でビルドし、公証・自動更新は行いません。OSのセキュリティ設定によって初回起動時の許可操作が必要です。証明書の購入やApple Developer Programへの登録は不要です。
+
+### アプリ側のバージョン表示と更新
+
+ヘッダーのバージョンをクリックすると、その版のGitHub Releaseを開きます。設定の「バージョンと更新」から、最新リリースのダウンロードと更新状態を確認できます。
+
+Web版は起動時・10分ごとに配信バージョンを確認し、新版があるとヘッダーに「更新あり（設定）」を表示します。設定の「再読み込みして更新」で切り替えます。
+
+Windowsのインストール版は起動時・4時間ごと・設定の「更新を確認」でGitHub Releasesの新版を確認します。バックグラウンドでダウンロード後、「再起動して更新」で設定の保存を完了してから更新します。保存に失敗した場合は更新せず、アプリを開いたままにします。ネットワークに接続できなくても通常の閲覧は続けられます。
+
+Windows Portable版・展開版・開発起動、およびmacOS版は手動更新です。最新リリースからダウンロードして置き換えます。
 
 ## 整形と静的解析
 
@@ -46,7 +76,7 @@ Prettier はスペース2文字、JavaScript のシングルクォート、セ�
 
 ESLint は flat config と `typescript-eslint` の型情報を使う推奨ルール、React Hooks の推奨ルールを利用します。ブラウザー・Electron/Node.js・テストの実行環境を分け、TypeScript の解析範囲は `tsconfig.eslint.json` で指定しています。Hooks のルールは例外なしで適用し、テストでは非同期 API のモックと spy の検証に合わせて一部のルールを調整しています。CI でも `npm run check` を実行します。
 
-GitHub Pages へのデプロイは、`check.yml` の `check` ジョブが成功した後に `deploy.yml` を呼び出して実行します。対象は main への push と、main を選んだ `Check code quality` ワークフローの手動実行です。チェックが失敗・キャンセルされた場合や、プルリクエスト・main 以外のブランチではデプロイしません。
+通常のpush・プルリクエストでは `check.yml` の検証だけを実行します。GitHub Pagesへの配信は `release.yml` から `deploy.yml` を呼び出したときだけ行い、mainへのpushではWeb版は更新しません。
 
 ## テスト
 
@@ -58,6 +88,7 @@ npx playwright install chromium
 
 ```powershell
 npm test                 # 単体・統合テスト
+npm run test:release      # バージョン更新・タグ再利用のローカルGitテスト
 npm run test:typecheck   # テストコードの型チェック
 npm run test:e2e         # Chromiumでの操作テスト
 npm run test:desktop     # Electronでの操作テスト
