@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Semantic version increment
+        description: Semantic version increment (initial publishes 1.0.0 once)
         required: true
         default: patch
         type: choice
-        options: [patch, minor, major]
+        options: [patch, minor, major, initial]
 
 concurrency:
   group: release

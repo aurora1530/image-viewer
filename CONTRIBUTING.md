@@ -35,6 +35,8 @@ npm run release -- minor
 npm run release -- major
 ```
 
+初回の1.0.0だけは `npm run release -- initial`、またはActionsで `initial` を選びます。バージョンを増やすコミットは作成せず、その時点のリモートmainに `v1.0.0` タグを付けます。バージョン付きタグが既に存在する場合や、packageとlockfileが1.0.0で一致しない場合は拒否します。初回公開後は通常の `patch`・`minor`・`major` を使ってください。
+
 このコマンドはローカルの変更を送信せず、リモートmainをリリースします。必要な変更は先にmainへpushしてください。`package.json`とlockfileのバージョン更新コミット・`vX.Y.Z`タグを作成し、そのコミットを固定して検証します。mainの直接更新を禁止するブランチ保護がある場合は、その運用に合わせた変更が必要です。通常の `GITHUB_TOKEN` を使用し、追加のPATや有料の署名サービスは使用しません。
 
 Windowsの検証後、Windows x64のNSISインストーラー・Portable版と、macOS arm64/x64それぞれのDMG・ZIPを生成します。全ビルドが成功してからGitHub Releaseを公開し、同じコミットから生成・検証済みのWeb成果物をPagesへ配信します。Releaseのファイル名にはバージョンを含め、Windowsの更新用 `latest.yml` と `.blockmap` も添付します。

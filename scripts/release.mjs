@@ -1,8 +1,8 @@
 import { spawnSync } from 'node:child_process';
 
 const bump = process.argv[2];
-if (!['patch', 'minor', 'major'].includes(bump) || process.argv.length !== 3) {
-  console.error('Usage: npm run release -- patch|minor|major');
+if (!['patch', 'minor', 'major', 'initial'].includes(bump) || process.argv.length !== 3) {
+  console.error('Usage: npm run release -- patch|minor|major|initial');
   process.exit(1);
 }
 const result = spawnSync(
