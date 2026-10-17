@@ -1,0 +1,12 @@
+{
+  "github.copilot.chat.commitMessageGeneration.instructions": [
+    {
+      "text": "コミットメッセージの件名と本文は日本語で簡潔に書いてください。コードの識別子、ファイル名、コマンド、固有名詞は原表記を維持してください。Conventional Commits の形式を使う場合、feat や fix などの種別とスコープは英語のままにしてください。"
+    }
+  ],
+  "github.copilot.chat.pullRequestDescriptionGeneration.instructions": [
+    {
+      "text": "プルリクエストのタイトルと説明は日本語で書いてください。変更内容と検証結果を簡潔に説明し、コードの識別子、ファイル名、コマンド、固有名詞は原表記を維持してください。"
+    }
+  ]
+}
