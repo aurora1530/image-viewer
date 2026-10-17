@@ -39,6 +39,8 @@ Prettier はスペース2文字、JavaScript のシングルクォート、セ�
 
 ESLint は flat config と `typescript-eslint` の型情報を使う推奨ルール、React Hooks の推奨ルールを利用します。ブラウザー・Electron/Node.js・テストの実行環境を分け、TypeScript の解析範囲は `tsconfig.eslint.json` で指定しています。Hooks のルールは例外なしで適用し、テストでは非同期 API のモックと spy の検証に合わせて一部のルールを調整しています。CI でも `npm run check` を実行します。
 
+GitHub Pages へのデプロイは、`check.yml` の `check` ジョブが成功した後に `deploy.yml` を呼び出して実行します。対象は main への push と、main を選んだ `Check code quality` ワークフローの手動実行です。チェックが失敗・キャンセルされた場合や、プルリクエスト・main 以外のブランチではデプロイしません。
+
 ## テスト
 
 ブラウザーテストの初回実行前に、Chromium をインストールします。
