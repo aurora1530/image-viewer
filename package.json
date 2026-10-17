@@ -18,9 +18,15 @@
     "test:coverage": "vitest run --configLoader runner --coverage",
     "test:e2e": "playwright test --project=chromium",
     "test:desktop": "playwright test --project=electron",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "npm run lint -- --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run lint && npm run test:typecheck && npm run build && npm test"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -29,8 +35,14 @@
     "concurrently": "^9.2.1",
     "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
     "jsdom": "^30.1.1",
+    "prettier": "^3.9.10",
     "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.2",
     "vite": "^7.2.4",
     "vitest": "^5.0.1",
     "wait-on": "^8.0.4"

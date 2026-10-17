@@ -78,6 +78,22 @@ npm run test:coverage    # 単体・統合テストのカバレッジ
 
 操作テストは自動で Vite を起動し、一時フォルダー内のテスト用ファイルを使います。テストの対象と移行時の確認項目は [TEST_PLAN.md](TEST_PLAN.md) を参照してください。カバレッジ表示には Chromium・Electron の操作テストは含まれません。
 
+## コードの整形と静的解析
+
+```powershell
+npm run format          # Prettier で整形
+npm run format:check    # 整形差分の検査
+npm run lint            # ESLint（警告も失敗として扱う）
+npm run lint:fix        # ESLint の自動修正
+npm run check           # 整形・lint・型チェック・ビルド・単体テスト
+```
+
+Prettier はスペース2文字、JavaScript のシングルクォート、セミコロンあり、折り返し幅100文字、LF改行に統一します。生成物と `package-lock.json` は整形対象から除外します。
+
+ESLint は flat config と `typescript-eslint` の型情報を使う推奨ルール、React 公式の Hooks 推奨ルールを利用します。ブラウザー・Electron/Node.js・テストの実行環境を分け、TypeScript の解析範囲は `tsconfig.eslint.json` で指定しています。CI でも `npm run check` を実行します。
+
+React 構成の整理に先立つ段階として、カードの Effect 内リセットと仮想一覧の依存配列には理由付きの局所的な例外を残しています。後者はお気に入りなどの更新で行を再生成し、スクロール位置を失うことを防ぐためです。テストでは非同期 API のモックと spy の検証に合わせて一部のルールを調整しています。
+
 ## 対応ブラウザ
 
 - Google Chrome（推奨）
