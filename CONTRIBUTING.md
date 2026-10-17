@@ -23,7 +23,11 @@ npm run desktop:pack    # Windowsの展開版を生成
 npm run desktop:build   # Windowsのインストーラーとポータブル版を生成
 ```
 
-デスクトップ版の生成物は `release/` に出力されます。Windows x64を対象とし、展開版の `win-unpacked/` と、バージョンを含まない `image-viewer-windows-x64-setup.exe`・`image-viewer-windows-x64-portable.exe` を上書きします。起動中のアプリは終了してからビルドしてください。バージョン更新やGitHubへのアップロードは行いません。Windows で出力フォルダーのリネームに失敗する問題を避けるため、パッケージ化は一時フォルダーで行い、生成物を `release/` にコピーします。
+デスクトップ版の生成物は、ビルドごとに新しい `release/builds/<日時と識別子>/` に出力されます。Windows x64を対象とし、その中に展開版の `win-unpacked/` と、バージョンを含まない `image-viewer-windows-x64-setup.exe`・`image-viewer-windows-x64-portable.exe` を生成します。完了時に出力先と実行ファイルのパスを表示します。`npm run desktop:smoke` は最新の完成済みビルドを自動で選びます。
+
+パッケージ化は毎回新しい一時フォルダーで行い、生成物も新しい保存先へコピーします。過去の展開版・インストーラーは削除・上書きしないため、VS Codeや前回のアプリが `app.asar` を開いていてもビルドできます。以前の `release/win-unpacked/` や `release/` 直下のインストーラーは更新しません。過去の生成物は自動削除しないため、不要になったビルドのフォルダーは後で削除してください。バージョン更新やGitHubへのアップロードは行いません。
+
+正式リリース用の `--release` では、CIのアップロードに必要な配布ファイルを従来どおり `release/` 直下にもコピーします。これは新規チェックアウトで動くReleaseワークフロー向けの動作です。
 
 ## リリース
 
@@ -91,6 +95,7 @@ npx playwright install chromium
 ```powershell
 npm test                 # 単体・統合テスト
 npm run test:release      # バージョン更新・タグ再利用のローカルGitテスト
+npm run test:desktop-build # 出力先の分離・Windowsでのファイルロック回帰テスト
 npm run test:typecheck   # テストコードの型チェック
 npm run test:e2e         # Chromiumでの操作テスト
 npm run test:desktop     # Electronでの操作テスト

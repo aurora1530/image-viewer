@@ -18,6 +18,7 @@
     "desktop:smoke": "node scripts/desktop-smoke.mjs",
     "test": "vitest run --configLoader runner",
     "test:release": "node --test scripts/prepare-release.test.mjs",
+    "test:desktop-build": "node --test scripts/desktop-output.test.mjs",
     "test:typecheck": "tsc --project tsconfig.tests.json",
     "test:coverage": "vitest run --configLoader runner --coverage",
     "test:e2e": "playwright test --project=chromium",
@@ -28,7 +29,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:staged": "lint-staged --hide-all --diff-filter=ACMRD",
-    "check": "npm run format:check && npm run lint && npm run test:typecheck && npm run build && npm test && npm run test:release"
+    "check": "npm run format:check && npm run lint && npm run test:typecheck && npm run build && npm test && npm run test:release && npm run test:desktop-build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

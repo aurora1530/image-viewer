@@ -2,11 +2,12 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { findDesktopExecutable } from './desktop-output.mjs';
 
 const root = process.cwd();
 const executable = process.env.IMAGE_VIEWER_EXECUTABLE
   ? path.resolve(process.env.IMAGE_VIEWER_EXECUTABLE)
-  : path.join(root, 'release', 'win-unpacked', 'ローカル画像ビューワー.exe');
+  : await findDesktopExecutable(path.join(root, 'release'));
 const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-smoke-'));
 const libraryFolder = path.join(profile, 'sample-images');
 const port = 9333;
