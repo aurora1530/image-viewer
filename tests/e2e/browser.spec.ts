@@ -1147,13 +1147,98 @@ test('reuses reduced thumbnails, keeps full viewer resolution and refreshes repl
   await expect(thumbnail).toHaveJSProperty('naturalHeight', 320);
 });
 
-test('opens video in the player and closes it with Escape', async ({ page }) => {
+for (const single of [false, true]) {
+  for (const [width, height] of [
+    [120, 300],
+    [300, 120],
+  ]) {
+    test(`closes from image margins while preserving image and toolbar clicks (${single ? 'single' : 'spread'}, ${width}x${height})`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.evaluate(
+        async ({ width, height }) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const blob = await new Promise<Blob>((resolve) =>
+            canvas.toBlob((blob) => resolve(blob!)),
+          );
+          const root = (
+            window as unknown as {
+              __imageViewerTestRoot: { entries: Map<string, unknown> };
+            }
+          ).__imageViewerTestRoot;
+          root.entries.delete('cover.gif');
+          for (const name of ['2.png', '10.png'])
+            root.entries.set(name, {
+              kind: 'file',
+              name,
+              getFile: async () => new File([blob], name, { type: 'image/png' }),
+            });
+        },
+        { width, height },
+      );
+      await page.locator('#reload-btn').click();
+      await page.locator('.media-card[title="2.png"]').click();
+      if ((await page.locator('#toggle-view-btn').textContent())?.includes('単一') === single)
+        await page.locator('#toggle-view-btn').click();
+      const image = page.locator('#right-page');
+      await expect(image).toHaveJSProperty('naturalWidth', width);
+      await image.click();
+      await page.locator('#page-counter').click();
+      await page.locator('#prev-btn').click();
+      await expect(page.locator('#viewer')).toBeVisible();
+      await expect(image).toHaveJSProperty('naturalWidth', width);
+      const margin = await image.evaluate((element: HTMLImageElement) => {
+        const box = element.getBoundingClientRect();
+        const scale = Math.min(
+          box.width / element.naturalWidth,
+          box.height / element.naturalHeight,
+        );
+        if (box.width - element.naturalWidth * scale > 2)
+          return { x: box.x + 1, y: box.y + box.height / 2 };
+        if (box.height - element.naturalHeight * scale > 2)
+          return { x: box.x + box.width / 2, y: box.y + 1 };
+        return { x: box.x - 5, y: box.y + box.height / 2 };
+      });
+      await page.mouse.click(margin.x, margin.y);
+      await expect(page.locator('#viewer')).toBeHidden();
+    });
+  }
+}
+
+test('closes from the viewer background and an empty spread page', async ({ page }) => {
+  await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
+  const card = page.locator('#item-list .media-card');
+  await card.click();
+  await page.locator('#viewer').click({ position: { x: 1, y: 1 } });
+  await expect(page.locator('#viewer')).toBeHidden();
+  await card.click();
+  if ((await page.locator('#toggle-view-btn').textContent())?.includes('見開き'))
+    await page.locator('#toggle-view-btn').click();
+  await page.locator('#fullscreen-btn').click();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
+  await expect(page.locator('#left-page')).toBeHidden();
+  await page.locator('#viewer-pages .page-container').first().click();
+  await expect(page.locator('#viewer')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+});
+
+test('opens video in the player and closes it with Escape or a background click', async ({
+  page,
+}) => {
   await page.locator('#filter-select').selectOption('video');
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);
   await page.locator('#item-list .media-card').click();
   await expect(page.locator('#viewer-video-container')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
+  await page.locator('#item-list .media-card').click();
+  await page.locator('#viewer-video').click();
+  await expect(page.locator('#viewer')).toBeVisible();
+  await page.locator('#viewer-video-container').click({ position: { x: 32, y: 32 } });
+  await expect(page.locator('#viewer')).toBeHidden();
 });
 
 for (const originalAspect of [false, true]) {
@@ -1337,7 +1422,10 @@ test('PDF thumbnails and single/spread navigation stay within the selected docum
   await expect(page.locator('#viewer')).toBeHidden();
   await page.keyboard.press('Alt+ArrowRight');
   await expect(page.locator('#page-counter')).toHaveText('3 - 2 / 3');
-  await page.keyboard.press('Escape');
+  await page.locator('#right-page').click();
+  await expect(page.locator('#viewer')).toBeVisible();
+  await page.locator('#viewer').click({ position: { x: 1, y: 1 } });
+  await expect(page.locator('#viewer')).toBeHidden();
   await page.locator('.media-card[title="broken.pdf"]').click();
   await expect(page.locator('#viewer')).toBeHidden();
   await expect(page.locator('#status-area')).toContainText('PDFを開けませんでした');
