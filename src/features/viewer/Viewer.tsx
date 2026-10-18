@@ -20,6 +20,31 @@ export function Viewer({
       id="viewer"
       style={{ display: presentation.mode === 'closed' ? 'none' : 'flex' }}
       onMouseMove={resetToolbar}
+      onClick={(event) => {
+        const target = event.target;
+        if (!(target instanceof Element) || target.closest('#viewer-toolbar, video')) return;
+        if (target instanceof HTMLImageElement) {
+          if (!target.naturalWidth || !target.naturalHeight) return;
+          // object-fit: contain leaves clickable background inside the image element's box.
+          const box = target.getBoundingClientRect();
+          const scale = Math.min(
+            box.width / target.naturalWidth,
+            box.height / target.naturalHeight,
+          );
+          const width = target.naturalWidth * scale;
+          const height = target.naturalHeight * scale;
+          const left = box.left + (box.width - width) / 2;
+          const top = box.top + (box.height - height) / 2;
+          if (
+            event.clientX >= left &&
+            event.clientX <= left + width &&
+            event.clientY >= top &&
+            event.clientY <= top + height
+          )
+            return;
+        }
+        actions.closeViewer();
+      }}
     >
       <div
         id="viewer-pages"
