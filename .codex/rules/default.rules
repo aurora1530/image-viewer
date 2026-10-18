@@ -1,0 +1,40 @@
+# npm scripts
+prefix_rule(
+    pattern = [
+        "npm",
+        "run",
+        [
+            "build",
+            "desktop:dev",
+            "desktop:build",
+            "desktop:pack",
+            "desktop:smoke",
+            "test",
+            "test:release",
+            "test:desktop-build",
+            "test:typecheck",
+            "test:coverage",
+            "test:e2e",
+            "test:desktop",
+            "lint",
+            "lint:fix",
+            "format",
+            "format:check",
+            "check",
+            "check:staged",
+        ],
+    ],
+    decision = "allow",
+)
+
+# npm test (npm run test の短縮形)
+prefix_rule(
+    pattern = ["npm", "test"],
+    decision = "allow",
+)
+
+# Git read-only commands
+prefix_rule(
+    pattern = ["git", ["status", "diff", "log"]],
+    decision = "allow",
+)
