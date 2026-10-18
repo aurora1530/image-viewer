@@ -32,8 +32,138 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('directory cache and previews', () => {
+  it('uses a preferred named path without enumerating unrelated files', async () => {
+    const root = new MemoryDirectory('root', { caseSensitive: false });
+    const cover = root.file('__0.png');
+    const enumerate = vi.spyOn(root, 'values');
+    const lookup = vi.spyOn(root, 'getFileHandle');
+    expect((await selectDirectoryPreviewFile(root.asHandle()))?.handle).toBe(cover.asHandle());
+    expect(lookup.mock.calls.map(([name]) => name)).toEqual(['__0.jpg', '__0.jpeg', '__0.png']);
+    expect(enumerate).not.toHaveBeenCalled();
+  });
+
+  it('checks preferred names and extension priority before using a saved path', async () => {
+    const root = new MemoryDirectory('root', { caseSensitive: false });
+    root.file('__0.png');
+    const preferred = root.file('__0.jpeg');
+    root.file('icon.jpg');
+    root.file('thumbnail.jpg');
+    root.file('saved.jpg');
+    root.file(
+      '.image-viewer.json',
+      JSON.stringify({
+        directoryThumbnail: { path: ['saved.jpg'], expiresAt: Date.now() + 10000 },
+      }),
+    );
+    const enumerate = vi.spyOn(root, 'values');
+    expect(
+      (await selectDirectoryPreviewFile(root.asHandle(), { rootHandle: root.asHandle(), path: [] }))
+        ?.handle,
+    ).toBe(preferred.asHandle());
+    expect(enumerate).not.toHaveBeenCalled();
+    await flushRootConfig(root.asHandle());
+  });
+
+  it('uses a valid descendant path without enumerating the folder or descendants', async () => {
+    const root = new MemoryDirectory('root', { caseSensitive: false });
+    const pages = root.directory('pages');
+    const cover = pages.file('saved.jpg');
+    const expiresAt = Date.now() + 10000;
+    root.file(
+      '.image-viewer.json',
+      JSON.stringify({
+        directoryThumbnail: { path: ['pages', 'saved.jpg'], expiresAt },
+      }),
+    );
+    const rootRead = vi.spyOn(root, 'values');
+    const childRead = vi.spyOn(pages, 'values');
+    expect(
+      (await selectDirectoryPreviewFile(root.asHandle(), { rootHandle: root.asHandle(), path: [] }))
+        ?.handle,
+    ).toBe(cover.asHandle());
+    expect(rootRead).not.toHaveBeenCalled();
+    expect(childRead).not.toHaveBeenCalled();
+    expect((await readRootConfig(root.asHandle())).directoryThumbnail?.expiresAt).toBe(expiresAt);
+  });
+
+  it('stops enumerating as soon as the highest-priority cover is found', async () => {
+    const root = new MemoryDirectory('root', { caseSensitive: false });
+    const cover = root.file('__0.JPG');
+    const tail = vi.fn();
+    vi.spyOn(root, 'values').mockImplementation(async function* () {
+      yield cover.asHandle();
+      tail();
+      yield root.file('later.jpg').asHandle();
+    });
+    expect((await selectDirectoryPreviewFile(root.asHandle()))?.handle).toBe(cover.asHandle());
+    expect(tail).not.toHaveBeenCalled();
+  });
+
+  it('closes an abandoned enumeration without scanning descendants or saving a partial result', async () => {
+    const root = new MemoryDirectory('root', { caseSensitive: false });
+    const child = root.directory('child');
+    child.file('cover.jpg');
+    const childRead = vi.spyOn(child, 'values');
+    const closed = vi.fn();
+    const tail = vi.fn();
+    let active = true;
+    vi.spyOn(root, 'values').mockImplementation(async function* () {
+      try {
+        yield child.asHandle();
+        active = false;
+        yield root.file('one.jpg').asHandle();
+        tail();
+      } finally {
+        closed();
+      }
+    });
+    expect(
+      await selectDirectoryPreviewFile(
+        root.asHandle(),
+        { rootHandle: root.asHandle(), path: [] },
+        () => active,
+      ),
+    ).toBeNull();
+    expect(closed).toHaveBeenCalledOnce();
+    expect(tail).not.toHaveBeenCalled();
+    expect(childRead).not.toHaveBeenCalled();
+    expect((await readRootConfig(root.asHandle())).directoryThumbnail).toBeUndefined();
+    await flushRootConfig(root.asHandle());
+    expect(root.entries.has('.image-viewer.json')).toBe(false);
+  });
+
+  it('bounds folder searches and dispatches visible folders before queued prefetches', async () => {
+    const releases: Array<() => void> = [];
+    const started: string[] = [];
+    const makeFolder = (name: string) => {
+      const folder = new MemoryDirectory(name);
+      const cover = folder.file('cover.jpg');
+      vi.spyOn(folder, 'values').mockImplementation(async function* () {
+        started.push(name);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        yield cover.asHandle();
+      });
+      return folder.asHandle();
+    };
+    const jobs = Array.from({ length: 4 }, (_, i) => getDirectoryPreview(makeFolder(`${i}`)));
+    await vi.waitFor(() => expect(started).toHaveLength(4));
+    jobs.push(getDirectoryPreview(makeFolder('prefetch'), { getPriority: () => 100 }));
+    let active = true;
+    jobs.push(getDirectoryPreview(makeFolder('abandoned'), { shouldContinue: () => active }));
+    jobs.push(getDirectoryPreview(makeFolder('visible'), { getPriority: () => 0 }));
+    active = false;
+    expect(started).toEqual(['0', '1', '2', '3']);
+    releases.shift()!();
+    await vi.waitFor(() => expect(started[4]).toBe('visible'));
+    releases.splice(0).forEach((release) => release());
+    await vi.waitFor(() => expect(started[5]).toBe('prefetch'));
+    releases.splice(0).forEach((release) => release());
+    await Promise.all(jobs);
+    expect(started).not.toContain('abandoned');
+  });
+
   it('classifies supported media and excludes unrelated files', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     root.directory('child');
     for (const name of ['cover.HEIC', 'clip.MP4', 'book.PDF', 'notes.txt']) root.file(name);
     const cache = await buildDirectoryCache(root.asHandle());
@@ -47,7 +177,7 @@ describe('directory cache and previews', () => {
   });
 
   it('reuses a cache until forced to refresh', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     root.file('one.png');
     const first = await ensureDirectoryCache(root.asHandle());
     root.file('two.png');
@@ -58,7 +188,7 @@ describe('directory cache and previews', () => {
   });
 
   it('selects the preferred file before requesting its thumbnail on every call', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     root.file('ordinary.jpg');
     const preferred = root.file('icon.png');
     const get = vi.spyOn(thumbnailCache, 'get');
@@ -76,7 +206,7 @@ describe('directory cache and previews', () => {
   });
 
   it('selects a file independently of the gallery listing and thumbnail generation', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     root.file('ordinary.jpg');
     const listing = await ensureDirectoryCache(root.asHandle());
     const preferred = root.file('__0.png');
@@ -95,7 +225,7 @@ describe('directory cache and previews', () => {
   it.each(['__0.png', 'ICON.PNG', 'thumbnail.png'])(
     'selects an added %s despite a cached listing, previous preview and persisted path',
     async (name) => {
-      const root = new MemoryDirectory('root');
+      const root = new MemoryDirectory('root', { caseSensitive: false });
       const old = root.file('ordinary.jpg');
       const location = { rootHandle: root.asHandle(), path: [] };
       const get = vi.spyOn(thumbnailCache, 'get');
@@ -116,7 +246,7 @@ describe('directory cache and previews', () => {
   );
 
   it('prefers __0 over icon and thumbnail regardless of enumeration order or case', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     root.file('thumbnail.jpg');
     root.file('icon.jpg');
     const cover = root.file('__0.PNG');
@@ -126,7 +256,7 @@ describe('directory cache and previews', () => {
   });
 
   it('releases a generated URL if the request is cancelled during generation', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     root.file('cover.jpg');
     let active = true;
     vi.spyOn(thumbnailCache, 'get').mockImplementationOnce(() => {
@@ -138,13 +268,13 @@ describe('directory cache and previews', () => {
   });
 
   it('returns null when a directory has no image, including below children', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     root.directory('child').file('video.mp4');
     expect(await getDirectoryPreview(root.asHandle())).toBeNull();
   });
 
   it('persists a relative descendant path and reuses it without scanning descendants or extending expiry', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     const folder = root.directory('album');
     const child = folder.directory('pages');
     const image = child.file('cover.jpg');
@@ -163,7 +293,7 @@ describe('directory cache and previews', () => {
       expiresAt: now + 7 * 24 * 60 * 60 * 1000,
     });
     // Open through new handles, as after an application restart.
-    const reopened = new MemoryDirectory('root');
+    const reopened = new MemoryDirectory('root', { caseSensitive: false });
     reopened.file('.image-viewer.json', JSON.stringify(saved));
     const reopenedFolder = reopened.directory('album');
     const reopenedChild = reopenedFolder.directory('pages');
@@ -191,7 +321,7 @@ describe('directory cache and previews', () => {
   ])(
     'handles %s path caches before the normal fallback',
     async (scenario, path, lifetime, expected) => {
-      const root = new MemoryDirectory('root');
+      const root = new MemoryDirectory('root', { caseSensitive: false });
       const now = Date.now();
       vi.spyOn(Date, 'now').mockReturnValue(now);
       root.file(
@@ -216,7 +346,7 @@ describe('directory cache and previews', () => {
   );
 
   it('still displays a preview when the config cannot be read', async () => {
-    const root = new MemoryDirectory('root');
+    const root = new MemoryDirectory('root', { caseSensitive: false });
     const config = root.file('.image-viewer.json', '{invalid');
     root.file('cover.jpg');
     expect(

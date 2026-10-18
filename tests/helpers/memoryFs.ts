@@ -28,14 +28,17 @@ export class MemoryFile {
 export class MemoryDirectory {
   readonly kind = 'directory' as const;
   readonly entries = new Map<string, Entry>();
-  constructor(readonly name: string) {}
+  constructor(
+    readonly name: string,
+    private readonly options: { caseSensitive?: boolean } = {},
+  ) {}
   file(name: string, text = '') {
     const file = new MemoryFile(name, text);
     this.entries.set(name, file);
     return file;
   }
   directory(name: string) {
-    const dir = new MemoryDirectory(name);
+    const dir = new MemoryDirectory(name, this.options);
     this.entries.set(name, dir);
     return dir;
   }
@@ -44,6 +47,8 @@ export class MemoryDirectory {
   }
   async getFileHandle(name: string, options?: { create?: boolean }) {
     let entry = this.entries.get(name);
+    if (!entry && this.options.caseSensitive === false)
+      entry = [...this.entries].find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
     if (!entry && options?.create) entry = this.file(name);
     if (!(entry instanceof MemoryFile)) throw new DOMException('Not found', 'NotFoundError');
     return entry.asHandle();
