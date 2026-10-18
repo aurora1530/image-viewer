@@ -69,14 +69,14 @@ npm run format:check    # 整形差分の検査
 npm run lint            # ESLint。警告も失敗として扱う
 npm run lint:fix        # ESLintの自動修正
 npm run check           # 整形・lint・型チェック・ビルド・単体テスト
-npm run check:staged    # コミット対象の自動整形と全チェック
+npm run check:staged    # コミット対象の自動整形とlint
 ```
 
 Prettier はスペース2文字、JavaScript のシングルクォート、セミコロンあり、折り返し幅100文字、LF改行に統一します。生成物と `package-lock.json` は整形対象から除外します。
 
 `.gitattributes` でテキストファイルのチェックアウト時の改行を LF に固定しています。Windows の `core.autocrlf=true` 環境でも、CI とローカルで同じ改行を使います。`.editorconfig` は編集時、Prettier は整形時の LF を指定します。
 
-`git commit` 時は Husky の `pre-commit` フックから lint-staged を実行します。ステージ済みのファイルを Prettier で自動整形し、続けて CI と同じ `npm run check` を実行します。成功すると整形結果もコミットに含まれ、失敗するとコミットを中止します。ファイルの削除だけのコミットでもチェックします。型チェック・ビルド・単体テストまで実行するため、コミット完了まで数十秒かかります。
+`git commit` 時は Husky の `pre-commit` フックから lint-staged を実行します。ステージ済みの JavaScript・TypeScript を Prettier で自動整形し、ESLint で検証します。JSON・CSS・HTML・Markdown・YAML などは整形だけを行います。成功すると整形結果もコミットに含まれ、失敗するとコミットを中止します。`.codex/rules/default.rules` など対象外のファイルや、削除だけのコミットでは整形・lint を実行しません。型チェック・ビルド・テストを含む全件チェックはコミット時には実行せず、CI の `npm run check` で行います。
 
 チェック中は未ステージの変更と未追跡ファイルを一時退避し、終了後に復元します。一部の行だけをステージしたファイルも、コミット対象の内容で整形・検証します。チェック失敗時は整形前の状態へ戻します。フックを無効にした場合や実行環境の違いによる失敗も検出できるよう、CI のチェックは継続します。
 

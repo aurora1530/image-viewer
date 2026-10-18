@@ -1,8 +1,4 @@
 export default {
-  '*': [
-    // Deleted paths are included so deletion-only commits also run the full check.
-    'prettier --write --ignore-unknown --no-error-on-unmatched-pattern',
-    // A function keeps lint-staged from appending filenames to this project-wide command.
-    () => 'npm run check',
-  ],
+  '*.{js,mjs,cjs,ts,tsx}': ['prettier --write', 'eslint --max-warnings=0'],
+  '*.{json,jsonc,css,scss,less,html,md,mdx,yml,yaml,graphql,gql}': 'prettier --write',
 };
