@@ -28,7 +28,7 @@
     "lint:fix": "npm run lint -- --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check:staged": "lint-staged --hide-all --diff-filter=ACMRD",
+    "check:staged": "lint-staged --hide-all --diff-filter=ACMR",
     "check": "npm run format:check && npm run lint && npm run test:typecheck && npm run build && npm test && npm run test:release && npm run test:desktop-build"
   },
   "devDependencies": {
