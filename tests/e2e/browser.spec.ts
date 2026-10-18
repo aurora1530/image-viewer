@@ -280,6 +280,57 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('#current-dir-name')).toHaveText('books');
 });
 
+test('cancels slow folder preview scans when navigating to another folder', async ({ page }) => {
+  await expect(page.locator('#item-list .directory-card img')).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => {
+    type Directory = {
+      directory(name: string): Directory;
+      getFileHandle(name: string): Promise<FileSystemFileHandle>;
+      values(): AsyncGenerator<FileSystemHandle>;
+    };
+    const root = (window as unknown as { __imageViewerTestRoot: Directory }).__imageViewerTestRoot;
+    const state = window as unknown as {
+      __previewScans: { active: number; peak: number; yielded: number; started: number };
+    };
+    const scans = (state.__previewScans = { active: 0, peak: 0, yielded: 0, started: 0 });
+    for (let i = 0; i < 12; i++) {
+      const folder = root.directory(`a-slow-${i.toString().padStart(2, '0')}`);
+      folder.values = async function* () {
+        scans.started++;
+        scans.active++;
+        scans.peak = Math.max(scans.peak, scans.active);
+        try {
+          for (let index = 0; index < 1000; index++) {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            scans.yielded++;
+            yield { kind: 'file', name: `${index}.txt` } as FileSystemFileHandle;
+          }
+        } finally {
+          scans.active--;
+        }
+      };
+    }
+  });
+  await page.locator('#reload-btn').click();
+  const scans = () =>
+    page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __previewScans: { active: number; peak: number; yielded: number; started: number };
+          }
+        ).__previewScans,
+    );
+  await expect.poll(async () => (await scans()).active).toBe(4);
+  await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
+  await expect(page.locator('#item-list .media-card img')).toHaveAttribute('alt', 'nested.png');
+  await expect.poll(async () => (await scans()).active).toBe(0);
+  const stopped = await scans();
+  expect(stopped.peak).toBe(4);
+  expect(stopped.started).toBe(4);
+  expect(stopped.yielded).toBeLessThan(1000);
+});
+
 test('back and forward restore folders and viewer pages and discard a branched history', async ({
   page,
 }) => {

@@ -150,6 +150,24 @@ export async function listDirectoryEntries(
   return entries;
 }
 
+export async function* iterateDirectoryEntries(
+  dirHandle: FileSystemDirectoryHandle,
+  shouldContinue: () => boolean = () => true,
+): AsyncGenerator<FileSystemDirectoryHandle | FileSystemFileHandle> {
+  if (!shouldContinue()) return;
+  if (dirHandle.nativePath && window.desktopApi) {
+    for (const entry of await listDirectoryEntries(dirHandle)) {
+      if (!shouldContinue()) return;
+      yield entry;
+    }
+    return;
+  }
+  for await (const entry of dirHandle.values()) {
+    if (!shouldContinue()) return;
+    yield entry;
+  }
+}
+
 export async function getMediaSource(
   handle: FileSystemFileHandle,
 ): Promise<{ url: string; objectUrl: boolean }> {
