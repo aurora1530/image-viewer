@@ -374,6 +374,59 @@ test('back and forward restore folders and viewer pages and discard a branched h
   await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
 });
 
+for (const count of [60, 260]) {
+  test(`opens folders at the top and reveals the visited folder only when going up (${count} items)`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 800, height: 600 });
+    await page.evaluate((count) => {
+      type Directory = {
+        file(name: string): void;
+        directory(name: string): Directory;
+      };
+      const root = (window as unknown as { __imageViewerTestRoot: Directory })
+        .__imageViewerTestRoot;
+      const child = root.directory('zz-child');
+      child.directory('zz-nested').file('nested.png');
+      for (let i = 0; i < count; i++) {
+        root.file(`extra-${i}.png`);
+        child.file(`image-${i}.png`);
+      }
+    }, count);
+    await page.locator('#reload-btn').click();
+    await expect(page.locator('#item-list img[alt="extra-0.png"]')).toHaveCount(1);
+    const child = page.locator('.directory-card[data-dir-name="zz-child"]');
+    const nested = page.locator('.directory-card[data-dir-name="zz-nested"]');
+    const scrollToBottom = () =>
+      page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await scrollToBottom();
+    await expect(child).toBeInViewport();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
+    await child.locator('.dir-title').click();
+    await expect(page.locator('#current-dir-name')).toHaveText('zz-child');
+    await expect(page.locator('#item-list .media-card').first()).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+
+    await scrollToBottom();
+    await nested.locator('.dir-title').click();
+    await expect(page.locator('#current-dir-name')).toHaveText('zz-nested');
+    await page.getByRole('button', { name: '上の階層へ', exact: true }).click();
+    await expect(page.locator('#current-dir-name')).toHaveText('zz-child');
+    await expect(nested).toBeInViewport();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
+    await page.keyboard.press('Alt+ArrowLeft');
+    await expect(page.locator('#current-dir-name')).toHaveText('books');
+    await expect(child).toBeInViewport();
+
+    await child.locator('.dir-title').click();
+    await expect(page.locator('#current-dir-name')).toHaveText('zz-child');
+    await expect(page.locator('#item-list .media-card').first()).toBeVisible();
+    // Wait past the delayed visited-child reveal to catch accidental restoration on entry.
+    await page.waitForTimeout(400);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  });
+}
+
 test('mouse buttons 3 and 4 navigate once per click in the browser', async ({ page }) => {
   await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
   await expect(page.locator('#current-dir-name')).toHaveText('chapter');

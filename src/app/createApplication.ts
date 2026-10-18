@@ -124,9 +124,9 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
   async function enterDirectory(dir: FileSystemDirectoryHandle) {
     clearForwardHistory();
     rememberVisitedChild(get().directories.at(-1), dir.name);
+    window.scrollTo(0, 0);
     set({ directories: [...get().directories, dir], searchQuery: '' });
     await renderActiveDirectoryView(dir);
-    await scrollToVisitedChild(dir);
   }
   function scheduleProcessForCurrentDir(debounceMs = 150, preserveScrollPosition = false) {
     clearTimeout(searchTimer);
@@ -162,9 +162,9 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
     viewerController.closeViewer();
     clearThumbnailCaches();
     directoryViews.clearScanCache();
+    window.scrollTo(0, 0);
     set({ directories: [dir], screen: 'directory', searchQuery: '' });
     await renderActiveDirectoryView(dir);
-    await scrollToVisitedChild(dir);
   }
   async function showHome(preserveForwardHistory = false) {
     if (!isDesktopApp()) return;
