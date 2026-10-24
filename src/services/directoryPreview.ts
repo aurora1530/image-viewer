@@ -1,4 +1,5 @@
 import { CONFIG } from '../shared/model';
+import { defaultAppConfig } from '../shared/appConfig';
 import { isImageFileName } from '../shared/utils';
 import { iterateDirectoryEntries } from '../platform/nativeFs';
 import { readDirectoryThumbnail, saveDirectoryThumbnail } from './storage';
@@ -23,8 +24,9 @@ export type DirectoryPreviewFile = { handle: FileSystemFileHandle; path: string[
 async function findPreferredFile(
   dirHandle: FileSystemDirectoryHandle,
   shouldContinue: () => boolean,
+  names: readonly string[],
 ): Promise<DirectoryPreviewFile | null> {
-  for (const base of ['__0', 'icon', 'thumbnail']) {
+  for (const base of names) {
     for (const extension of CONFIG.IMAGE_EXTENSIONS) {
       if (!shouldContinue()) return null;
       try {
@@ -71,12 +73,13 @@ export async function selectDirectoryPreviewFile(
   dirHandle: FileSystemDirectoryHandle,
   location?: DirectoryConfigLocation,
   shouldContinue: () => boolean = () => true,
+  names: readonly string[] = defaultAppConfig.directoryThumbnailNames,
 ): Promise<DirectoryPreviewFile | null> {
   if (!shouldContinue()) return null;
   // Probe known paths before reading any unrelated entries. Gallery listings
   // remain independent from representative-image selection.
   try {
-    const preferred = await findPreferredFile(dirHandle, shouldContinue);
+    const preferred = await findPreferredFile(dirHandle, shouldContinue, names);
     if (!shouldContinue()) return null;
     if (preferred) return rememberPreferred(preferred, location);
     if (location) {
@@ -117,6 +120,7 @@ export async function selectDirectoryPreviewFile(
       child,
       location ? { ...location, path: [...location.path, child.name] } : undefined,
       shouldContinue,
+      names,
     );
     if (selected) result = { handle: selected.handle, path: [child.name, ...selected.path] };
   }
@@ -141,10 +145,11 @@ export async function getDirectoryPreview(
   dirHandle: FileSystemDirectoryHandle,
   request: ThumbnailRequest = {},
   location?: DirectoryConfigLocation,
+  names: readonly string[] = defaultAppConfig.directoryThumbnailNames,
 ): Promise<{ url: string; objectUrl: boolean } | null> {
   if (request.shouldContinue?.() === false) return null;
   const selected = await previewSearches.enqueue(
-    () => selectDirectoryPreviewFile(dirHandle, location, request.shouldContinue),
+    () => selectDirectoryPreviewFile(dirHandle, location, request.shouldContinue, names),
     request,
   );
   if (!selected || request.shouldContinue?.() === false) return null;

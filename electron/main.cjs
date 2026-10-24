@@ -114,6 +114,21 @@ function registerIpc() {
         throw new Error('不正な設定です。');
       clean[key] = value;
     }
+    const names = config?.directoryThumbnailNames;
+    if (
+      !Array.isArray(names) ||
+      !names.every(
+        (name) =>
+          typeof name === 'string' &&
+          name.trim().length > 0 &&
+          name.trim() !== '.' &&
+          name.trim() !== '..' &&
+          !/[\\/:*?"<>|]/.test(name) &&
+          !Array.from(name).some((character) => character.charCodeAt(0) < 32),
+      )
+    )
+      throw new Error('不正な代表画像名です。');
+    clean.directoryThumbnailNames = [...new Set(names.map((name) => name.trim()))];
     await saveJson(settingsPath(), clean);
     await thumbnails.configure(clean.thumbnailDiskMiB * 1024 * 1024);
   });

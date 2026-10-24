@@ -10,6 +10,18 @@ afterEach(() => {
 });
 
 describe('central app configuration', () => {
+  it('restores default names for old or invalid settings and preserves an empty list', () => {
+    expect(normalizeAppConfig({}).directoryThumbnailNames).toEqual(['__0', 'icon', 'thumbnail']);
+    expect(normalizeAppConfig({ directoryThumbnailNames: [] }).directoryThumbnailNames).toEqual([]);
+    expect(
+      normalizeAppConfig({ directoryThumbnailNames: [' cover ', 'cover', 'Icon'] })
+        .directoryThumbnailNames,
+    ).toEqual(['cover', 'Icon']);
+    for (const name of ['../cover', '..', ' .. ', 'sub/cover', 'sub\\cover', 'bad\u0000name', ''])
+      expect(
+        normalizeAppConfig({ directoryThumbnailNames: [name] }).directoryThumbnailNames,
+      ).toEqual(defaultAppConfig.directoryThumbnailNames);
+  });
   it('falls back per field for malformed settings, preserving zero', () => {
     expect(
       normalizeAppConfig({ thumbnailMemoryMiB: 0, originalMemoryMiB: -1, thumbnailDiskMiB: '10' }),

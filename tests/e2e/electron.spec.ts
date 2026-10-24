@@ -185,17 +185,23 @@ for (const bundled of [false, true]) {
         name: 'サムネイルのディスクの最大容量（MiB）',
       });
       await budget.fill('64');
-      await settings.getByRole('button', { name: '容量設定を保存' }).click();
-      await expect(settings.getByRole('status', { name: '容量設定の保存状況' })).toHaveText(
+      const names = settings.getByRole('textbox', { name: '代表画像の優先名' });
+      await expect(names).toHaveValue('__0\nicon\nthumbnail');
+      await names.fill('cover\nicon');
+      await settings.getByRole('button', { name: '設定を保存' }).click();
+      await expect(settings.getByRole('status', { name: '設定の保存状況' })).toHaveText(
         '保存しました。',
       );
       const saved = JSON.parse(await readFile(path.join(profile, 'settings.json'), 'utf8')) as {
         thumbnailDiskMiB: number;
+        directoryThumbnailNames: string[];
       };
       expect(saved.thumbnailDiskMiB).toBe(64);
+      expect(saved.directoryThumbnailNames).toEqual(['cover', 'icon']);
       await page.reload();
       await page.getByRole('button', { name: '設定', exact: true }).click();
       await expect(budget).toHaveValue('64');
+      await expect(names).toHaveValue('cover\nicon');
       await settings.getByRole('button', { name: '閉じる', exact: true }).click();
       await page.evaluate((root) => window.desktopApi!.openRoot(root), images);
       await page.reload();

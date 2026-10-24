@@ -467,6 +467,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
           rootHandle
             ? { rootHandle, path: [...getCurrentDirPathSegments(), handle.name] }
             : undefined,
+          get().config.directoryThumbnailNames,
         );
       },
       getMediaSource,
