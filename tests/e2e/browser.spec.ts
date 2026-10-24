@@ -1442,17 +1442,31 @@ test('central settings validate, persist and restore cache budgets', async ({ pa
   const dialog = page.getByRole('dialog', { name: '設定' });
   await expect(dialog).toBeVisible();
   const budget = dialog.getByRole('spinbutton', { name: 'サムネイルのメモリの最大容量（MiB）' });
+  const names = dialog.getByRole('textbox', { name: '代表画像の優先名' });
+  await expect(names).toHaveValue('__0\nicon\nthumbnail');
+  await names.fill('cover\nfront');
   await budget.fill('24');
-  await dialog.getByRole('button', { name: '容量設定を保存' }).click();
-  await expect(dialog.getByRole('status', { name: '容量設定の保存状況' })).toHaveText(
-    '保存しました。',
-  );
+  await dialog.getByRole('button', { name: '設定を保存' }).click();
+  await expect(dialog.getByRole('status', { name: '設定の保存状況' })).toHaveText('保存しました。');
   await page.reload();
   await page.getByRole('button', { name: '設定', exact: true }).click();
   await expect(budget).toHaveValue('24');
+  await expect(names).toHaveValue('cover\nfront');
+  await names.fill('');
+  await dialog.getByRole('button', { name: '設定を保存', exact: true }).click();
+  await expect(dialog.getByRole('status', { name: '設定の保存状況' })).toHaveText('保存しました。');
+  await page.reload();
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  await expect(names).toHaveValue('');
+  await names.fill('../invalid');
+  await dialog.getByRole('button', { name: '設定を保存', exact: true }).click();
+  expect(await names.evaluate((input: HTMLTextAreaElement) => input.validity.valid)).toBe(false);
+  await dialog.getByRole('button', { name: '既定の優先名に戻す' }).click();
+  await expect(names).toHaveValue('__0\nicon\nthumbnail');
+  expect(await names.evaluate((input: HTMLTextAreaElement) => input.validity.valid)).toBe(true);
   await expect(dialog).not.toContainText('サムネイルのディスク');
   await budget.fill('-1');
-  await dialog.getByRole('button', { name: '容量設定を保存' }).click();
+  await dialog.getByRole('button', { name: '設定を保存' }).click();
   expect(await budget.evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();

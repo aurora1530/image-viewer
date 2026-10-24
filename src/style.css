@@ -1098,6 +1098,17 @@ html:fullscreen #viewer-toolbar.hidden {
   accent-color: var(--accent);
   cursor: pointer;
 }
+.settings-names {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+.settings-names textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
 .settings-note {
   color: var(--muted);
   font-size: 12px;

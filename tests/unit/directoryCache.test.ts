@@ -32,6 +32,31 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('directory cache and previews', () => {
+  it('uses configured names in order without enumeration, including in child folders', async () => {
+    const root = new MemoryDirectory('root');
+    const child = root.directory('child');
+    child.file('__0.png');
+    child.file('second.jpg');
+    const cover = child.file('cover.png');
+    const enumerate = vi.spyOn(child, 'values');
+    const selected = await selectDirectoryPreviewFile(root.asHandle(), undefined, undefined, [
+      'cover',
+      'second',
+    ]);
+    expect(selected).toEqual({ handle: cover.asHandle(), path: ['child', 'cover.png'] });
+    expect(enumerate).not.toHaveBeenCalled();
+  });
+
+  it('skips all preferred probes when names are empty', async () => {
+    const root = new MemoryDirectory('root');
+    const first = root.file('first.jpg');
+    root.file('__0.png');
+    const lookup = vi.spyOn(root, 'getFileHandle');
+    expect(
+      (await selectDirectoryPreviewFile(root.asHandle(), undefined, undefined, []))?.handle,
+    ).toBe(first.asHandle());
+    expect(lookup).not.toHaveBeenCalled();
+  });
   it('uses a preferred named path without enumerating unrelated files', async () => {
     const root = new MemoryDirectory('root', { caseSensitive: false });
     const cover = root.file('__0.png');

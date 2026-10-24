@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApplication, useAppActions, useAppState } from '../../app/ApplicationProvider';
 import { sizeOptions } from '../../app/store';
-import { MiB, type AppConfig } from '../../shared/appConfig';
+import {
+  MiB,
+  defaultAppConfig,
+  isDirectoryThumbnailName,
+  type CapacityConfigKey,
+} from '../../shared/appConfig';
 import { ReleaseInfo } from './ReleaseInfo';
 
 export function Settings() {
@@ -15,6 +20,7 @@ export function Settings() {
   const { capabilities } = useApplication();
   const actions = useAppActions();
   const [draft, setDraft] = useState(config);
+  const [namesText, setNamesText] = useState(config.directoryThumbnailNames.join('\n'));
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -26,13 +32,13 @@ export function Settings() {
     }, 2000);
     return () => clearInterval(timer);
   }, [open, actions]);
-  const fields: [keyof AppConfig, string, number][] = [
+  const fields: [CapacityConfigKey, string, number][] = [
     ['thumbnailMemoryMiB', 'サムネイルのメモリ', usage.thumbnail],
     ['originalMemoryMiB', '元画像のメモリ', usage.original],
     ...(capabilities.desktop
       ? [
           ['thumbnailDiskMiB', 'サムネイルのディスク', usage.disk] as [
-            keyof AppConfig,
+            CapacityConfigKey,
             string,
             number,
           ],
@@ -47,6 +53,8 @@ export function Settings() {
         disabled={!ready && !error}
         onClick={() => {
           setDraft(config);
+          dialog.current?.querySelector('textarea')?.setCustomValidity('');
+          setNamesText(config.directoryThumbnailNames.join('\n'));
           setSaved(false);
           setOpen(true);
           dialog.current?.showModal();
@@ -85,11 +93,17 @@ export function Settings() {
             event.preventDefault();
             setSaving(true);
             setSaved(false);
-            void actions.saveConfig(draft).then((success) => {
-              setSaving(false);
-              setSaved(success);
-              void actions.refreshCacheUsage();
-            });
+            const names = namesText
+              .split('\n')
+              .map((name) => name.trim())
+              .filter(Boolean);
+            void actions
+              .saveConfig({ ...draft, directoryThumbnailNames: names })
+              .then((success) => {
+                setSaving(false);
+                setSaved(success);
+                void actions.refreshCacheUsage();
+              });
           }}
         >
           <h3>キャッシュ</h3>
@@ -122,13 +136,54 @@ export function Settings() {
             使用量は保持中の画像データです。表示・デコード中の画像やアプリ全体のメモリは含みません。
           </p>
           {usage.path && <p className="settings-note">キャッシュ保存先: {usage.path}</p>}
+          <h3>フォルダーの代表画像</h3>
+          <p className="settings-desc" id="thumbnail-names-help">
+            拡張子を除いた名前を1行に1つ入力します。上の行から優先します。
+            すべて削除すると優先名による選択を行いません。
+          </p>
+          <label className="settings-names">
+            <span>代表画像の優先名</span>
+            <textarea
+              className="ui-input"
+              rows={4}
+              value={namesText}
+              aria-describedby="thumbnail-names-help"
+              onChange={(event) => {
+                const text = event.currentTarget.value;
+                const valid = text
+                  .split('\n')
+                  .every((name) => !name.trim() || isDirectoryThumbnailName(name.trim()));
+                event.currentTarget.setCustomValidity(
+                  valid
+                    ? ''
+                    : 'ファイル名に使える名前を入力してください（パスや記号は指定できません）。',
+                );
+                setNamesText(text);
+                setSaved(false);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="ui-btn ghost"
+            onClick={() => {
+              setNamesText(defaultAppConfig.directoryThumbnailNames.join('\n'));
+              dialog.current?.querySelector('textarea')?.setCustomValidity('');
+              setSaved(false);
+            }}
+          >
+            既定の優先名に戻す
+          </button>
+          <p className="settings-note">
+            保存後、表示中のフォルダーには「再読み込み」で反映します。
+          </p>
           <p className="settings-note">設定保存先: {usage.configPath}</p>
           <div className="settings-footer">
-            <p role="status" aria-label="容量設定の保存状況" className="settings-status">
+            <p role="status" aria-label="設定の保存状況" className="settings-status">
               {error || (saved ? '保存しました。' : '')}
             </p>
             <button type="submit" className="ui-btn primary" disabled={saving || !ready}>
-              {saving ? '保存中…' : '容量設定を保存'}
+              {saving ? '保存中…' : '設定を保存'}
             </button>
           </div>
         </form>
