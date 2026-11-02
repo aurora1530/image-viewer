@@ -1,3 +1,4 @@
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import { CONFIG } from '../shared/model';
 import {
   compareBaseNumericText,
@@ -9,9 +10,9 @@ import type { SortOrder } from '../shared/model';
 import { listDirectoryEntries } from '../platform/nativeFs';
 
 export type RecursiveImageItem = {
-  handle: FileSystemFileHandle;
+  handle: FileHandle;
   name: string;
-  parentHandle: FileSystemDirectoryHandle;
+  parentHandle: DirectoryHandle;
   imageIndex: number;
   parentPath: string;
   path: string;
@@ -22,10 +23,10 @@ export type RecursiveImageItem = {
 };
 
 export async function getImageFilesFromDirectory(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   order: SortOrder = 'asc',
-): Promise<FileSystemFileHandle[]> {
-  const imageFiles: FileSystemFileHandle[] = [];
+): Promise<FileHandle[]> {
+  const imageFiles: FileHandle[] = [];
   try {
     for (const entry of await listDirectoryEntries(dirHandle)) {
       if (entry.kind === 'file' && isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS)) {
@@ -48,7 +49,7 @@ export async function getImageFilesFromDirectory(
 }
 
 export async function collectImagesRecursively(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   list: RecursiveImageItem[] = [],
   basePath = '',
   shouldContinue: () => boolean = () => true,
@@ -58,10 +59,7 @@ export async function collectImagesRecursively(
   const maxConcurrentReads = 6;
   let activeReads = 0;
   const waiting: Array<() => void> = [];
-  async function visit(
-    directory: FileSystemDirectoryHandle,
-    path: string,
-  ): Promise<RecursiveImageItem[]> {
+  async function visit(directory: DirectoryHandle, path: string): Promise<RecursiveImageItem[]> {
     if (!shouldContinue()) return [];
     if (activeReads >= maxConcurrentReads)
       await new Promise<void>((resolve) => waiting.push(resolve));
@@ -70,8 +68,8 @@ export async function collectImagesRecursively(
       return [];
     }
     activeReads++;
-    const images: FileSystemFileHandle[] = [];
-    const directories: FileSystemDirectoryHandle[] = [];
+    const images: FileHandle[] = [];
+    const directories: DirectoryHandle[] = [];
     try {
       for (const entry of await listDirectoryEntries(directory)) {
         if (!shouldContinue()) return [];

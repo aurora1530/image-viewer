@@ -1,4 +1,5 @@
-import { defaultAppConfig } from '../shared/appConfig';
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
+import { defaultAppConfig, type AppConfig } from '../shared/appConfig';
 import { createStore } from 'zustand/vanilla';
 import type { DirectoryCacheItem, FilterType, SortOrder } from '../shared/model';
 import type { ViewerPresentation } from './viewerModel';
@@ -6,7 +7,7 @@ import type { ViewerPresentation } from './viewerModel';
 export type ListMode = 'directory' | 'recursive' | 'favorites' | 'hidden';
 export type GalleryEntry = {
   item: DirectoryCacheItem;
-  parent: FileSystemDirectoryHandle | null;
+  parent: DirectoryHandle | null;
   parentPath: string;
   key: string;
 };
@@ -33,33 +34,33 @@ export function normalizeThumbnailSize(value: number) {
   return Number.isInteger(value) ? Math.min(Math.max(value, 0), sizeOptions.length - 1) : 1;
 }
 
-export function initialAppState() {
+export function initialAppState(): AppState {
   return {
     config: { ...defaultAppConfig },
     configReady: false,
     configError: '',
     cacheUsage: { thumbnail: 0, original: 0, disk: 0, path: '', configPath: '' },
-    screen: 'directory' as 'home' | 'directory',
-    directories: [] as FileSystemDirectoryHandle[],
-    library: [] as DesktopLibraryItem[],
-    listMode: 'directory' as ListMode,
+    screen: 'directory',
+    directories: [],
+    library: [],
+    listMode: 'directory',
     favoriteFirst: false,
     favoriteOnly: false,
     thumbnailSizeIndex: 1,
-    sortOrder: 'asc' as SortOrder,
-    filterType: 'all' as FilterType,
+    sortOrder: 'asc',
+    filterType: 'all',
     searchQuery: '',
     isSinglePageView: false,
     isUiHidden: false,
     isUiDockRevealed: false,
-    entries: [] as GalleryEntry[],
-    displayImages: [] as FileSystemFileHandle[],
-    currentImageFiles: [] as FileSystemFileHandle[],
+    entries: [],
+    displayImages: [],
+    currentImageFiles: [],
     currentImageIndex: 0,
     pageOffset: 0,
     viewer: { ...closedViewer },
-    status: { message: '', type: 'clear' as 'info' | 'error' | 'loading' | 'clear' },
-    scanPreview: null as { url: string; name: string; open: () => void } | null,
+    status: { message: '', type: 'clear' },
+    scanPreview: null,
   };
 }
 
@@ -72,4 +73,36 @@ export const createAppStore = (initial: Partial<AppState> = {}) =>
     thumbnailSizeIndex: normalizeThumbnailSize(initial.thumbnailSizeIndex ?? 1),
   }));
 export type AppStore = ReturnType<typeof createAppStore>;
-export type AppState = ReturnType<typeof initialAppState>;
+export type AppState = {
+  config: AppConfig;
+  configReady: boolean;
+  configError: string;
+  cacheUsage: {
+    thumbnail: number;
+    original: number;
+    disk: number;
+    path: string;
+    configPath: string;
+  };
+  screen: 'home' | 'directory';
+  directories: DirectoryHandle[];
+  library: DesktopLibraryItem[];
+  listMode: ListMode;
+  favoriteFirst: boolean;
+  favoriteOnly: boolean;
+  thumbnailSizeIndex: number;
+  sortOrder: SortOrder;
+  filterType: FilterType;
+  searchQuery: string;
+  isSinglePageView: boolean;
+  isUiHidden: boolean;
+  isUiDockRevealed: boolean;
+  entries: GalleryEntry[];
+  displayImages: FileHandle[];
+  currentImageFiles: FileHandle[];
+  currentImageIndex: number;
+  pageOffset: number;
+  viewer: ViewerState;
+  status: { message: string; type: 'info' | 'error' | 'loading' | 'clear' };
+  scanPreview: { url: string; name: string; open: () => void } | null;
+};

@@ -1,3 +1,5 @@
+import { createDesktopApi } from '../helpers/desktopApi';
+import { requireValue } from '../../src/shared/validation';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { useAppActions, useAppState } from '../../src/app/ApplicationProvider';
@@ -17,9 +19,9 @@ describe('application composition and lifecycle', () => {
     const root = new MemoryDirectory('root');
     const application = createApplication(createAppStore({ directories: [root.asHandle()] }));
     let accept: (value: boolean) => void = () => {};
-    window.desktopApi = {
+    window.desktopApi = createDesktopApi({
       confirmListMode: () => new Promise<boolean>((resolve) => (accept = resolve)),
-    } as unknown as Window['desktopApi'];
+    });
     try {
       const pending = application.actions.changeListMode('recursive');
       await application.actions.changeListMode('hidden');
@@ -46,7 +48,8 @@ describe('application composition and lifecycle', () => {
         await application.actions.selectRootDirectory();
         const entry = application.store.getState().entries[0];
         vi.spyOn(config, 'createWritable').mockImplementationOnce(async () => ({
-          write: async (value: string) => {
+          write: async (value: FileSystemWriteChunkType) => {
+            if (typeof value !== 'string') throw new Error('Expected text');
             config.textValue = value;
             await new Promise<void>((resolve) => {
               release = resolve;
@@ -67,7 +70,7 @@ describe('application composition and lifecycle', () => {
         await vi.waitFor(() => expect(published).toHaveBeenCalled());
         unsubscribe();
         expect(application.store.getState().entries[0].item.isFavorite).toBe(false);
-        release!();
+        requireValue(release)();
         if (writeFails) {
           await expect(saving).rejects.toThrow('write failed');
           application.actions.setSearch('one.png');
@@ -89,7 +92,7 @@ describe('application composition and lifecycle', () => {
     const second = createApplication(createAppStore({ thumbnailSizeIndex: 2 }));
     const firstView = renderApplication(createElement(PreferenceControl), first);
     const secondView = renderApplication(createElement(PreferenceControl), second);
-    firstView.container.querySelector('button')!.click();
+    requireValue(firstView.container.querySelector('button')).click();
     await vi.waitFor(() => expect(firstView.container.textContent).toBe('4'));
     expect(secondView.container.textContent).toBe('2');
     expect(second.store.getState().thumbnailSizeIndex).toBe(2);

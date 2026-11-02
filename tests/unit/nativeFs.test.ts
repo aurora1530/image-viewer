@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   chooseNativeDirectory,
@@ -89,7 +90,7 @@ describe('desktop and browser file access', () => {
     const first = root.file('__0.jpeg');
     const later = root.file('__0.png');
     const getFile = root.getFileHandle.bind(root);
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const lookup = vi.spyOn(root, 'getFileHandle').mockImplementation(async (name) => {
       if (name === first.name) await new Promise<void>((resolve) => (release = resolve));
       if (name === later.name) throw new DOMException('denied', 'NotAllowedError');
@@ -104,7 +105,7 @@ describe('desktop and browser file access', () => {
     );
     await vi.waitFor(() => expect(lookup).toHaveBeenCalledTimes(3));
     expect(complete).toBe(false);
-    release();
+    requireValue(release)();
     expect(await pending).toBe(first.asHandle());
   });
 

@@ -1,11 +1,15 @@
+import { isRecord } from './src/shared/validation';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const { version } = JSON.parse(
+const metadata: unknown = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
-) as { version: string };
+);
+if (!isRecord(metadata) || typeof metadata.version !== 'string')
+  throw new Error('Invalid package version');
+const { version } = metadata;
 
 // Keep PDF.js resources local, with stable names required by its resource loaders.
 const pdfAssets = ['cmaps', 'standard_fonts', 'wasm'].flatMap((directory) => {

@@ -1,14 +1,12 @@
-import { createRequire } from 'node:module';
+import { parseRecord } from '../helpers/json';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const require = createRequire(import.meta.url);
-const fs = require('node:fs/promises') as typeof import('node:fs/promises');
-const { writeConfigFile } = require('../../electron/config-file.cjs') as {
-  writeConfigFile(file: string, data: string): Promise<void>;
-};
+import fs from 'node:fs/promises';
+import api from '../../electron/config-file.cjs';
+const { writeConfigFile } = api;
 let directory: string;
 let file: string;
 beforeEach(async () => {
@@ -24,9 +22,7 @@ afterEach(async () => {
 describe('desktop config replacement', () => {
   it('replaces existing files and cleans up temporary files', async () => {
     await writeConfigFile(file, '{"favorites":["new.png"]}');
-    expect((JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>).favorites).toEqual(
-      ['new.png'],
-    );
+    expect(parseRecord(await readFile(file, 'utf8')).favorites).toEqual(['new.png']);
     expect(await readdir(directory)).toEqual(['.image-viewer.json']);
   });
 
@@ -37,18 +33,14 @@ describe('desktop config replacement', () => {
       throw new Error('disk full');
     });
     await expect(writeConfigFile(file, '{"favorites":[]}')).rejects.toThrow('disk full');
-    expect((JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>).favorites).toEqual(
-      ['old.png'],
-    );
+    expect(parseRecord(await readFile(file, 'utf8')).favorites).toEqual(['old.png']);
     expect(await readdir(directory)).toEqual(['.image-viewer.json']);
   });
 
   it('preserves the original when replacement is denied', async () => {
     vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('access denied'));
     await expect(writeConfigFile(file, '{"favorites":[]}')).rejects.toThrow('access denied');
-    expect((JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>).favorites).toEqual(
-      ['old.png'],
-    );
+    expect(parseRecord(await readFile(file, 'utf8')).favorites).toEqual(['old.png']);
     expect(await readdir(directory)).toEqual(['.image-viewer.json']);
   });
 });

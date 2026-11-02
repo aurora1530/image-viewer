@@ -63,6 +63,8 @@ describe('legacy config keys and paths', () => {
   it('preserves meaningful relative path segments', () => {
     expect(normalizeDirPathSegments('/a//b/')).toEqual(['a', 'b']);
     expect(normalizeDirPathSegments(['a', '', 'b'])).toEqual(['a', 'b']);
+    expect(normalizeDirPathSegments(['a', {}, null, 2])).toEqual(['a', '2']);
+    expect(normalizeDirPathSegments({ path: 'a' })).toEqual([]);
     expect(joinRelativePath('a', 'b.png')).toBe('a/b.png');
     expect(joinRelativePath('', 'b.png')).toBe('b.png');
   });

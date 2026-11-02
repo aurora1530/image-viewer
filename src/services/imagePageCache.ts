@@ -92,6 +92,9 @@ export function createPageCache<Key>(
     retain,
     clear,
     discardPending,
-    peek: (handle: Key) => (entries.get(handle)?.ready ? entries.get(handle)!.page : null),
+    peek: (handle: Key) => {
+      const entry = entries.get(handle);
+      return entry?.ready ? entry.page : null;
+    },
   };
 }

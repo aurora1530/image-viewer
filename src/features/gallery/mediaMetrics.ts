@@ -1,1 +1,2 @@
-export const aspectRatios = new WeakMap<FileSystemHandle, number>();
+import type { EntryHandle } from '../../shared/fileSystem';
+export const aspectRatios = new WeakMap<EntryHandle, number>();

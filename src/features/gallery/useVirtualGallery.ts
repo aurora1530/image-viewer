@@ -1,3 +1,4 @@
+import type { EntryHandle } from '../../shared/fileSystem';
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { flushSync } from 'react-dom';
@@ -8,7 +9,7 @@ import { aspectRatios } from './mediaMetrics';
 // rows; metadata updates reach the existing React cards without losing scroll.
 export function useVirtualGallery(
   container: RefObject<HTMLDivElement | null>,
-  items: FileSystemHandle[],
+  items: EntryHandle[],
   keys: string[],
 ) {
   const virtual = useRef<ReturnType<typeof createVirtualGallery> | null>(null);
@@ -28,8 +29,10 @@ export function useVirtualGallery(
       else flushSync(() => setSlots(next));
     };
     // The layout engine owns only empty slots. React owns all card contents.
+    const element = container.current;
+    if (!element) return;
     const engine = createVirtualGallery(
-      container.current!,
+      element,
       items.length,
       (index, row) => {
         const host = document.createElement('div');
@@ -45,7 +48,7 @@ export function useVirtualGallery(
       (index, width) => {
         const handle = items[index];
         const original =
-          container.current!.classList.contains('original-aspect') && handle.kind !== 'directory';
+          element.classList.contains('original-aspect') && handle.kind !== 'directory';
         return (
           Math.max(1, width - 2) / (original ? aspectRatios.get(handle) || 4 / 3 : 4 / 3) +
           2 +

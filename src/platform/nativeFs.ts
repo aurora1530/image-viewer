@@ -1,3 +1,5 @@
+import { requireValue } from '../shared/validation';
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 const separator = navigator.userAgent.includes('Windows') ? '\\' : '/';
 
 function joinPath(parent: string, name: string) {
@@ -29,7 +31,7 @@ function mimeType(name: string) {
   return ext ? types[ext] || 'application/octet-stream' : 'application/octet-stream';
 }
 
-class NativeFileHandle {
+class NativeFileHandle implements FileHandle {
   readonly kind = 'file' as const;
   readonly name: string;
   readonly nativePath: string;
@@ -40,7 +42,7 @@ class NativeFileHandle {
   }
 
   async getFile() {
-    const bytes = await window.desktopApi!.readFile(this.nativePath);
+    const bytes = await requireValue(window.desktopApi).readFile(this.nativePath);
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return new File([copy.buffer], this.name, { type: mimeType(this.name) });
@@ -59,7 +61,7 @@ class NativeFileHandle {
           );
         else throw new Error('未対応の書き込み形式です。');
       },
-      close: async () => window.desktopApi!.writeFile(this.nativePath, value),
+      close: async () => requireValue(window.desktopApi).writeFile(this.nativePath, value),
       abort: () => Promise.resolve(),
       seek: () => Promise.resolve(),
       truncate: () => Promise.resolve(),
@@ -71,7 +73,7 @@ class NativeFileHandle {
   }
 }
 
-class NativeDirectoryHandle {
+class NativeDirectoryHandle implements DirectoryHandle {
   readonly kind = 'directory' as const;
   readonly name: string;
   readonly nativePath: string;
@@ -82,37 +84,29 @@ class NativeDirectoryHandle {
   }
 
   async *values() {
-    for (const entry of await window.desktopApi!.listDirectory(this.nativePath)) {
+    for (const entry of await requireValue(window.desktopApi).listDirectory(this.nativePath)) {
       const childPath = joinPath(this.nativePath, entry.name);
       yield entry.kind === 'directory'
-        ? asDirectoryHandle(new NativeDirectoryHandle(childPath))
-        : asFileHandle(new NativeFileHandle(childPath));
+        ? new NativeDirectoryHandle(childPath)
+        : new NativeFileHandle(childPath);
     }
   }
 
   async getFileHandle(name: string, options?: FileSystemGetFileOptions) {
     const filePath = joinPath(this.nativePath, name);
-    if (!options?.create && !(await window.desktopApi!.exists(filePath, 'file'))) {
+    if (!options?.create && !(await requireValue(window.desktopApi).exists(filePath, 'file'))) {
       throw new DOMException('File not found', 'NotFoundError');
     }
-    return asFileHandle(new NativeFileHandle(filePath));
+    return new NativeFileHandle(filePath);
   }
 
   async getDirectoryHandle(name: string) {
     const dirPath = joinPath(this.nativePath, name);
-    if (!(await window.desktopApi!.exists(dirPath, 'directory'))) {
+    if (!(await requireValue(window.desktopApi).exists(dirPath, 'directory'))) {
       throw new DOMException('Directory not found', 'NotFoundError');
     }
-    return asDirectoryHandle(new NativeDirectoryHandle(dirPath));
+    return new NativeDirectoryHandle(dirPath);
   }
-}
-
-function asFileHandle(handle: NativeFileHandle) {
-  return handle as unknown as FileSystemFileHandle;
-}
-
-function asDirectoryHandle(handle: NativeDirectoryHandle) {
-  return handle as unknown as FileSystemDirectoryHandle;
 }
 
 export function isDesktopApp() {
@@ -121,31 +115,31 @@ export function isDesktopApp() {
 
 export async function chooseNativeDirectory() {
   const selected = await window.desktopApi?.chooseDirectory();
-  return selected ? asDirectoryHandle(new NativeDirectoryHandle(selected)) : null;
+  return selected ? new NativeDirectoryHandle(selected) : null;
 }
 
 export async function openNativeDirectory(dirPath: string) {
-  const selected = await window.desktopApi!.openRoot(dirPath);
-  return asDirectoryHandle(new NativeDirectoryHandle(selected));
+  const selected = await requireValue(window.desktopApi).openRoot(dirPath);
+  return new NativeDirectoryHandle(selected);
 }
 
-export async function openDirectoryExternally(handle: FileSystemDirectoryHandle) {
+export async function openDirectoryExternally(handle: DirectoryHandle) {
   if (!window.desktopApi || !handle.nativePath) return;
   await window.desktopApi.openDirectoryExternally(handle.nativePath);
 }
 
 export async function findFirstFileHandle(
-  directory: FileSystemDirectoryHandle,
+  directory: DirectoryHandle,
   names: string[],
   shouldContinue: () => boolean = () => true,
-): Promise<FileSystemFileHandle | null> {
+): Promise<FileHandle | null> {
   if (names.length > 7) throw new Error('候補ファイルが多すぎます。');
   if (!names.length || !shouldContinue()) return null;
   if (directory.nativePath && window.desktopApi) {
     const name = await window.desktopApi.findFirstFile(directory.nativePath, names);
     if (!shouldContinue() || name === null) return null;
     if (!names.includes(name)) throw new Error('不正な候補ファイルです。');
-    return asFileHandle(new NativeFileHandle(joinPath(directory.nativePath, name)));
+    return new NativeFileHandle(joinPath(directory.nativePath, name));
   }
 
   const probe = async (name: string) => {
@@ -179,25 +173,26 @@ export async function findFirstFileHandle(
 }
 
 export async function listDirectoryEntries(
-  dirHandle: FileSystemDirectoryHandle,
-): Promise<Array<FileSystemDirectoryHandle | FileSystemFileHandle>> {
-  if (dirHandle.nativePath && window.desktopApi) {
+  dirHandle: DirectoryHandle,
+): Promise<Array<DirectoryHandle | FileHandle>> {
+  const nativePath = dirHandle.nativePath;
+  if (nativePath && window.desktopApi) {
     return (await window.desktopApi.listDirectory(dirHandle.nativePath)).map((entry) => {
-      const childPath = joinPath(dirHandle.nativePath!, entry.name);
+      const childPath = joinPath(nativePath, entry.name);
       return entry.kind === 'directory'
-        ? asDirectoryHandle(new NativeDirectoryHandle(childPath))
-        : asFileHandle(new NativeFileHandle(childPath));
+        ? new NativeDirectoryHandle(childPath)
+        : new NativeFileHandle(childPath);
     });
   }
-  const entries: Array<FileSystemDirectoryHandle | FileSystemFileHandle> = [];
+  const entries: Array<DirectoryHandle | FileHandle> = [];
   for await (const entry of dirHandle.values()) entries.push(entry);
   return entries;
 }
 
 export async function* iterateDirectoryEntries(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   shouldContinue: () => boolean = () => true,
-): AsyncGenerator<FileSystemDirectoryHandle | FileSystemFileHandle> {
+): AsyncGenerator<DirectoryHandle | FileHandle> {
   if (!shouldContinue()) return;
   if (dirHandle.nativePath && window.desktopApi) {
     for (const entry of await listDirectoryEntries(dirHandle)) {
@@ -213,7 +208,7 @@ export async function* iterateDirectoryEntries(
 }
 
 export async function getMediaSource(
-  handle: FileSystemFileHandle,
+  handle: FileHandle,
 ): Promise<{ url: string; objectUrl: boolean }> {
   if (handle.nativePath && window.desktopApi) {
     const bytes = new TextEncoder().encode(handle.nativePath);

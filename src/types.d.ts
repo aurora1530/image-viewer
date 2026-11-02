@@ -1,16 +1,7 @@
 declare const __APP_VERSION__: string;
 
-interface FileSystemDirectoryHandle {
-  values(): AsyncIterable<FileSystemDirectoryHandle | FileSystemFileHandle>;
-  nativePath?: string;
-}
-
-interface FileSystemFileHandle {
-  nativePath?: string;
-}
-
 interface Window {
-  showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+  showDirectoryPicker?: () => Promise<import('./shared/fileSystem').DirectoryHandle>;
   desktopApi?: {
     getUpdateState(): Promise<import('./shared/release').UpdateState>;
     checkForUpdates(): Promise<import('./shared/release').UpdateState>;

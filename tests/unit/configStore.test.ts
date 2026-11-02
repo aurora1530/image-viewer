@@ -1,3 +1,5 @@
+import { parseRecord } from '../helpers/json';
+import { requireValue } from '../../src/shared/validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConfigStore } from '../../src/services/configStore';
 
@@ -9,21 +11,18 @@ describe('config write coordination', () => {
     const save = vi.fn(
       (_payload: string) => new Promise<void>((resolve) => releases.push(resolve)),
     );
-    const store = new ConfigStore(async () => ({ entries: [] as string[] }), save);
+    const store = new ConfigStore<{ entries: string[] }>(async () => ({ entries: [] }), save);
     await store.update((config) => config.entries.push('one'));
     const first = store.flush();
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     await store.update((config) => config.entries.push('two'));
     const second = store.flush();
     expect(save).toHaveBeenCalledTimes(1);
-    releases.shift()!();
+    requireValue(releases.shift())();
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
-    expect((JSON.parse(save.mock.calls[0][0]) as Record<string, unknown>).entries).toEqual(['one']);
-    expect((JSON.parse(save.mock.calls[1][0]) as Record<string, unknown>).entries).toEqual([
-      'one',
-      'two',
-    ]);
-    releases.shift()!();
+    expect(parseRecord(save.mock.calls[0][0]).entries).toEqual(['one']);
+    expect(parseRecord(save.mock.calls[1][0]).entries).toEqual(['one', 'two']);
+    requireValue(releases.shift())();
     await Promise.all([first, second]);
   });
 
@@ -40,7 +39,7 @@ describe('config write coordination', () => {
     expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected']);
     await store.flush();
     expect(save).toHaveBeenCalledTimes(2);
-    expect((JSON.parse(save.mock.calls[1][0]) as Record<string, unknown>).favorite).toBe(true);
+    expect(parseRecord(save.mock.calls[1][0]).favorite).toBe(true);
   });
 
   it('batches rapid settings changes and flushes before the timer when requested', async () => {
@@ -58,7 +57,7 @@ describe('config write coordination', () => {
     expect(save).not.toHaveBeenCalled();
     await store.flush();
     expect(save).toHaveBeenCalledOnce();
-    expect((JSON.parse(save.mock.calls[0][0]) as Record<string, unknown>).size).toBe(3);
+    expect(parseRecord(save.mock.calls[0][0]).size).toBe(3);
     await vi.advanceTimersByTimeAsync(500);
     expect(save).toHaveBeenCalledOnce();
     expect(onError).not.toHaveBeenCalled();
@@ -78,8 +77,6 @@ describe('config write coordination', () => {
     await Promise.all([before, reload, after]);
     await store.flush();
     expect(load).toHaveBeenCalledTimes(2);
-    expect(
-      save.mock.calls.map(([payload]) => (JSON.parse(payload) as Record<string, unknown>).value),
-    ).toEqual([1, 2]);
+    expect(save.mock.calls.map(([payload]) => parseRecord(payload).value)).toEqual([1, 2]);
   });
 });

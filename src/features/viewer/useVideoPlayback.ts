@@ -1,3 +1,4 @@
+import { requireValue } from '../../shared/validation';
 import { useLayoutEffect, useRef } from 'react';
 import { useAppActions } from '../../app/ApplicationProvider';
 import type { ViewerPresentation } from '../../app/viewerModel';
@@ -6,7 +7,7 @@ export function useVideoPlayback(source: string | null, playback: ViewerPresenta
   const actions = useAppActions();
   const video = useRef<HTMLVideoElement>(null);
   useLayoutEffect(() => {
-    const element = video.current!;
+    const element = requireValue(video.current);
     actions.attachPlaybackReader(() => ({ time: element.currentTime, paused: element.paused }));
     if (source) {
       const restore = () => {

@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,17 +22,27 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
 });
-const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const element = (id: string) => requireValue(document.getElementById(id));
+const button = (id: string) => {
+  const node = element(id);
+  if (!(node instanceof HTMLButtonElement)) throw new Error('Expected button');
+  return node;
+};
+const select = (id: string) => {
+  const node = element(id);
+  if (!(node instanceof HTMLSelectElement)) throw new Error('Expected select');
+  return node;
+};
 
 describe('React display preferences', () => {
   it('clamps invalid thumbnail sizes and updates both the control and gallery', () => {
     render(createElement(App));
     flushSync(() => actions.setThumbnailSize(999));
-    expect(element<HTMLSelectElement>('size-select').value).toBe('5');
+    expect(select('size-select').value).toBe('5');
     expect(element('item-list').style.getPropertyValue('--thumbnail-min-width')).toBe('520px');
     expect(element('item-list').classList.contains('original-aspect')).toBe(true);
     flushSync(() => actions.setThumbnailSize(Number.NaN));
-    expect(element<HTMLSelectElement>('size-select').value).toBe('1');
+    expect(select('size-select').value).toBe('1');
     expect(element('item-list').classList.contains('original-aspect')).toBe(false);
   });
 
@@ -65,9 +76,9 @@ describe('React display preferences', () => {
     expect(element('current-dir-name').textContent).toBe('chapter');
     expect(element('favorite-list-btn').getAttribute('aria-pressed')).toBe('true');
     expect(element('directory-mode-btn').getAttribute('aria-pressed')).toBe('false');
-    expect(element<HTMLButtonElement>('favorite-only-btn').disabled).toBe(true);
+    expect(button('favorite-only-btn').disabled).toBe(true);
     expect(element('favorite-only-btn').getAttribute('aria-pressed')).toBe('true');
-    expect(element<HTMLButtonElement>('favorite-first-btn').disabled).toBe(true);
+    expect(button('favorite-first-btn').disabled).toBe(true);
     expect(element('favorite-first-btn').getAttribute('aria-pressed')).toBe('true');
     expect(element('toggle-sort-btn').textContent).toContain('降順');
   });

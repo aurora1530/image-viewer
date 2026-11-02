@@ -1,3 +1,4 @@
+import type { FileHandle } from '../shared/fileSystem';
 import { originalImageCache } from './originalImageCache';
 
 export type PdfDocument = {
@@ -8,7 +9,7 @@ export type PdfDocument = {
 
 // Import only when needed: ordinary image browsing does not load PDF.js.
 export async function openPdfDocument(
-  handle: FileSystemFileHandle,
+  handle: FileHandle,
   shouldContinue: () => boolean = () => true,
 ): Promise<PdfDocument> {
   const [{ getDocument, GlobalWorkerOptions }, { default: workerSrc }] = await Promise.all([
@@ -72,10 +73,7 @@ export async function openPdfDocument(
   };
 }
 
-export async function renderPdfThumbnail(
-  handle: FileSystemFileHandle,
-  shouldContinue: () => boolean,
-) {
+export async function renderPdfThumbnail(handle: FileHandle, shouldContinue: () => boolean) {
   const document = await openPdfDocument(handle, shouldContinue);
   try {
     return shouldContinue() ? await document.renderPage(1, 1280) : null;

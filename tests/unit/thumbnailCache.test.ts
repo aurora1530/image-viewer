@@ -1,3 +1,5 @@
+import { requireValue } from '../../src/shared/validation';
+import { createDesktopApi } from '../helpers/desktopApi';
 import { Blob as NodeBlob } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createThumbnailCache, inspectPng, isAnimatedPng } from '../../src/services/thumbnailCache';
@@ -32,9 +34,10 @@ beforeEach(() => {
   let sequence = 0;
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:thumbnail-${++sequence}`);
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-    drawImage: draw,
-  } as unknown as CanvasRenderingContext2D);
+  // A complete canvas context has hundreds of browser-only members. This test exercises only drawImage.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-type-assertion -- jsdom has no canvas implementation; a full context fake would obscure this encoding test.
+  const context = { drawImage: draw } as unknown as CanvasRenderingContext2D;
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context);
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (
     this: HTMLCanvasElement,
     callback,
@@ -92,7 +95,7 @@ describe('thumbnail generation and reuse', () => {
     await vi.waitFor(() => expect(releases).toHaveLength(2));
     expect(thirdRead).not.toHaveBeenCalled();
     connected = false;
-    releases.forEach((release) => release());
+    releases.forEach((release) => requireValue(release)());
     expect((await Promise.all(jobs))[2]).toBeNull();
     expect(thirdRead).not.toHaveBeenCalled();
   });
@@ -135,20 +138,20 @@ describe('thumbnail generation and reuse', () => {
   });
 
   it('serves disk hits even while all generation slots are occupied', async () => {
-    let release!: (blob: Blob) => void;
+    let release: ((blob: Blob) => void) | undefined;
     vi.spyOn(workerPool, 'encodeThumbnailInWorker').mockImplementation(
       () =>
         new Promise((resolve) => {
           release = resolve;
         }),
     );
-    window.desktopApi = {
+    window.desktopApi = createDesktopApi({
       readThumbnail: async (path: string) => ({
         version: 'v1',
         bytes: path.includes('cached') ? new Uint8Array([0xff, 0xd8]) : null,
       }),
       writeThumbnail: async () => true,
-    } as unknown as Window['desktopApi'];
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({ ok: true, blob: async () => new Blob(['original']) })),
@@ -161,7 +164,7 @@ describe('thumbnail generation and reuse', () => {
     expect((await cache.get(file('cached.jpg')))?.objectUrl).toBe(true);
     expect(cache.stats().diskHits).toBe(1);
     expect(decode).not.toHaveBeenCalled();
-    release(new Blob(['thumbnail']));
+    requireValue(release)(new Blob(['thumbnail']));
     await generating;
   });
 
@@ -208,7 +211,7 @@ describe('thumbnail generation and reuse', () => {
 
   it('uses persisted desktop thumbnails without fetching the original image', async () => {
     const readThumbnail = vi.fn(async () => ({ version: 'v1', bytes: new Uint8Array([1, 2]) }));
-    window.desktopApi = { readThumbnail } as unknown as Window['desktopApi'];
+    window.desktopApi = createDesktopApi({ readThumbnail });
     const file = Object.assign(root.file('desktop.jpg').asHandle(), {
       nativePath: 'C:\\images\\desktop.jpg',
     });
@@ -223,10 +226,10 @@ describe('thumbnail generation and reuse', () => {
 
   it('regenerates corrupt persisted thumbnails and writes their replacement', async () => {
     const writeThumbnail = vi.fn(async () => true);
-    window.desktopApi = {
+    window.desktopApi = createDesktopApi({
       readThumbnail: async () => ({ version: 'v1', bytes: new Uint8Array([1]) }),
       writeThumbnail,
-    } as unknown as Window['desktopApi'];
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({ ok: true, blob: async () => new Blob(['original']) })),
@@ -257,7 +260,7 @@ describe('thumbnail generation and reuse', () => {
   });
 
   it('returns generated thumbnails without waiting for disk persistence', async () => {
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -265,10 +268,10 @@ describe('thumbnail generation and reuse', () => {
       await paused;
       return true;
     });
-    window.desktopApi = {
+    window.desktopApi = createDesktopApi({
       readThumbnail: async () => ({ version: 'v1', bytes: null }),
       writeThumbnail,
-    } as unknown as Window['desktopApi'];
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({ ok: true, blob: async () => new Blob(['original']) })),
@@ -278,7 +281,7 @@ describe('thumbnail generation and reuse', () => {
     });
     expect((await createThumbnailCache().get(file))?.objectUrl).toBe(true);
     await vi.waitFor(() => expect(writeThumbnail).toHaveBeenCalledOnce());
-    release();
+    requireValue(release)();
   });
 
   it('recognizes animated PNG headers before image data', async () => {
@@ -320,14 +323,22 @@ describe('thumbnail generation and reuse', () => {
       .spyOn(workerPool, 'encodeThumbnailInWorker')
       .mockResolvedValue(new Blob(['thumbnail']));
     await createThumbnailCache().get({
+      kind: 'file',
+      createWritable: async () => {
+        throw new Error('Read-only');
+      },
       name: 'opaque.png',
       getFile: async () => png(2),
-    } as FileSystemFileHandle);
+    });
     expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/jpeg');
     await createThumbnailCache().get({
+      kind: 'file',
+      createWritable: async () => {
+        throw new Error('Read-only');
+      },
       name: 'alpha.png',
       getFile: async () => png(6),
-    } as FileSystemFileHandle);
+    });
     expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/webp');
   });
 });

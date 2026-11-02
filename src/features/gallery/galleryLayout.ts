@@ -1,10 +1,11 @@
+import type { EntryHandle } from '../../shared/fileSystem';
 import type { GalleryEntry } from '../../app/store';
 
 // Each Gallery owns its projection cache. Unrelated store updates reuse it
 // without reading entries; metadata changes preserve the mounted virtual rows.
 export function createGalleryLayoutSelector() {
   let previousEntries: GalleryEntry[] | undefined;
-  let layout: { items: FileSystemHandle[]; keys: string[] } = { items: [], keys: [] };
+  let layout: { items: EntryHandle[]; keys: string[] } = { items: [], keys: [] };
 
   return ({ entries }: { entries: GalleryEntry[] }) => {
     if (entries === previousEntries) return layout;

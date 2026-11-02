@@ -1,3 +1,5 @@
+import { requireValue } from '../shared/validation';
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import { createConfig } from './createConfig';
 import { createAppStore } from './store';
 import { readPreferences, writePreference } from '../platform/preferences';
@@ -52,7 +54,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
     },
   });
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
-  const lastVisitedChild = new WeakMap<FileSystemDirectoryHandle, string>();
+  const lastVisitedChild = new WeakMap<DirectoryHandle, string>();
   const forwardHistory: Array<() => Promise<void>> = [];
   let navigationQueue = Promise.resolve();
   let galleryNavigation: GalleryNavigation | null = null;
@@ -88,7 +90,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
   const clearForwardHistory = () => {
     forwardHistory.length = 0;
   };
-  const rememberVisitedChild = (parent: FileSystemDirectoryHandle | undefined, name: string) => {
+  const rememberVisitedChild = (parent: DirectoryHandle | undefined, name: string) => {
     if (parent) lastVisitedChild.set(parent, name);
   };
   function clearThumbnailCaches() {
@@ -117,12 +119,12 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       );
   }
   async function renderActiveDirectoryView(
-    dir: FileSystemDirectoryHandle,
+    dir: DirectoryHandle,
     options: { forceRefresh?: boolean; useConfig?: boolean } = {},
   ) {
     await directoryViews.render(dir, options);
   }
-  async function enterDirectory(dir: FileSystemDirectoryHandle) {
+  async function enterDirectory(dir: DirectoryHandle) {
     clearForwardHistory();
     rememberVisitedChild(get().directories.at(-1), dir.name);
     window.scrollTo(0, 0);
@@ -142,7 +144,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       void update().catch(console.error);
     }, debounceMs);
   }
-  async function scrollToVisitedChild(handle: FileSystemDirectoryHandle | null) {
+  async function scrollToVisitedChild(handle: DirectoryHandle | null) {
     const name = handle ? lastVisitedChild.get(handle) : null;
     if (!name) return;
     const token = directoryViews.generation;
@@ -156,7 +158,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
-  async function openRootDirectory(dir: FileSystemDirectoryHandle) {
+  async function openRootDirectory(dir: DirectoryHandle) {
     await flushRootConfig(getRootDirHandle());
     await reloadRootConfig(dir);
     clearForwardHistory();
@@ -184,7 +186,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       listMode: 'directory',
       scanPreview: null,
     });
-    const library = await window.desktopApi!.getLibrary();
+    const library = await requireValue(window.desktopApi).getLibrary();
     if (token === directoryViews.generation) set({ library });
   }
   async function selectRootDirectory() {
@@ -334,11 +336,11 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       }
     },
     async toggleLibraryFavorite(item: DesktopLibraryItem) {
-      await window.desktopApi!.toggleFavoriteRoot(item.path);
+      await requireValue(window.desktopApi).toggleFavoriteRoot(item.path);
       await showHome();
     },
     async removeLibrary(item: DesktopLibraryItem) {
-      await window.desktopApi!.removeRecent(item.path);
+      await requireValue(window.desktopApi).removeRecent(item.path);
       await showHome();
     },
     ...preferences.actions,
@@ -373,7 +375,7 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
         list.length ? list : null,
       );
     },
-    readDirectory(dir: FileSystemDirectoryHandle) {
+    readDirectory(dir: DirectoryHandle) {
       clearForwardHistory();
       return viewerController.openViewer(dir, 0);
     },
@@ -464,11 +466,11 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
     capabilities: { desktop: isDesktopApp() },
     media: {
       getThumbnail: (
-        handle: FileSystemFileHandle,
+        handle: FileHandle,
         shouldContinue: () => boolean,
         getPriority: () => number,
       ) => thumbnailCache.get(handle, shouldContinue, getPriority),
-      invalidateThumbnail: (handle: FileSystemFileHandle) => thumbnailCache.invalidate(handle),
+      invalidateThumbnail: (handle: FileHandle) => thumbnailCache.invalidate(handle),
       getDirectoryPreview: (handle, request) => {
         const rootHandle = getRootDirHandle();
         return getDirectoryPreview(

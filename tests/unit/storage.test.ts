@@ -1,3 +1,5 @@
+import { parseConfig } from '../helpers/json';
+import { requireValue } from '../../src/shared/validation';
 import type { ConfigNode } from '../../src/services/storage';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -18,6 +20,26 @@ import {
 import { MemoryDirectory } from '../helpers/memoryFs';
 
 describe('folder configuration', () => {
+  it('validates thumbnail metadata and preserves unknown fields without mutating input', () => {
+    const raw = {
+      custom: { keep: true },
+      directories: { child: { directoryThumbnail: { path: [42], expiresAt: 123 } } },
+      directoryThumbnail: { path: ['cover.png'], expiresAt: 123 },
+    };
+    const snapshot = JSON.stringify(raw);
+    const node = ensureConfigNode(raw);
+    expect(node.directoryThumbnail).toEqual({ path: ['cover.png'], expiresAt: 123 });
+    expect(node.directories.child.directoryThumbnail).toBeUndefined();
+    expect(node.custom).toEqual({ keep: true });
+    expect(JSON.stringify(raw)).toBe(snapshot);
+    expect(ensureConfigNode([])).toEqual({
+      favorites: [],
+      hiddenItems: [],
+      settings: {},
+      directories: {},
+    });
+  });
+
   it('repairs missing fields, ignores invalid entries and keeps nested settings', () => {
     const config = normalizeRootConfig({
       favorites: ['old.png', 12, { type: 'directory', path: 'child' }],
@@ -38,7 +60,7 @@ describe('folder configuration', () => {
     expect(getConfigNode(root, 'a/b')).toBeNull();
     const child = getConfigNode(root, 'a/b', { create: true });
     expect(child).not.toBeNull();
-    child!.settings.filterType = 'gif';
+    requireValue(child).settings.filterType = 'gif';
     expect(getConfigNode(root, ['a', 'b'])?.settings.filterType).toBe('gif');
   });
 
@@ -201,9 +223,9 @@ describe('folder configuration', () => {
         const parent = entry.parentPath
           .split('/')
           .filter(Boolean)
-          .reduce((directory, name) => directory.entries.get(name) as MemoryDirectory, root);
+          .reduce((directory, name) => directory.child(name), root);
         expect(entry.parentHandle).toBe(parent.asHandle());
-        expect(entry.handle).toBe(parent.entries.get(entry.name)!.asHandle());
+        expect(entry.handle).toBe(requireValue(parent.entries.get(entry.name)).asHandle());
         expect(entry.isHidden).toBe(entry.path === 'z/deep/book.pdf');
       }
       if (shape === 'nested') {
@@ -304,7 +326,7 @@ describe('folder configuration', () => {
     ]);
     await flushRootConfig(root.asHandle());
     expect(reads).toHaveBeenCalledOnce();
-    const saved = JSON.parse(file.textValue) as ConfigNode;
+    const saved = parseConfig(file.textValue);
     expect(saved.version).toBe(3);
     expect(saved.favorites).toEqual(['old.png']);
     expect(saved.directories.child).toMatchObject({
@@ -324,7 +346,7 @@ describe('folder configuration', () => {
     await pending;
     await flushRootConfig(root.asHandle());
     const file = await root.getFileHandle('.image-viewer.json');
-    const saved = JSON.parse(await (await file.getFile()).text()) as ConfigNode;
+    const saved = parseConfig(await (await file.getFile()).text());
     expect(saved.directories.first.settings.sortOrder).toBe('desc');
     expect(saved.directories.second).toBeUndefined();
     root.file('.image-viewer.json', JSON.stringify({ favorites: ['external.png'] }));
@@ -348,7 +370,7 @@ describe('folder configuration', () => {
     await expect(toggleFavoriteEntry(root.asHandle(), [], 'new.png')).rejects.toThrow(
       '新しいバージョン',
     );
-    expect((JSON.parse(file.textValue) as ConfigNode).version).toBe(4);
+    expect(parseConfig(file.textValue).version).toBe(4);
     file.textValue = '{"version":3,"favorites":["keep.png"]}';
     const getFile = vi
       .spyOn(file, 'getFile')
@@ -387,9 +409,9 @@ describe('folder configuration', () => {
       'disk full',
     );
     expect(onError).toHaveBeenCalledOnce();
-    expect((JSON.parse(file.textValue) as ConfigNode).favorites).toEqual(['old.png']);
+    expect(parseConfig(file.textValue).favorites).toEqual(['old.png']);
     await flushRootConfig(root.asHandle());
-    expect((JSON.parse(file.textValue) as ConfigNode).favorites).toEqual(['old.png', 'new.png']);
+    expect(parseConfig(file.textValue).favorites).toEqual(['old.png', 'new.png']);
   });
 
   it('continues to read legacy entries and preserves unrelated config fields on save', async () => {
@@ -404,7 +426,7 @@ describe('folder configuration', () => {
       }),
     );
     await toggleFavoriteEntry(root.asHandle(), ['日本語'], { type: 'file', path: 'new.png' });
-    expect(JSON.parse(file.textValue) as ConfigNode).toMatchObject({
+    expect(parseConfig(file.textValue)).toMatchObject({
       version: 3,
       favorites: ['cover.png', { type: 'directory', path: '日本語' }],
       custom: { keep: true },

@@ -1,12 +1,13 @@
+import type { FileHandle } from '../shared/fileSystem';
 import { getMediaSource } from '../platform/nativeFs';
 
 // Share compressed originals between thumbnail generation and the full-size viewer.
 export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntries = Infinity) {
   type Entry = { promise: Promise<Blob>; blob?: Blob };
-  let entries = new Map<string | FileSystemFileHandle, Entry>();
+  let entries = new Map<string | FileHandle, Entry>();
   let bytes = 0;
 
-  async function read(handle: FileSystemFileHandle): Promise<Blob> {
+  async function read(handle: FileHandle): Promise<Blob> {
     if (!handle.nativePath || !window.desktopApi) return handle.getFile();
     const source = await getMediaSource(handle);
     try {
@@ -18,7 +19,7 @@ export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntrie
     }
   }
 
-  function get(handle: FileSystemFileHandle): Promise<Blob> {
+  function get(handle: FileHandle): Promise<Blob> {
     const key = handle.nativePath || handle;
     const cached = entries.get(key);
     if (cached) {
@@ -71,7 +72,7 @@ export function createOriginalImageCache(maxBytes = 512 * 1024 * 1024, maxEntrie
 }
 
 export const originalImageCache = createOriginalImageCache();
-export async function getOriginalImageSource(handle: FileSystemFileHandle) {
+export async function getOriginalImageSource(handle: FileHandle) {
   const blob = await originalImageCache.get(handle);
   return { url: URL.createObjectURL(blob), objectUrl: true };
 }

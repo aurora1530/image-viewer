@@ -1,3 +1,4 @@
+import type { DirectoryHandle, FileHandle } from '../../src/shared/fileSystem';
 type Entry = MemoryDirectory | MemoryFile;
 
 export class MemoryFile {
@@ -14,14 +15,15 @@ export class MemoryFile {
   }
   async createWritable() {
     return {
-      write: async (value: string) => {
+      write: async (value: FileSystemWriteChunkType) => {
+        if (typeof value !== 'string') throw new Error('Only text writes are supported');
         this.textValue = value;
       },
       close: async () => undefined,
     };
   }
   asHandle() {
-    return this as unknown as FileSystemFileHandle;
+    return this;
   }
 }
 
@@ -37,12 +39,17 @@ export class MemoryDirectory {
     this.entries.set(name, file);
     return file;
   }
+  child(name: string): MemoryDirectory {
+    const entry = this.entries.get(name);
+    if (!(entry instanceof MemoryDirectory)) throw new Error('Expected directory');
+    return entry;
+  }
   directory(name: string) {
     const dir = new MemoryDirectory(name, this.options);
     this.entries.set(name, dir);
     return dir;
   }
-  async *values(): AsyncGenerator<FileSystemFileHandle | FileSystemDirectoryHandle> {
+  async *values(): AsyncGenerator<FileHandle | DirectoryHandle> {
     for (const entry of this.entries.values()) yield entry.asHandle();
   }
   async getFileHandle(name: string, options?: { create?: boolean }) {
@@ -59,6 +66,6 @@ export class MemoryDirectory {
     return entry.asHandle();
   }
   asHandle() {
-    return this as unknown as FileSystemDirectoryHandle;
+    return this;
   }
 }

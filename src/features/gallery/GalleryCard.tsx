@@ -27,6 +27,9 @@ export const GalleryCard = memo(function GalleryCard({ entry }: { entry: Gallery
     }
   }
   const ratio = aspectRatios.get(item.handle);
+  const thumbnailStyle: (CSSProperties & { '--thumbnail-aspect': number }) | undefined = ratio
+    ? { '--thumbnail-aspect': ratio }
+    : undefined;
   return (
     <div
       ref={card}
@@ -40,7 +43,7 @@ export const GalleryCard = memo(function GalleryCard({ entry }: { entry: Gallery
     >
       <div
         className="thumbnail-container cursor-pointer"
-        style={ratio ? ({ '--thumbnail-aspect': ratio } as CSSProperties) : undefined}
+        style={thumbnailStyle}
         onClick={
           directory
             ? () => {
@@ -155,7 +158,8 @@ export const GalleryCard = memo(function GalleryCard({ entry }: { entry: Gallery
         <h3
           className="dir-title"
           onClick={(event) => {
-            if (!(event.target as HTMLElement).closest('.dir-badge')) void actions.openEntry(entry);
+            if (event.target instanceof Element && !event.target.closest('.dir-badge'))
+              void actions.openEntry(entry);
           }}
         >
           <span className="break-all">{item.name}</span>

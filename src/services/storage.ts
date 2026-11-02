@@ -1,3 +1,5 @@
+import { isRecord, requireValue } from '../shared/validation';
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import { ConfigStore } from './configStore';
 import { CONFIG } from '../shared/model';
 import {
@@ -13,6 +15,7 @@ export type FavoriteEntry = ConfigEntry;
 export type HiddenEntry = ConfigEntry;
 
 export type ConfigNode = {
+  [key: string]: unknown;
   favorites: FavoriteEntry[];
   hiddenItems: HiddenEntry[];
   settings: Record<string, unknown>;
@@ -22,7 +25,7 @@ export type ConfigNode = {
 };
 
 export type DirectoryConfigLocation = {
-  rootHandle: FileSystemDirectoryHandle;
+  rootHandle: DirectoryHandle;
   path: string[];
 };
 
@@ -60,7 +63,7 @@ export async function saveDirectoryThumbnail(
     const store = getConfigStore(location.rootHandle);
     if (!path && !getConfigNode(await store.read(), location.path)?.directoryThumbnail) return;
     await store.update((root) => {
-      const node = getConfigNode(root, location.path, { create: true })!;
+      const node = requireValue(getConfigNode(root, location.path, { create: true }));
       if (path) node.directoryThumbnail = { path, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 };
       else delete node.directoryThumbnail;
     });
@@ -71,8 +74,8 @@ export async function saveDirectoryThumbnail(
 }
 
 export type FavoriteFileHandleEntry = {
-  handle: FileSystemFileHandle;
-  parentHandle: FileSystemDirectoryHandle;
+  handle: FileHandle;
+  parentHandle: DirectoryHandle;
   name: string;
   parentPath: string;
   path: string;
@@ -83,9 +86,6 @@ type FavoriteKeyItem = {
   type: 'directory' | 'image' | 'video' | 'pdf';
   name: string;
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
 
 const isConfigEntry = (value: unknown): value is ConfigEntry => {
   if (typeof value === 'string') return true;
@@ -111,13 +111,13 @@ export function ensureConfigNode(raw: unknown): ConfigNode {
   }
 
   const rawFavorites = raw.favorites;
-  raw.favorites = Array.isArray(rawFavorites) ? rawFavorites.filter(isConfigEntry) : [];
+  const favorites = Array.isArray(rawFavorites) ? rawFavorites.filter(isConfigEntry) : [];
 
   const rawHiddenItems = raw.hiddenItems;
-  raw.hiddenItems = Array.isArray(rawHiddenItems) ? rawHiddenItems.filter(isConfigEntry) : [];
+  const hiddenItems = Array.isArray(rawHiddenItems) ? rawHiddenItems.filter(isConfigEntry) : [];
 
   const rawSettings = raw.settings;
-  raw.settings = isRecord(rawSettings) ? rawSettings : {};
+  const settings = isRecord(rawSettings) ? rawSettings : {};
 
   const rawDirectories = raw.directories;
   const directoriesRaw: Record<string, unknown> = isRecord(rawDirectories) ? rawDirectories : {};
@@ -125,12 +125,20 @@ export function ensureConfigNode(raw: unknown): ConfigNode {
   for (const [key, value] of Object.entries(directoriesRaw)) {
     directories[key] = ensureConfigNode(value);
   }
-  raw.directories = directories;
-
-  if (typeof raw.version !== 'number') {
-    delete raw.version;
+  const node: ConfigNode = { ...raw, favorites, hiddenItems, settings, directories };
+  delete node.version;
+  delete node.directoryThumbnail;
+  if (typeof raw.version === 'number') node.version = raw.version;
+  const thumbnail = raw.directoryThumbnail;
+  if (
+    isRecord(thumbnail) &&
+    Array.isArray(thumbnail.path) &&
+    thumbnail.path.every((part): part is string => typeof part === 'string') &&
+    typeof thumbnail.expiresAt === 'number'
+  ) {
+    node.directoryThumbnail = { path: thumbnail.path, expiresAt: thumbnail.expiresAt };
   }
-  return raw as ConfigNode;
+  return node;
 }
 
 /**
@@ -164,16 +172,16 @@ export function getConfigNode(
   return node;
 }
 
-const configStores = new WeakMap<FileSystemDirectoryHandle, ConfigStore<ConfigNode>>();
+const configStores = new WeakMap<DirectoryHandle, ConfigStore<ConfigNode>>();
 
 type ErrorReporter = (message: string, error?: unknown) => void;
 
-function getConfigStore(rootHandle: FileSystemDirectoryHandle): ConfigStore<ConfigNode> {
+function getConfigStore(rootHandle: DirectoryHandle): ConfigStore<ConfigNode> {
   let store = configStores.get(rootHandle);
   if (!store) {
     store = new ConfigStore(
       async () => {
-        let fileHandle: FileSystemFileHandle;
+        let fileHandle: FileHandle;
         try {
           fileHandle = await rootHandle.getFileHandle(CONFIG.CONFIG_FILENAME);
         } catch (error) {
@@ -208,26 +216,22 @@ function getConfigStore(rootHandle: FileSystemDirectoryHandle): ConfigStore<Conf
 }
 
 /** Reads and normalizes once per root; rendering never reads the disk again. */
-export async function readRootConfig(
-  rootHandle: FileSystemDirectoryHandle | null,
-): Promise<ConfigNode> {
+export async function readRootConfig(rootHandle: DirectoryHandle | null): Promise<ConfigNode> {
   return rootHandle ? getConfigStore(rootHandle).read() : normalizeRootConfig(null);
 }
 
 /** Explicit refresh: persist local changes before loading external edits. */
-export async function reloadRootConfig(
-  rootHandle: FileSystemDirectoryHandle | null,
-): Promise<ConfigNode> {
+export async function reloadRootConfig(rootHandle: DirectoryHandle | null): Promise<ConfigNode> {
   return rootHandle ? getConfigStore(rootHandle).reload() : normalizeRootConfig(null);
 }
 
-export async function flushRootConfig(rootHandle: FileSystemDirectoryHandle | null): Promise<void> {
+export async function flushRootConfig(rootHandle: DirectoryHandle | null): Promise<void> {
   if (rootHandle) await configStores.get(rootHandle)?.flush();
 }
 
 /** Compatibility entry point for whole-document writes; normal edits use update. */
 export async function writeRootConfig(
-  rootHandle: FileSystemDirectoryHandle | null,
+  rootHandle: DirectoryHandle | null,
   config: ConfigNode,
   onError?: ErrorReporter,
 ): Promise<boolean> {
@@ -236,7 +240,7 @@ export async function writeRootConfig(
     const store = getConfigStore(rootHandle);
     await store.update((current) => {
       if (current !== config) {
-        for (const key of Object.keys(current)) delete (current as Record<string, unknown>)[key];
+        for (const key of Object.keys(current)) delete current[key];
         Object.assign(current, normalizeRootConfig(config));
       }
     });
@@ -250,7 +254,7 @@ export async function writeRootConfig(
 
 /** Capture the root, path and values at the time of the UI action. */
 export async function saveDirectorySettings(
-  rootHandle: FileSystemDirectoryHandle,
+  rootHandle: DirectoryHandle,
   pathSegments: unknown,
   settings: Record<string, unknown>,
   onError?: ErrorReporter,
@@ -260,7 +264,7 @@ export async function saveDirectorySettings(
   try {
     const store = getConfigStore(rootHandle);
     await store.update((root) => {
-      const node = getConfigNode(root, path, { create: true })!;
+      const node = requireValue(getConfigNode(root, path, { create: true }));
       node.settings = { ...node.settings, ...snapshot };
     });
     store.scheduleSave((error) => onError?.('コンフィグの保存に失敗しました。', error));
@@ -309,7 +313,7 @@ export function getFavoriteKeyForItem(item: FavoriteKeyItem | null | undefined):
  * rootConfig は readRootConfig または normalizeRootConfig で正規化して渡す。
  */
 export async function collectFavoriteFilesFromConfig(
-  rootHandle: FileSystemDirectoryHandle | null,
+  rootHandle: DirectoryHandle | null,
   rootConfig: ConfigNode | null,
   shouldContinue: () => boolean = () => true,
 ): Promise<FavoriteFileHandleEntry[]> {
@@ -327,7 +331,7 @@ export async function collectFavoriteFilesFromConfig(
   };
   if (!markBranches(rootConfig)) return [];
 
-  type GetDirectory = () => Promise<FileSystemDirectoryHandle | null>;
+  type GetDirectory = () => Promise<DirectoryHandle | null>;
   const requests: {
     getDirectory: GetDirectory;
     fileName: string;
@@ -349,8 +353,8 @@ export async function collectFavoriteFilesFromConfig(
     for (const [name, child] of Object.entries(node.directories)) {
       if (!favoriteBranches.has(child)) continue;
       const path = joinRelativePath(parentPath, name);
-      let pending: Promise<FileSystemDirectoryHandle | null> | undefined;
-      const getChild = (): Promise<FileSystemDirectoryHandle | null> =>
+      let pending: Promise<DirectoryHandle | null> | undefined;
+      const getChild = (): Promise<DirectoryHandle | null> =>
         (pending ??= (async () => {
           if (!shouldContinue()) return null;
           const parent = await getDirectory();
@@ -404,7 +408,7 @@ export async function collectFavoriteFilesFromConfig(
 }
 
 async function toggleEntry(
-  rootHandle: FileSystemDirectoryHandle | null,
+  rootHandle: DirectoryHandle | null,
   pathSegments: unknown,
   entry: ConfigEntry,
   field: 'favorites' | 'hiddenItems',
@@ -418,7 +422,7 @@ async function toggleEntry(
   try {
     const store = getConfigStore(rootHandle);
     const enabled = await store.update((root) => {
-      const entries = getConfigNode(root, path, { create: true })![field];
+      const entries = requireValue(getConfigNode(root, path, { create: true }))[field];
       const index = entries.findIndex((item) => normalizeConfigEntry(item) === key);
       if (index >= 0) entries.splice(index, 1);
       else entries.push(snapshot);
@@ -433,7 +437,7 @@ async function toggleEntry(
 }
 
 export function toggleFavoriteEntry(
-  rootHandle: FileSystemDirectoryHandle | null,
+  rootHandle: DirectoryHandle | null,
   dirPathSegments: unknown,
   entry: FavoriteEntry,
   onError?: ErrorReporter,
@@ -442,7 +446,7 @@ export function toggleFavoriteEntry(
 }
 
 export function toggleHiddenEntry(
-  rootHandle: FileSystemDirectoryHandle | null,
+  rootHandle: DirectoryHandle | null,
   dirPathSegments: unknown,
   entry: HiddenEntry,
   onError?: ErrorReporter,
