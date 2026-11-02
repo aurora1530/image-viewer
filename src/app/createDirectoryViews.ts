@@ -222,7 +222,8 @@ export function createDirectoryViews(deps: ViewDependencies) {
         });
       } else if (mode === 'favorites') {
         const config = await readRootConfig(root);
-        const files = await collectFavoriteFilesFromConfig(root, config);
+        if (!current()) return;
+        const files = await collectFavoriteFilesFromConfig(root, config, current);
         if (!current()) return;
         entries = files.flatMap((file) => {
           const nameLower = file.name.toLowerCase();

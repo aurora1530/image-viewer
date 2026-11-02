@@ -218,6 +218,39 @@ describe('gallery data and state coordination', () => {
     expect(appStore.getState().status.type).toBe('clear');
   });
 
+  it('cancels favorite reads after navigation without retaining or publishing partial results', async () => {
+    const root = new MemoryDirectory('root');
+    const names = Array.from({ length: 20 }, (_, index) => `${index}.png`);
+    names.forEach((name) => root.file(name));
+    root.file('.image-viewer.json', JSON.stringify({ favorites: names }));
+    const getFile = root.getFileHandle.bind(root);
+    const releases: (() => void)[] = [];
+    const read = vi.spyOn(root, 'getFileHandle').mockImplementation(async (...args) => {
+      if (args[0].endsWith('.png')) await new Promise<void>((resolve) => releases.push(resolve));
+      return getFile(...args);
+    });
+    const { views, activate } = harness(root);
+    appStore.setState({ listMode: 'favorites' });
+    const pending = views.render(root.asHandle());
+    await vi.waitFor(() => expect(releases).toHaveLength(6));
+    const latest = new MemoryDirectory('latest');
+    latest.file('latest.png');
+    activate(latest);
+    appStore.setState({ listMode: 'directory' });
+    await views.render(latest.asHandle());
+    const published = appStore.getState().entries;
+    releases.forEach((release) => release());
+    await pending;
+    expect(releases).toHaveLength(6);
+    expect(appStore.getState().entries).toBe(published);
+    read.mockRestore();
+
+    activate(root);
+    appStore.setState({ listMode: 'favorites' });
+    await views.render(root.asHandle(), { useConfig: false });
+    expect(appStore.getState().entries).toHaveLength(20);
+  });
+
   it('releases a canceled scan preview without clearing the newer folder', async () => {
     const root = new MemoryDirectory('scan');
     root.file('cover.png');

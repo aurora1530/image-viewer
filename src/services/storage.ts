@@ -304,61 +304,6 @@ export function getFavoriteKeyForItem(item: FavoriteKeyItem | null | undefined):
   return buildFavoriteKey('file', item.name);
 }
 
-async function collectFavoriteFilesFromNode(
-  dirHandle: FileSystemDirectoryHandle,
-  node: ConfigNode,
-  parentPath: string,
-  list: FavoriteFileHandleEntry[],
-  favoriteBranches: WeakSet<ConfigNode>,
-): Promise<void> {
-  const hiddenSet = makeHiddenSet(node);
-  for (const entry of node.favorites) {
-    const key = normalizeFavoriteEntry(entry);
-    if (!key || !key.startsWith('file:')) continue;
-    const fileName = key.slice('file:'.length);
-    if (!fileName) continue;
-    try {
-      const fileHandle = await dirHandle.getFileHandle(fileName);
-      list.push({
-        handle: fileHandle,
-        parentHandle: dirHandle,
-        name: fileName,
-        parentPath,
-        path: joinRelativePath(parentPath, fileName),
-        isHidden: hiddenSet.has(key),
-      });
-    } catch (e) {
-      if (CONFIG.ENABLE_DEBUG_LOGS) {
-        console.warn(
-          `お気に入りファイルを読み込めませんでした: ${joinRelativePath(parentPath, fileName)}`,
-          e,
-        );
-      }
-    }
-  }
-
-  for (const [dirName, childNode] of Object.entries(node.directories)) {
-    if (!favoriteBranches.has(childNode)) continue;
-    try {
-      const childHandle = await dirHandle.getDirectoryHandle(dirName);
-      await collectFavoriteFilesFromNode(
-        childHandle,
-        childNode,
-        joinRelativePath(parentPath, dirName),
-        list,
-        favoriteBranches,
-      );
-    } catch (e) {
-      if (CONFIG.ENABLE_DEBUG_LOGS) {
-        console.warn(
-          `お気に入りディレクトリを読み込めませんでした: ${joinRelativePath(parentPath, dirName)}`,
-          e,
-        );
-      }
-    }
-  }
-}
-
 /**
  * ルート設定からお気に入りファイルのハンドル一覧を収集する。
  * rootConfig は readRootConfig または normalizeRootConfig で正規化して渡す。
@@ -366,9 +311,9 @@ async function collectFavoriteFilesFromNode(
 export async function collectFavoriteFilesFromConfig(
   rootHandle: FileSystemDirectoryHandle | null,
   rootConfig: ConfigNode | null,
+  shouldContinue: () => boolean = () => true,
 ): Promise<FavoriteFileHandleEntry[]> {
-  if (!rootHandle || !rootConfig) return [];
-  const list: FavoriteFileHandleEntry[] = [];
+  if (!rootHandle || !rootConfig || !shouldContinue()) return [];
   const favoriteBranches = new WeakSet<ConfigNode>();
   const markBranches = (node: ConfigNode): boolean => {
     let hasFavorites = node.favorites.some((entry) =>
@@ -380,10 +325,82 @@ export async function collectFavoriteFilesFromConfig(
     if (hasFavorites) favoriteBranches.add(node);
     return hasFavorites;
   };
-  if (markBranches(rootConfig)) {
-    await collectFavoriteFilesFromNode(rootHandle, rootConfig, '', list, favoriteBranches);
+  if (!markBranches(rootConfig)) return [];
+
+  type GetDirectory = () => Promise<FileSystemDirectoryHandle | null>;
+  const requests: {
+    getDirectory: GetDirectory;
+    fileName: string;
+    parentPath: string;
+    isHidden: boolean;
+  }[] = [];
+
+  // Plan in the legacy depth-first order, without starting file-system reads.
+  // Workers share each ancestor lookup and place results in their original slots.
+  function plan(node: ConfigNode, getDirectory: GetDirectory, parentPath: string) {
+    const hidden = makeHiddenSet(node);
+    for (const entry of node.favorites) {
+      const key = normalizeFavoriteEntry(entry);
+      if (!key?.startsWith('file:')) continue;
+      const fileName = key.slice('file:'.length);
+      if (fileName)
+        requests.push({ getDirectory, fileName, parentPath, isHidden: hidden.has(key) });
+    }
+    for (const [name, child] of Object.entries(node.directories)) {
+      if (!favoriteBranches.has(child)) continue;
+      const path = joinRelativePath(parentPath, name);
+      let pending: Promise<FileSystemDirectoryHandle | null> | undefined;
+      const getChild = (): Promise<FileSystemDirectoryHandle | null> =>
+        (pending ??= (async () => {
+          if (!shouldContinue()) return null;
+          const parent = await getDirectory();
+          if (!parent || !shouldContinue()) return null;
+          try {
+            const handle = await parent.getDirectoryHandle(name);
+            return shouldContinue() ? handle : null;
+          } catch (error) {
+            if (shouldContinue() && CONFIG.ENABLE_DEBUG_LOGS)
+              console.warn(`お気に入りディレクトリを読み込めませんでした: ${path}`, error);
+            return null;
+          }
+        })());
+      plan(child, getChild, path);
+    }
   }
-  return list;
+  plan(rootConfig, () => Promise.resolve(rootHandle), '');
+
+  const results = new Array<FavoriteFileHandleEntry | undefined>(requests.length);
+  let next = 0;
+  async function readFavorites() {
+    while (shouldContinue() && next < requests.length) {
+      const index = next++;
+      const { getDirectory, fileName, parentPath, isHidden } = requests[index];
+      const parentHandle = await getDirectory();
+      if (!parentHandle || !shouldContinue()) continue;
+      try {
+        const handle = await parentHandle.getFileHandle(fileName);
+        if (!shouldContinue()) return;
+        results[index] = {
+          handle,
+          parentHandle,
+          name: fileName,
+          parentPath,
+          path: joinRelativePath(parentPath, fileName),
+          isHidden,
+        };
+      } catch (error) {
+        if (shouldContinue() && CONFIG.ENABLE_DEBUG_LOGS)
+          console.warn(
+            `お気に入りファイルを読み込めませんでした: ${joinRelativePath(parentPath, fileName)}`,
+            error,
+          );
+      }
+    }
+  }
+  // A worker waits for each directory/file read before starting another one.
+  // Bound promises as well as I/O, including when all favorites share one folder.
+  await Promise.all(Array.from({ length: Math.min(6, requests.length) }, readFavorites));
+  return shouldContinue() ? results.filter((entry) => entry !== undefined) : [];
 }
 
 async function toggleEntry(

@@ -115,6 +115,168 @@ describe('folder configuration', () => {
     ]);
   });
 
+  it.each(['flat', 'nested'] as const)(
+    'bounds concurrent file and directory reads and preserves %s favorite order',
+    async (shape) => {
+      const root = new MemoryDirectory('root');
+      const directories = [root];
+      const names = Array.from({ length: 12 }, (_, index) => `${index}.png`);
+      const expected =
+        shape === 'flat'
+          ? names
+          : [
+              '10.png',
+              '2.png',
+              ...names.map((name) => `z/${name}`),
+              'z/deep/book.pdf',
+              'a/clip.mp4',
+            ];
+      let config: ConfigNode;
+      if (shape === 'flat') {
+        names.forEach((name) => root.file(name));
+        config = normalizeRootConfig({ favorites: names });
+      } else {
+        root.file('10.png');
+        root.file('2.png');
+        const z = root.directory('z');
+        names.forEach((name) => z.file(name));
+        const deep = z.directory('deep');
+        deep.file('book.pdf');
+        const a = root.directory('a');
+        a.file('clip.mp4');
+        directories.push(z, deep, a);
+        config = normalizeRootConfig({
+          favorites: ['10.png', '2.png'],
+          directories: {
+            z: {
+              favorites: names,
+              directories: { deep: { favorites: ['book.pdf'], hiddenItems: ['book.pdf'] } },
+            },
+            a: { favorites: ['clip.mp4'] },
+          },
+        });
+      }
+      let active = 0;
+      let peak = 0;
+      const releases: (() => void)[] = [];
+      async function delayed<T>(read: () => Promise<T>) {
+        active++;
+        peak = Math.max(peak, active);
+        try {
+          await new Promise<void>((resolve) => releases.push(resolve));
+          return await read();
+        } finally {
+          active--;
+        }
+      }
+      for (const directory of directories) {
+        const getFile = directory.getFileHandle.bind(directory);
+        const getDirectory = directory.getDirectoryHandle.bind(directory);
+        vi.spyOn(directory, 'getFileHandle').mockImplementation((...args) =>
+          delayed(() => getFile(...args)),
+        );
+        vi.spyOn(directory, 'getDirectoryHandle').mockImplementation((...args) =>
+          delayed(() => getDirectory(...args)),
+        );
+      }
+      let finished = false;
+      const pending = collectFavoriteFilesFromConfig(root.asHandle(), config).then((entries) => {
+        finished = true;
+        return entries;
+      });
+      while (!finished) {
+        await vi.waitFor(() => expect(finished || releases.length > 0).toBe(true));
+        // Complete later requests first; output order must remain configuration order.
+        releases
+          .splice(0)
+          .reverse()
+          .forEach((release) => release());
+      }
+      const entries = await pending;
+      expect(peak).toBe(6);
+      expect(active).toBe(0);
+      expect(entries.map(({ path }) => path)).toEqual(expected);
+      for (const entry of entries) {
+        expect(entry.parentPath).toBe(entry.path.split('/').slice(0, -1).join('/'));
+        const parent = entry.parentPath
+          .split('/')
+          .filter(Boolean)
+          .reduce((directory, name) => directory.entries.get(name) as MemoryDirectory, root);
+        expect(entry.parentHandle).toBe(parent.asHandle());
+        expect(entry.handle).toBe(parent.entries.get(entry.name)!.asHandle());
+        expect(entry.isHidden).toBe(entry.path === 'z/deep/book.pdf');
+      }
+      if (shape === 'nested') {
+        expect(vi.mocked(root.getDirectoryHandle).mock.calls).toEqual([['z'], ['a']]);
+        expect(directories[1].getDirectoryHandle).toHaveBeenCalledExactlyOnceWith('deep');
+      }
+    },
+  );
+
+  it('skips a failed favorite branch once and continues reading healthy branches', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('cover.png');
+    const healthy = root.directory('healthy');
+    healthy.file('good.png');
+    const getDirectory = vi.spyOn(root, 'getDirectoryHandle');
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const config = normalizeRootConfig({
+      favorites: ['missing.png', 'cover.png'],
+      directories: {
+        missing: { favorites: Array.from({ length: 12 }, (_, index) => `${index}.png`) },
+        healthy: { favorites: ['good.png'] },
+      },
+    });
+    expect(
+      (await collectFavoriteFilesFromConfig(root.asHandle(), config)).map(({ path }) => path),
+    ).toEqual(['cover.png', 'healthy/good.png']);
+    expect(getDirectory.mock.calls.map(([name]) => name)).toEqual(['missing', 'healthy']);
+    expect(warning).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start file-system access when favorite collection is already canceled', async () => {
+    const root = new MemoryDirectory('root');
+    const read = vi.spyOn(root, 'getFileHandle');
+    const config = normalizeRootConfig({ favorites: ['one.png'] });
+    expect(await collectFavoriteFilesFromConfig(root.asHandle(), config, () => false)).toEqual([]);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each(['file', 'directory'] as const)(
+    'stops queued reads and discards partial results after cancellation during a %s read',
+    async (kind) => {
+      const root = new MemoryDirectory('root');
+      const child = root.directory('child');
+      const names = Array.from({ length: 20 }, (_, index) => `${index}.png`);
+      names.forEach((name) => child.file(name));
+      const getFile = child.getFileHandle.bind(child);
+      const readFile = vi.spyOn(child, 'getFileHandle');
+      const readDirectory = vi.spyOn(root, 'getDirectoryHandle');
+      const releases: (() => void)[] = [];
+      if (kind === 'file') {
+        readFile.mockImplementation(async (...args) => {
+          if (args[0] !== names[0]) await new Promise<void>((resolve) => releases.push(resolve));
+          // Bypass the spy when completing the actual read.
+          return getFile(...args);
+        });
+      } else {
+        readDirectory.mockImplementation(async () => {
+          await new Promise<void>((resolve) => releases.push(resolve));
+          return child.asHandle();
+        });
+      }
+      const config = normalizeRootConfig({ directories: { child: { favorites: names } } });
+      let active = true;
+      const pending = collectFavoriteFilesFromConfig(root.asHandle(), config, () => active);
+      await vi.waitFor(() => expect(releases).toHaveLength(kind === 'file' ? 6 : 1));
+      active = false;
+      releases.forEach((release) => release());
+      expect(await pending).toEqual([]);
+      expect(readDirectory).toHaveBeenCalledOnce();
+      expect(readFile).toHaveBeenCalledTimes(kind === 'file' ? 7 : 0);
+    },
+  );
+
   it('reports write failures to the caller', async () => {
     const root = new MemoryDirectory('root');
     const error = new Error('disk full');
