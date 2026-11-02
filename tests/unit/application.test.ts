@@ -13,6 +13,24 @@ function PreferenceControl() {
 }
 
 describe('application composition and lifecycle', () => {
+  it('ignores a confirmation accepted after a newer view has started', async () => {
+    const root = new MemoryDirectory('root');
+    const application = createApplication(createAppStore({ directories: [root.asHandle()] }));
+    let accept: (value: boolean) => void = () => {};
+    window.desktopApi = {
+      confirmListMode: () => new Promise<boolean>((resolve) => (accept = resolve)),
+    } as unknown as Window['desktopApi'];
+    try {
+      const pending = application.actions.changeListMode('recursive');
+      await application.actions.changeListMode('hidden');
+      accept(true);
+      await pending;
+      expect(application.store.getState().listMode).toBe('hidden');
+    } finally {
+      delete window.desktopApi;
+    }
+  });
+
   it.each([false, true])(
     'refreshes metadata after a cached search during favorite saving (write fails: %s)',
     async (writeFails) => {

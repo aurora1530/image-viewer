@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
   writeAppConfig: (config) => ipcRenderer.invoke('desktop:write-app-config', config),
   cacheStats: () => ipcRenderer.invoke('desktop:cache-stats'),
   chooseDirectory: () => ipcRenderer.invoke('desktop:choose-directory'),
+  confirmListMode: (mode) => ipcRenderer.invoke('desktop:confirm-list-mode', mode),
   openRoot: (path) => ipcRenderer.invoke('desktop:open-root', path),
   openDirectoryExternally: (path) => ipcRenderer.invoke('desktop:open-directory-externally', path),
   getLibrary: () => ipcRenderer.invoke('desktop:get-library'),

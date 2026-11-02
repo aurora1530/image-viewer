@@ -24,6 +24,7 @@ interface Window {
     writeAppConfig(config: import('./shared/appConfig').AppConfig): Promise<void>;
     cacheStats(): Promise<{ bytes: number; path: string; configPath: string }>;
     chooseDirectory(): Promise<string | null>;
+    confirmListMode(mode: 'recursive' | 'favorites'): Promise<boolean>;
     openRoot(path: string): Promise<string>;
     openDirectoryExternally(path: string): Promise<void>;
     getLibrary(): Promise<DesktopLibraryItem[]>;

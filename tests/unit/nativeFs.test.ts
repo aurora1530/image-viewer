@@ -24,6 +24,7 @@ function createDesktopApi(
     readThumbnail: async () => ({ version: 'test', bytes: null }),
     writeThumbnail: async () => true,
     chooseDirectory: async () => 'C:\\photos',
+    confirmListMode: async () => true,
     openRoot: async (path) => path,
     openDirectoryExternally: async () => {},
     getLibrary: async () => [],

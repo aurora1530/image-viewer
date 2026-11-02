@@ -32,6 +32,7 @@ import {
 } from '../platform/nativeFs';
 import { createViewer } from './createViewer';
 import { createReleaseClient } from '../platform/releases';
+import { confirmListMode } from '../platform/listModeConfirmation';
 
 export function createApplication(store: AppStore = createAppStore(readPreferences())) {
   const releases = createReleaseClient();
@@ -266,18 +267,12 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
     if (!current) return;
     const next = mode === 'directory' ? 'directory' : get().listMode === mode ? 'directory' : mode;
     if (next === get().listMode) return;
-    if (
-      next === 'recursive' &&
-      !confirm('このフォルダ配下のすべての画像を読み込みます。続行しますか？')
-    )
-      return;
-    if (
-      next === 'favorites' &&
-      !confirm(
-        'ルート設定の .image-viewer.json からお気に入りファイルをすべて読み込みます。続行しますか？',
-      )
-    )
-      return;
+    if (next === 'recursive' || next === 'favorites') {
+      const token = directoryViews.generation;
+      if (!(await confirmListMode(next))) return;
+      // A pending confirmation must not replace a newer navigation or view.
+      if (token !== directoryViews.generation || current !== get().directories.at(-1)) return;
+    }
     set({ listMode: next });
     await renderActiveDirectoryView(current);
     if (next === 'directory') await scrollToVisitedChild(current);
