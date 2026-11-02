@@ -4,6 +4,7 @@ import { useAppActions, useAppState } from '../../src/app/ApplicationProvider';
 import { createApplication } from '../../src/app/createApplication';
 import { createAppStore } from '../../src/app/store';
 import { renderApplication } from '../helpers/render';
+import { MemoryDirectory } from '../helpers/memoryFs';
 
 function PreferenceControl() {
   const size = useAppState((state) => state.thumbnailSizeIndex);
@@ -12,6 +13,59 @@ function PreferenceControl() {
 }
 
 describe('application composition and lifecycle', () => {
+  it.each([false, true])(
+    'refreshes metadata after a cached search during favorite saving (write fails: %s)',
+    async (writeFails) => {
+      const root = new MemoryDirectory('root');
+      root.file('one.png');
+      const config = root.file('.image-viewer.json', '{}');
+      vi.stubGlobal('showDirectoryPicker', vi.fn().mockResolvedValue(root.asHandle()));
+      vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+      const application = createApplication();
+      const stop = application.start();
+      let release: (() => void) | undefined;
+      try {
+        await application.actions.selectRootDirectory();
+        const entry = application.store.getState().entries[0];
+        vi.spyOn(config, 'createWritable').mockImplementationOnce(async () => ({
+          write: async (value: string) => {
+            config.textValue = value;
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            if (writeFails) throw new Error('write failed');
+          },
+          close: async () => undefined,
+        }));
+        const saving = application.actions.toggleEntry(entry, 'favorite');
+        await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+        application.actions.setSearch('one');
+        await vi.waitFor(() => expect(application.store.getState().searchQuery).toBe('one'));
+        // Wait for the debounced cached search, not only the input state update.
+        const published = vi.fn();
+        const unsubscribe = application.store.subscribe((state, previous) => {
+          if (state.entries !== previous.entries) published();
+        });
+        await vi.waitFor(() => expect(published).toHaveBeenCalled());
+        unsubscribe();
+        expect(application.store.getState().entries[0].item.isFavorite).toBe(false);
+        release!();
+        if (writeFails) {
+          await expect(saving).rejects.toThrow('write failed');
+          application.actions.setSearch('one.png');
+        } else await saving;
+        await vi.waitFor(() =>
+          expect(application.store.getState().entries[0]?.item.isFavorite).toBe(true),
+        );
+        expect(application.store.getState().searchQuery).toBe(writeFails ? 'one.png' : 'one');
+      } finally {
+        release?.();
+        stop();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it('keeps commands and subscriptions scoped to their provider', async () => {
     const first = createApplication(createAppStore({ thumbnailSizeIndex: 1 }));
     const second = createApplication(createAppStore({ thumbnailSizeIndex: 2 }));

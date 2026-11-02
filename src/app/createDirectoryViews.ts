@@ -1,7 +1,7 @@
 import type { AppStore } from './store';
-import type { AppState, GalleryEntry } from './store';
+import type { AppState, GalleryEntry, ListMode } from './store';
 import { CONFIG } from '../shared/model';
-import type { DirectoryCacheItem } from '../shared/model';
+import type { DirectoryCacheItem, SortOrder } from '../shared/model';
 import { ensureDirectoryCache } from '../services/directoryCache';
 import { createRecursiveImageCache } from '../services/recursiveImageCache';
 import { getMediaSource } from '../platform/nativeFs';
@@ -50,11 +50,20 @@ type ViewDependencies = {
   openPreview: (dir: FileSystemDirectoryHandle, files: FileSystemFileHandle[]) => void;
 };
 type RenderOptions = { forceRefresh?: boolean; useConfig?: boolean };
+type PreparedView = {
+  directory: FileSystemDirectoryHandle;
+  root: FileSystemDirectoryHandle | null;
+  path: string;
+  mode: ListMode;
+  entries: GalleryEntry[];
+  sorted: Partial<Record<SortOrder, GalleryEntry[]>>;
+};
 
 // One pipeline applies search, filtering and ordering to all three data sources.
 export function createDirectoryViews(deps: ViewDependencies) {
   const scans = createRecursiveImageCache();
   let generation = 0;
+  let prepared: PreparedView | null = null;
   const get = deps.store.getState;
   const set = deps.store.setState;
   const showStatus = (message: string, type: AppState['status']['type']) =>
@@ -84,6 +93,40 @@ export function createDirectoryViews(deps: ViewDependencies) {
     };
   }
 
+  function compareEntries(a: GalleryEntry, b: GalleryEntry, mode: ListMode) {
+    return mode === 'recursive' || mode === 'favorites'
+      ? compareNumericText(pathOf(a).toLowerCase(), pathOf(b).toLowerCase())
+      : compareNumericText(a.item.nameLower, b.item.nameLower);
+  }
+
+  function publish(source: PreparedView) {
+    const settings = get();
+    const order = settings.sortOrder;
+    const sorted = (source.sorted[order] ??= [...source.entries].sort(
+      (a, b) => (order === 'asc' ? 1 : -1) * compareEntries(a, b, source.mode),
+    ));
+    let entries = selectGalleryEntries(sorted, settings);
+    const displayImages: FileSystemFileHandle[] = [];
+    entries = entries.map((value) => {
+      if (value.item.type !== 'image') return value;
+      const displayIndex = displayImages.length;
+      displayImages.push(value.item.handle);
+      return { ...value, item: { ...value.item, displayIndex } };
+    });
+    const empty =
+      source.mode === 'recursive'
+        ? '表示できる画像がありません。'
+        : source.mode === 'favorites'
+          ? 'お気に入りに登録された表示可能なファイルがありません。'
+          : '表示できるアイテムがありません。';
+    set({
+      entries,
+      displayImages,
+      scanPreview: null,
+      status: entries.length ? { message: '', type: 'clear' } : { message: empty, type: 'info' },
+    });
+  }
+
   async function render(
     dir: FileSystemDirectoryHandle,
     { forceRefresh = false, useConfig = true }: RenderOptions = {},
@@ -92,7 +135,23 @@ export function createDirectoryViews(deps: ViewDependencies) {
     const mode = get().listMode;
     const root = deps.getRoot();
     const segments = deps.getPathSegments();
+    const path = segments.join('/');
     const current = () => token === generation;
+    // Refilter only the active source. Navigation and explicit refresh still load
+    // settings/data normally, while searches publish once without emptying cards.
+    if (
+      !forceRefresh &&
+      !useConfig &&
+      prepared?.directory === dir &&
+      prepared.root === root &&
+      prepared.path === path &&
+      prepared.mode === mode
+    ) {
+      publish(prepared);
+      return;
+    }
+    prepared = null;
+    let reusable = true;
     let previewActive = true;
     let previewStarted = false;
     let previewUrl: string | null = null;
@@ -134,7 +193,13 @@ export function createDirectoryViews(deps: ViewDependencies) {
       let entries: GalleryEntry[];
       if (mode === 'recursive') {
         const [images, config] = await Promise.all([
-          scans.get(dir, segments.join('/'), { shouldContinue: current, onFirstImages: preview }),
+          scans.get(dir, path, {
+            shouldContinue: current,
+            onFirstImages: preview,
+            onReadError: () => {
+              reusable = false;
+            },
+          }),
           readRootConfig(root),
         ]);
         if (!current()) return;
@@ -198,35 +263,22 @@ export function createDirectoryViews(deps: ViewDependencies) {
           (a, b) => (order === 'asc' ? 1 : -1) * compareNumericText(a.nameLower, b.nameLower),
         ));
         const annotate = annotator(node);
-        entries = sorted.map((item) => entry(annotate(item), dir, segments.join('/')));
+        entries = sorted.map((item) => entry(annotate(item), dir, path));
       }
       if (mode === 'recursive' || mode === 'favorites') {
         const direction = get().sortOrder === 'asc' ? 1 : -1;
-        entries.sort(
-          (a, b) =>
-            direction * compareNumericText(pathOf(a).toLowerCase(), pathOf(b).toLowerCase()),
-        );
+        entries.sort((a, b) => direction * compareEntries(a, b, mode));
       }
-      entries = selectGalleryEntries(entries, get());
-      const displayImages: FileSystemFileHandle[] = [];
-      entries = entries.map((value) => {
-        if (value.item.type !== 'image') return value;
-        const displayIndex = displayImages.length;
-        displayImages.push(value.item.handle);
-        return { ...value, item: { ...value.item, displayIndex } };
-      });
-      const empty =
-        mode === 'recursive'
-          ? '表示できる画像がありません。'
-          : mode === 'favorites'
-            ? 'お気に入りに登録された表示可能なファイルがありません。'
-            : '表示できるアイテムがありません。';
-      set({
+      const source: PreparedView = {
+        directory: dir,
+        root,
+        path,
+        mode,
         entries,
-        displayImages,
-        scanPreview: null,
-        status: entries.length ? { message: '', type: 'clear' } : { message: empty, type: 'info' },
-      });
+        sorted: { [get().sortOrder]: entries },
+      };
+      if (reusable) prepared = source;
+      publish(source);
     } catch (error) {
       if (!current()) return;
       console.error('一覧の読み込みに失敗:', error);
@@ -247,7 +299,16 @@ export function createDirectoryViews(deps: ViewDependencies) {
     get generation() {
       return generation;
     },
-    cancel: () => ++generation,
-    clearScanCache: () => scans.clear(),
+    invalidateEntries: () => {
+      prepared = null;
+    },
+    cancel: () => {
+      prepared = null;
+      return ++generation;
+    },
+    clearScanCache: () => {
+      prepared = null;
+      scans.clear();
+    },
   };
 }

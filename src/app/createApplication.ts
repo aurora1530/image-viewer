@@ -385,13 +385,28 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
     async toggleEntry(entry: GalleryEntry, kind: 'favorite' | 'hidden') {
       const token = directoryViews.generation;
       const root = getRootDirHandle();
-      const next = await (kind === 'favorite' ? toggleFavoriteEntry : toggleHiddenEntry)(
-        root,
-        normalizeDirPathSegments(entry.parentPath),
-        { type: entry.item.type === 'directory' ? 'directory' : 'file', path: entry.item.name },
-        (message) => showStatus(message, 'error'),
-      );
-      if (token !== directoryViews.generation || root !== getRootDirHandle()) return;
+      const directory = get().directories.at(-1);
+      const mode = get().listMode;
+      let next: boolean;
+      try {
+        next = await (kind === 'favorite' ? toggleFavoriteEntry : toggleHiddenEntry)(
+          root,
+          normalizeDirPathSegments(entry.parentPath),
+          { type: entry.item.type === 'directory' ? 'directory' : 'file', path: entry.item.name },
+          (message) => showStatus(message, 'error'),
+        );
+      } finally {
+        // The in-memory config may have changed even if its disk write failed.
+        if (root === getRootDirHandle()) directoryViews.invalidateEntries();
+      }
+      if (root !== getRootDirHandle()) return;
+      if (token !== directoryViews.generation) {
+        // A search may have reused the old metadata while the save was pending.
+        // Refresh its latest conditions without touching a different destination.
+        if (directory === get().directories.at(-1) && mode === get().listMode)
+          scheduleProcessForCurrentDir(0, true);
+        return;
+      }
       if (kind === 'hidden') {
         set({
           entries: get().entries.filter((e) => e.key !== entry.key),

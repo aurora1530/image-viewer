@@ -834,8 +834,20 @@ test('filters, searches and opens the displayed image', async ({ page }) => {
   expect(styleAfter.optionColor).toBe(layoutBefore.color);
   expect(styleAfter.optionBg).toBe(layoutBefore.bg);
   await expect(page.locator('#item-list .media-card')).toHaveCount(3);
+  await expect(page.locator('#item-list img[alt="10.png"]')).toHaveJSProperty('naturalWidth', 1);
+  await page.locator('#item-list img[alt="10.png"]').evaluate((image) => {
+    (window as unknown as { __retainedSearchImage: Element }).__retainedSearchImage = image;
+  });
   await page.locator('#search-input').fill('10');
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);
+  expect(
+    await page
+      .locator('#item-list img[alt="10.png"]')
+      .evaluate(
+        (image) =>
+          image === (window as unknown as { __retainedSearchImage: Element }).__retainedSearchImage,
+      ),
+  ).toBe(true);
   await page.locator('#item-list .media-card').click();
   await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
   await expect(page.locator('#page-counter')).toContainText('/ 1');
