@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { createElement, StrictMode } from 'react';
 import { flushSync } from 'react-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -78,7 +79,7 @@ describe('React gallery', () => {
   it('clears the previous source and ready flag immediately when a handle changes under the same key', async () => {
     const initial = entry();
     vi.mocked(thumbnailCache.get).mockResolvedValueOnce({ url: 'blob:first', objectUrl: true });
-    let complete!: (source: { url: string; objectUrl: boolean }) => void;
+    let complete: ((source: { url: string; objectUrl: boolean }) => void) | undefined;
     vi.mocked(thumbnailCache.get).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -90,7 +91,7 @@ describe('React gallery', () => {
     const image = await vi.waitFor(() => {
       const image = document.querySelector('img');
       expect(image?.getAttribute('src')).toBe('blob:first');
-      return image!;
+      return requireValue(image);
     });
     flushSync(() => image.dispatchEvent(new Event('load')));
     expect(document.querySelector('.item-card')?.getAttribute('data-thumb-ready')).toBe('true');
@@ -98,14 +99,14 @@ describe('React gallery', () => {
     expect(document.querySelector('img')).toBeNull();
     expect(document.querySelector('.item-card')?.hasAttribute('data-thumb-ready')).toBe(false);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:first');
-    complete({ url: 'blob:second', objectUrl: true });
+    requireValue(complete)({ url: 'blob:second', objectUrl: true });
     await vi.waitFor(() =>
       expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:second'),
     );
   });
 
   it('discards a late result from a replaced handle while retaining the newer thumbnail', async () => {
-    let completeOld!: (source: { url: string; objectUrl: boolean }) => void;
+    let completeOld: ((source: { url: string; objectUrl: boolean }) => void) | undefined;
     vi.mocked(thumbnailCache.get).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -120,7 +121,7 @@ describe('React gallery', () => {
     await vi.waitFor(() =>
       expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:new'),
     );
-    completeOld({ url: 'blob:old', objectUrl: true });
+    requireValue(completeOld)({ url: 'blob:old', objectUrl: true });
     await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:old'));
     expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:new');
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:new');
@@ -131,7 +132,7 @@ describe('React gallery', () => {
     const item = entry();
     appStore.setState({ entries: [item] });
     render(createElement(Gallery));
-    (document.querySelector('.media-card') as HTMLElement).click();
+    requireValue(document.querySelector<HTMLButtonElement>('.media-card')).click();
     expect(open).toHaveBeenCalledWith(item);
     expect(appStore.getState().displayImages).toEqual([second, first]);
   });
@@ -144,7 +145,7 @@ describe('React gallery', () => {
     const item = entry(first, 'chapter');
     appStore.setState({ entries: [item] });
     render(createElement(Gallery));
-    (document.querySelector('.favorite-btn') as HTMLButtonElement).click();
+    requireValue(document.querySelector<HTMLButtonElement>('.favorite-btn')).click();
     await vi.waitFor(() =>
       expect(document.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true'),
     );
@@ -158,7 +159,7 @@ describe('React gallery', () => {
     });
     appStore.setState({ entries: [entry(first, 'chapter')] });
     render(createElement(Gallery));
-    (document.querySelector('.hidden-toggle-btn') as HTMLButtonElement).click();
+    requireValue(document.querySelector<HTMLButtonElement>('.hidden-toggle-btn')).click();
     await vi.waitFor(() => expect(document.querySelector('.media-card')).toBeNull());
     expect(appStore.getState().displayImages).toEqual([second]);
   });
@@ -188,7 +189,7 @@ describe('React gallery', () => {
     const firstImage = await vi.waitFor(() => {
       const image = document.querySelector('img');
       expect(image).not.toBeNull();
-      return image!;
+      return requireValue(image);
     });
     firstImage.dispatchEvent(new Event('error'));
     await vi.waitFor(() => {
@@ -209,7 +210,7 @@ describe('React gallery', () => {
     const image = await vi.waitFor(() => {
       const image = document.querySelector('img');
       expect(image).not.toBeNull();
-      return image!;
+      return requireValue(image);
     });
     const card = image.closest('.item-card');
     flushSync(() =>

@@ -1,3 +1,4 @@
+import type { DirectoryHandle } from '../shared/fileSystem';
 import { collectImagesRecursively } from './directoryTraversal';
 import type { RecursiveImageItem } from './directoryTraversal';
 
@@ -9,7 +10,7 @@ type CollectionOptions = {
 
 export function createRecursiveImageCache() {
   let entries = new WeakMap<
-    FileSystemDirectoryHandle,
+    DirectoryHandle,
     {
       basePath: string;
       items: RecursiveImageItem[];
@@ -17,7 +18,7 @@ export function createRecursiveImageCache() {
   >();
 
   async function get(
-    directory: FileSystemDirectoryHandle,
+    directory: DirectoryHandle,
     basePath = '',
     { shouldContinue = () => true, onFirstImages, onReadError }: CollectionOptions = {},
   ): Promise<RecursiveImageItem[]> {

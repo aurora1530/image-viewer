@@ -1,3 +1,4 @@
+import { isRecord } from '../shared/validation';
 import { appVersion, isNewerVersion, type UpdateState } from '../shared/release';
 
 export function createReleaseClient() {
@@ -27,8 +28,9 @@ export function createReleaseClient() {
             signal: AbortSignal.timeout(15_000),
           });
           if (!response.ok) throw new Error('Version check failed');
-          const data = (await response.json()) as { version?: unknown };
-          if (typeof data.version !== 'string') throw new Error('Invalid version');
+          const data: unknown = await response.json();
+          if (!isRecord(data) || typeof data.version !== 'string')
+            throw new Error('Invalid version');
           if (token === generation)
             publish({
               status: isNewerVersion(data.version, appVersion) ? 'available' : 'current',

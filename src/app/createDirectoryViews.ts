@@ -1,3 +1,4 @@
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import type { AppStore } from './store';
 import type { AppState, GalleryEntry, ListMode } from './store';
 import { CONFIG } from '../shared/model';
@@ -44,15 +45,15 @@ export function selectGalleryEntries(
 
 type ViewDependencies = {
   store: AppStore;
-  getRoot: () => FileSystemDirectoryHandle | null;
+  getRoot: () => DirectoryHandle | null;
   getPathSegments: () => string[];
   applySettings: (config: ConfigNode | null) => void;
-  openPreview: (dir: FileSystemDirectoryHandle, files: FileSystemFileHandle[]) => void;
+  openPreview: (dir: DirectoryHandle, files: FileHandle[]) => void;
 };
 type RenderOptions = { forceRefresh?: boolean; useConfig?: boolean };
 type PreparedView = {
-  directory: FileSystemDirectoryHandle;
-  root: FileSystemDirectoryHandle | null;
+  directory: DirectoryHandle;
+  root: DirectoryHandle | null;
   path: string;
   mode: ListMode;
   entries: GalleryEntry[];
@@ -70,7 +71,7 @@ export function createDirectoryViews(deps: ViewDependencies) {
     set({ status: { message, type }, scanPreview: null });
   const entry = (
     item: DirectoryCacheItem,
-    parent: FileSystemDirectoryHandle | null,
+    parent: DirectoryHandle | null,
     parentPath: string,
   ): GalleryEntry => ({
     item,
@@ -106,7 +107,7 @@ export function createDirectoryViews(deps: ViewDependencies) {
       (a, b) => (order === 'asc' ? 1 : -1) * compareEntries(a, b, source.mode),
     ));
     let entries = selectGalleryEntries(sorted, settings);
-    const displayImages: FileSystemFileHandle[] = [];
+    const displayImages: FileHandle[] = [];
     entries = entries.map((value) => {
       if (value.item.type !== 'image') return value;
       const displayIndex = displayImages.length;
@@ -128,7 +129,7 @@ export function createDirectoryViews(deps: ViewDependencies) {
   }
 
   async function render(
-    dir: FileSystemDirectoryHandle,
+    dir: DirectoryHandle,
     { forceRefresh = false, useConfig = true }: RenderOptions = {},
   ) {
     const token = ++generation;
@@ -163,9 +164,9 @@ export function createDirectoryViews(deps: ViewDependencies) {
 
     const preview = (
       images: {
-        handle: FileSystemFileHandle;
+        handle: FileHandle;
         name: string;
-        parentHandle: FileSystemDirectoryHandle;
+        parentHandle: DirectoryHandle;
       }[],
     ) => {
       if (previewStarted || !current() || !images.length) return;

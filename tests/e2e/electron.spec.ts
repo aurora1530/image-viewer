@@ -1,5 +1,7 @@
+import { installBrowserGuards } from '../helpers/browserGuards';
+import { requireValue } from '../../src/shared/validation';
+import { parseConfig, parseRecord } from '../helpers/json';
 import { samplePdf } from '../helpers/pdf';
-import type { ConfigNode } from '../../src/services/storage';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,9 +16,9 @@ test('flushes pending config changes before acknowledging a desktop close reques
   await mkdir(child);
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
-    const env = Object.fromEntries(
-      Object.entries(process.env).filter(([, value]) => value !== undefined),
-    ) as Record<string, string>;
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env))
+      if (value !== undefined) env[key] = value;
     env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:5173';
     delete env.ELECTRON_RUN_AS_NODE;
     app = await electron.launch({
@@ -25,22 +27,30 @@ test('flushes pending config changes before acknowledging a desktop close reques
       env,
     });
     const page = await app.firstWindow();
+    await installBrowserGuards(page);
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('#home-view')).toBeVisible();
     await expect(page.locator('#open-directory-externally-btn')).toBeHidden();
     await expect(page.locator('.version-badge a')).toHaveText(/^v\d+\.\d+\.\d+$/);
-    expect(await page.evaluate(() => window.desktopApi!.getUpdateState())).toEqual({
+    expect(
+      await page.evaluate(() => window.__requireTestValue(window.desktopApi).getUpdateState()),
+    ).toEqual({
       status: 'manual',
       version: null,
     });
-    expect(await page.evaluate(() => window.desktopApi!.installUpdate())).toBe(false);
-    await page.evaluate((root) => window.desktopApi!.openRoot(root), images);
+    expect(
+      await page.evaluate(() => window.__requireTestValue(window.desktopApi).installUpdate()),
+    ).toBe(false);
+    await page.evaluate(
+      (root) => window.__requireTestValue(window.desktopApi).openRoot(root),
+      images,
+    );
     await page.evaluate(() => window.location.reload());
     await expect(page.locator('#recent-roots .library-card')).toHaveCount(1);
     await page.locator('#recent-roots .library-card').click();
     await expect(page.locator('#current-dir-name')).toHaveText('images');
     await app.evaluate(({ shell }) => {
-      const state = globalThis as typeof globalThis & { openedDirectories: string[] };
+      const state = globalThis;
       state.openedDirectories = [];
       shell.openPath = (target) => {
         state.openedDirectories.push(target);
@@ -49,23 +59,13 @@ test('flushes pending config changes before acknowledging a desktop close reques
     });
     await page.locator('#open-directory-externally-btn').click();
     await expect
-      .poll(() =>
-        app!.evaluate(
-          () =>
-            (globalThis as typeof globalThis & { openedDirectories: string[] }).openedDirectories,
-        ),
-      )
+      .poll(() => requireValue(app).evaluate(() => globalThis.openedDirectories))
       .toEqual([images]);
     await page.getByText('子フォルダー', { exact: true }).first().click();
     await expect(page.locator('#current-dir-name')).toHaveText('子フォルダー');
     await page.locator('#open-directory-externally-btn').click();
     await expect
-      .poll(() =>
-        app!.evaluate(
-          () =>
-            (globalThis as typeof globalThis & { openedDirectories: string[] }).openedDirectories,
-        ),
-      )
+      .poll(() => requireValue(app).evaluate(() => globalThis.openedDirectories))
       .toEqual([images, child]);
     // Reject files and paths outside the selected root before invoking the OS.
     await writeFile(path.join(images, 'plain.txt'), 'test');
@@ -73,7 +73,7 @@ test('flushes pending config changes before acknowledging a desktop close reques
       expect(
         await page.evaluate(async (target) => {
           try {
-            await window.desktopApi!.openDirectoryExternally(target);
+            await window.__requireTestValue(window.desktopApi).openDirectoryExternally(target);
             return false;
           } catch {
             return true;
@@ -91,7 +91,9 @@ test('flushes pending config changes before acknowledging a desktop close reques
     await page.locator('#up-dir-btn').click();
     await expect(page.locator('#current-dir-name')).toHaveText('images');
     await page.evaluate(() => {
-      document.querySelector<HTMLButtonElement>('#toggle-sort-btn')!.click();
+      window
+        .__requireTestValue(document.querySelector<HTMLButtonElement>('#toggle-sort-btn'))
+        .click();
     });
     const saved = await app.evaluate(
       ({ BrowserWindow, ipcMain }) =>
@@ -101,9 +103,7 @@ test('flushes pending config changes before acknowledging a desktop close reques
         }),
     );
     expect(saved).toBe(true);
-    const config = JSON.parse(
-      await readFile(path.join(images, '.image-viewer.json'), 'utf8'),
-    ) as ConfigNode;
+    const config = parseConfig(await readFile(path.join(images, '.image-viewer.json'), 'utf8'));
     expect(config.version).toBe(3);
     expect(config.settings.sortOrder).toBe('desc');
   } finally {
@@ -127,9 +127,9 @@ for (const bundled of [false, true]) {
     await writeFile(path.join(sibling, 'private.png'), png);
     let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
     try {
-      const env = Object.fromEntries(
-        Object.entries(process.env).filter(([, value]) => value !== undefined),
-      ) as Record<string, string>;
+      const env: Record<string, string> = {};
+      for (const [key, value] of Object.entries(process.env))
+        if (value !== undefined) env[key] = value;
       env.VITE_DEV_SERVER_URL = bundled
         ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
         : 'http://127.0.0.1:5173';
@@ -146,18 +146,22 @@ for (const bundled of [false, true]) {
         env,
       });
       const page = await app.firstWindow();
+      await installBrowserGuards(page);
       await page.waitForLoadState('domcontentloaded');
       await page.addInitScript(() => {
-        const state = window as unknown as { __thumbnailWorkerReplies: number };
+        const state = window;
         state.__thumbnailWorkerReplies = 0;
         const NativeFetch = window.fetch;
-        const reads = window as unknown as { __originalReads: Record<string, number> };
+        const reads = window;
         reads.__originalReads = {};
         window.fetch = (...args: Parameters<typeof fetch>) => {
           const input = args[0];
           const url = input instanceof Request ? input.url : String(input);
           if (url.startsWith('local-media:')) {
-            const encoded = url.split('/').pop()!.replace(/-/g, '+').replace(/_/g, '/');
+            const encoded = window
+              .__requireTestValue(url.split('/').pop())
+              .replace(/-/g, '+')
+              .replace(/_/g, '/');
             const file = new TextDecoder().decode(
               Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)),
             );
@@ -192,10 +196,7 @@ for (const bundled of [false, true]) {
       await expect(settings.getByRole('status', { name: '設定の保存状況' })).toHaveText(
         '保存しました。',
       );
-      const saved = JSON.parse(await readFile(path.join(profile, 'settings.json'), 'utf8')) as {
-        thumbnailDiskMiB: number;
-        directoryThumbnailNames: string[];
-      };
+      const saved = parseRecord(await readFile(path.join(profile, 'settings.json'), 'utf8'));
       expect(saved.thumbnailDiskMiB).toBe(64);
       expect(saved.directoryThumbnailNames).toEqual(['cover', 'icon']);
       await page.reload();
@@ -203,7 +204,10 @@ for (const bundled of [false, true]) {
       await expect(budget).toHaveValue('64');
       await expect(names).toHaveValue('cover\nicon');
       await settings.getByRole('button', { name: '閉じる', exact: true }).click();
-      await page.evaluate((root) => window.desktopApi!.openRoot(root), images);
+      await page.evaluate(
+        (root) => window.__requireTestValue(window.desktopApi).openRoot(root),
+        images,
+      );
       await page.reload();
       await expect(page.locator('#recent-roots .library-card')).toHaveCount(1);
       await page.locator('#recent-roots .library-card').click();
@@ -246,24 +250,24 @@ for (const bundled of [false, true]) {
       expect(
         await page.evaluate(async () => {
           try {
-            await window.desktopApi!.confirmListMode('invalid' as 'recursive');
+            const api = window.desktopApi;
+            if (!api) throw new Error('Missing desktop API');
+            // Exercise preload/main validation with deliberately invalid input. Recreating raw IPC would bypass the bridge being tested.
+            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-unsafe-type-assertion -- Negative boundary test: the public API correctly restricts valid modes, so sending malformed input requires a local exception.
+            const invalidMode = 'invalid' as 'recursive';
+            await api.confirmListMode(invalidMode);
             return false;
           } catch {
             return true;
           }
         }),
       ).toBe(true);
-      expect(
-        await page.evaluate(
-          () =>
-            (window as unknown as { __thumbnailWorkerReplies: number }).__thumbnailWorkerReplies,
-        ),
-      ).toBeGreaterThan(0);
+      expect(await page.evaluate(() => window.__thumbnailWorkerReplies)).toBeGreaterThan(0);
       await expect
         .poll(() =>
           page.evaluate(
             async (file) => {
-              const stored = await window.desktopApi!.readThumbnail(file);
+              const stored = await window.__requireTestValue(window.desktopApi).readThumbnail(file);
               return stored.bytes?.byteLength || 0;
             },
             path.join(images, 'sample.png'),
@@ -277,7 +281,7 @@ for (const bundled of [false, true]) {
       await page.keyboard.press('Alt+ArrowLeft');
       await expect(page.locator('#home-view')).toBeVisible();
       const mouseCommand = async (command: string) => {
-        await app!.evaluate(({ BrowserWindow }, command) => {
+        await requireValue(app).evaluate(({ BrowserWindow }, command) => {
           BrowserWindow.getAllWindows()[0].emit('app-command', {}, command);
         }, command);
       };
@@ -321,7 +325,7 @@ for (const bundled of [false, true]) {
 
       const result = await page.evaluate(
         async ({ allowed, forbidden, escaped }) => {
-          const api = window.desktopApi!;
+          const api = window.__requireTestValue(window.desktopApi);
           const allowedResult = await api.readFile(allowed);
           let forbiddenError = '';
           try {
@@ -382,7 +386,7 @@ for (const bundled of [false, true]) {
         canvas.width = 3000;
         canvas.height = 1500;
         const blob = await new Promise<Blob>((resolve) =>
-          canvas.toBlob((value) => resolve(value!), 'image/jpeg'),
+          canvas.toBlob((value) => resolve(window.__requireTestValue(value)), 'image/jpeg'),
         );
         return Array.from(new Uint8Array(await blob.arrayBuffer()));
       });
@@ -396,19 +400,12 @@ for (const bundled of [false, true]) {
       await expect
         .poll(() =>
           page.evaluate(async (file) => {
-            const stored = await window.desktopApi!.readThumbnail(file);
+            const stored = await window.__requireTestValue(window.desktopApi).readThumbnail(file);
             return stored.bytes ? Array.from(stored.bytes.slice(0, 2)) : [];
           }, jpegPath),
         )
         .toEqual([0xff, 0xd8]);
-      const jpegReads = () =>
-        page.evaluate(
-          (file) =>
-            (window as unknown as { __originalReads: Record<string, number> }).__originalReads[
-              file
-            ],
-          jpegPath,
-        );
+      const jpegReads = () => page.evaluate((file) => window.__originalReads[file], jpegPath);
       expect(await jpegReads()).toBe(1);
       const thumbnailUrl = await page
         .locator('#item-list img[alt="large.jpg"]')
@@ -421,10 +418,10 @@ for (const bundled of [false, true]) {
       await page.keyboard.press('Escape');
       await expect(page.locator('#item-list img[alt="large.jpg"]')).toHaveAttribute(
         'src',
-        thumbnailUrl!,
+        requireValue(thumbnailUrl),
       );
       await page.locator('#item-list img[alt="large.jpg"]').click();
-      await expect(page.locator('#right-page')).toHaveAttribute('src', fullUrl!);
+      await expect(page.locator('#right-page')).toHaveAttribute('src', requireValue(fullUrl));
       expect(await jpegReads()).toBe(1);
       await page.keyboard.press('Escape');
       await page.reload();
@@ -437,29 +434,23 @@ for (const bundled of [false, true]) {
         'naturalWidth',
         1,
       );
-      expect(
-        await page.evaluate(
-          () =>
-            (window as unknown as { __thumbnailWorkerReplies: number }).__thumbnailWorkerReplies,
-        ),
-      ).toBe(0);
+      expect(await page.evaluate(() => window.__thumbnailWorkerReplies)).toBe(0);
 
       if (!bundled) {
         const orientation = await page.evaluate(async () => {
-          const modulePath = '/src/services/thumbnailEncoder.ts';
-          const { encodeThumbnail } = (await import(
-            /* @vite-ignore */ modulePath
-          )) as typeof import('../../src/services/thumbnailEncoder');
+          const { encodeThumbnail } = await import(
+            /* @vite-ignore */ '../../src/services/thumbnailEncoder.ts'
+          );
           const canvas = document.createElement('canvas');
           canvas.width = 3200;
           canvas.height = 1600;
-          const context = canvas.getContext('2d')!;
+          const context = window.__requireTestValue(canvas.getContext('2d'));
           context.fillStyle = 'red';
           context.fillRect(0, 0, 1600, 1600);
           context.fillStyle = 'blue';
           context.fillRect(1600, 0, 1600, 1600);
           const jpeg = await new Promise<Blob>((resolve) =>
-            canvas.toBlob((value) => resolve(value!), 'image/jpeg'),
+            canvas.toBlob((value) => resolve(window.__requireTestValue(value)), 'image/jpeg'),
           );
           const exif = new Uint8Array([
             0xff, 0xe1, 0, 34, 69, 120, 105, 102, 0, 0, 73, 73, 42, 0, 8, 0, 0, 0, 1, 0, 18, 1, 3,
@@ -471,7 +462,7 @@ for (const bundled of [false, true]) {
           );
           const image = await createImageBitmap(result);
           const preview = new OffscreenCanvas(image.width, image.height);
-          const pixels = preview.getContext('2d')!;
+          const pixels = window.__requireTestValue(preview.getContext('2d'));
           pixels.drawImage(image, 0, 0);
           const color = (y: number) =>
             Array.from(pixels.getImageData(image.width / 2, y, 1, 1).data).slice(0, 3);
@@ -493,7 +484,7 @@ for (const bundled of [false, true]) {
         const canvas = document.createElement('canvas');
         canvas.width = 320;
         canvas.height = 180;
-        const context = canvas.getContext('2d')!;
+        const context = window.__requireTestValue(canvas.getContext('2d'));
         const stream = canvas.captureStream(10);
         const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
         const chunks: Blob[] = [];
@@ -520,21 +511,46 @@ for (const bundled of [false, true]) {
       const video = page.locator('#viewer-video');
       await expect(video).toBeVisible();
       await expect
-        .poll(() => video.evaluate((element) => (element as HTMLVideoElement).readyState))
+        .poll(() =>
+          video.evaluate(
+            (element) =>
+              ((value) => {
+                if (!(value instanceof HTMLVideoElement)) throw new Error('Expected video');
+                return value;
+              })(element).readyState,
+          ),
+        )
         .toBeGreaterThanOrEqual(2);
       await expect(video).toHaveJSProperty('paused', false);
       for (const time of [2, 0.5]) {
         await video.evaluate((element, target) => {
-          const media = element as HTMLVideoElement;
+          if (!(element instanceof HTMLVideoElement)) throw new Error('Expected video');
+          const media = element;
           media.pause();
           media.currentTime = target;
         }, time);
         await expect
-          .poll(() => video.evaluate((element) => (element as HTMLVideoElement).seeking))
+          .poll(() =>
+            video.evaluate(
+              (element) =>
+                ((value) => {
+                  if (!(value instanceof HTMLVideoElement)) throw new Error('Expected video');
+                  return value;
+                })(element).seeking,
+            ),
+          )
           .toBe(false);
         await expect(video).toHaveJSProperty('currentTime', time);
         await expect
-          .poll(() => video.evaluate((element) => (element as HTMLVideoElement).readyState))
+          .poll(() =>
+            video.evaluate(
+              (element) =>
+                ((value) => {
+                  if (!(value instanceof HTMLVideoElement)) throw new Error('Expected video');
+                  return value;
+                })(element).readyState,
+            ),
+          )
           .toBeGreaterThanOrEqual(2);
       }
       await page.keyboard.press('Alt+ArrowLeft');
@@ -543,9 +559,22 @@ for (const bundled of [false, true]) {
       await expect(video).toBeVisible();
       await expect(video).toHaveJSProperty('currentTime', 0.5);
       await expect(video).toHaveJSProperty('paused', true);
-      await video.evaluate((element) => (element as HTMLVideoElement).play());
+      await video.evaluate((element) =>
+        ((value) => {
+          if (!(value instanceof HTMLVideoElement)) throw new Error('Expected video');
+          return value;
+        })(element).play(),
+      );
       await expect
-        .poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime))
+        .poll(() =>
+          video.evaluate(
+            (element) =>
+              ((value) => {
+                if (!(value instanceof HTMLVideoElement)) throw new Error('Expected video');
+                return value;
+              })(element).currentTime,
+          ),
+        )
         .toBeGreaterThan(0.5);
       await page.keyboard.press('Escape');
       await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
@@ -564,9 +593,9 @@ for (const bundled of [false, true]) {
     await writeFile(path.join(books, 'book.pdf'), samplePdf());
     let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
     try {
-      const env = Object.fromEntries(
-        Object.entries(process.env).filter(([, value]) => value !== undefined),
-      ) as Record<string, string>;
+      const env: Record<string, string> = {};
+      for (const [key, value] of Object.entries(process.env))
+        if (value !== undefined) env[key] = value;
       env.VITE_DEV_SERVER_URL = bundled
         ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
         : 'http://127.0.0.1:5173';
@@ -583,8 +612,12 @@ for (const bundled of [false, true]) {
         env,
       });
       const page = await app.firstWindow();
+      await installBrowserGuards(page);
       await expect(page.locator('#home-view')).toBeVisible();
-      await page.evaluate((root) => window.desktopApi!.openRoot(root), books);
+      await page.evaluate(
+        (root) => window.__requireTestValue(window.desktopApi).openRoot(root),
+        books,
+      );
       await page.reload();
       await page.locator('#recent-roots .library-card').click();
       const card = page.locator('.media-card[title="book.pdf"]');
@@ -631,9 +664,9 @@ for (const bundled of [false, true]) {
     );
     let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
     try {
-      const env = Object.fromEntries(
-        Object.entries(process.env).filter(([, value]) => value !== undefined),
-      ) as Record<string, string>;
+      const env: Record<string, string> = {};
+      for (const [key, value] of Object.entries(process.env))
+        if (value !== undefined) env[key] = value;
       env.VITE_DEV_SERVER_URL = bundled
         ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
         : 'http://127.0.0.1:5173';
@@ -650,8 +683,12 @@ for (const bundled of [false, true]) {
         env,
       });
       const page = await app.firstWindow();
+      await installBrowserGuards(page);
       await expect(page.locator('#home-view')).toBeVisible();
-      await page.evaluate((root) => window.desktopApi!.openRoot(root), images);
+      await page.evaluate(
+        (root) => window.__requireTestValue(window.desktopApi).openRoot(root),
+        images,
+      );
       await page.reload();
       await page.locator('#recent-roots .library-card').click();
       const cover = page.locator('#item-list .directory-card img');
@@ -670,52 +707,65 @@ for (const bundled of [false, true]) {
       expect(
         await page.evaluate(
           (folder) =>
-            window.desktopApi!.findFirstFile(folder, ['missing.jpg', '__0.png', 'ordinary.png']),
+            window
+              .__requireTestValue(window.desktopApi)
+              .findFirstFile(folder, ['missing.jpg', '__0.png', 'ordinary.png']),
           album,
         ),
       ).toBe('__0.png');
       expect(
         await page.evaluate(
-          (folder) => window.desktopApi!.findFirstFile(folder, ['ordinary.png', '__0.png']),
+          (folder) =>
+            window
+              .__requireTestValue(window.desktopApi)
+              .findFirstFile(folder, ['ordinary.png', '__0.png']),
           album,
         ),
       ).toBe('ordinary.png');
       await expect(
         page.evaluate(
-          (folder) => window.desktopApi!.findFirstFile(folder, ['../private.png']),
+          (folder) =>
+            window.__requireTestValue(window.desktopApi).findFirstFile(folder, ['../private.png']),
           album,
         ),
       ).rejects.toThrow('不正な候補');
       await expect(
         page.evaluate(
-          (folder) => window.desktopApi!.findFirstFile(folder, ['ordinary.png']),
+          (folder) =>
+            window.__requireTestValue(window.desktopApi).findFirstFile(folder, ['ordinary.png']),
           profile,
         ),
       ).rejects.toThrow('許可されていません');
       await utimes(album, fixedTime, fixedTime);
       expect((await stat(album)).mtimeMs).toBe(mtimeMs);
       expect(
-        await page.evaluate((folder) => window.desktopApi!.listDirectory(folder), album),
+        await page.evaluate(
+          (folder) => window.__requireTestValue(window.desktopApi).listDirectory(folder),
+          album,
+        ),
       ).toEqual(expect.arrayContaining([{ name: '__0.png', kind: 'file' }]));
       await page.locator('#reload-btn').click();
       await expect(cover).toHaveJSProperty('naturalWidth', 2);
       await expect
         .poll(async () => {
-          const config = JSON.parse(
+          const config = parseConfig(
             await readFile(path.join(images, '.image-viewer.json'), 'utf8'),
-          ) as ConfigNode;
+          );
           return config.directories.album?.directoryThumbnail?.path;
         })
         .toEqual(['__0.png']);
       expect(
-        await page.evaluate((folder) => window.desktopApi!.listDirectory(folder), album),
+        await page.evaluate(
+          (folder) => window.__requireTestValue(window.desktopApi).listDirectory(folder),
+          album,
+        ),
       ).toEqual(expect.arrayContaining([{ name: '__0.png', kind: 'file' }]));
-      const legacyCache = JSON.parse(
+      const legacyCache = parseRecord(
         await readFile(path.join(profile, 'directory-cache.json'), 'utf8'),
-      ) as Record<string, { entries: Array<{ name: string; kind: string }> }>;
-      expect(legacyCache[album.toLowerCase()].entries).toEqual([
-        { name: 'ordinary.png', kind: 'file' },
-      ]);
+      );
+      expect(legacyCache[album.toLowerCase()]).toEqual({
+        entries: [{ name: 'ordinary.png', kind: 'file' }],
+      });
     } finally {
       await app?.close();
       await rm(profile, { recursive: true, force: true });

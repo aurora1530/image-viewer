@@ -1,3 +1,4 @@
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import { CONFIG } from '../shared/model';
 import { state } from './directoryResources';
 import type { DirectoryCacheEntry, DirectoryCacheItem } from '../shared/model';
@@ -6,17 +7,13 @@ import { listDirectoryEntries } from '../platform/nativeFs';
 type CacheEntry = DirectoryCacheEntry;
 type CacheItem = DirectoryCacheItem;
 
-const isDirectoryHandle = (
-  handle: FileSystemDirectoryHandle | FileSystemFileHandle,
-): handle is FileSystemDirectoryHandle => handle.kind === 'directory';
+const isDirectoryHandle = (handle: DirectoryHandle | FileHandle): handle is DirectoryHandle =>
+  handle.kind === 'directory';
 
-const isFileHandle = (
-  handle: FileSystemDirectoryHandle | FileSystemFileHandle,
-): handle is FileSystemFileHandle => handle.kind === 'file';
+const isFileHandle = (handle: DirectoryHandle | FileHandle): handle is FileHandle =>
+  handle.kind === 'file';
 
-export async function buildDirectoryCache(
-  dirHandle: FileSystemDirectoryHandle,
-): Promise<CacheEntry> {
+export async function buildDirectoryCache(dirHandle: DirectoryHandle): Promise<CacheEntry> {
   const items: CacheItem[] = [];
   let imageCount = 0;
   try {
@@ -47,7 +44,7 @@ export async function buildDirectoryCache(
 }
 
 export async function ensureDirectoryCache(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   { forceRefresh = false }: { forceRefresh?: boolean } = {},
 ): Promise<CacheEntry> {
   let entry = state.directoryCache.get(dirHandle);
@@ -58,6 +55,6 @@ export async function ensureDirectoryCache(
   return entry;
 }
 
-export function invalidateDirectoryCache(dirHandle: FileSystemDirectoryHandle): void {
+export function invalidateDirectoryCache(dirHandle: DirectoryHandle): void {
   state.directoryCache.delete(dirHandle);
 }

@@ -38,17 +38,16 @@ export function Gallery({ ref }: { ref?: Ref<GalleryNavigation> }) {
     [entries, virtual],
   );
 
+  const style: CSSProperties & { '--thumbnail-min-width': string; '--thumbnail-gap': string } = {
+    '--thumbnail-min-width': `${size.minWidth}px`,
+    '--thumbnail-gap': `${size.gap}px`,
+  };
   return (
     <div
       id="item-list"
       ref={container}
       className={`grid contact-sheet${size.originalAspect ? ' original-aspect' : ''}${home ? ' hidden' : ''}`}
-      style={
-        {
-          '--thumbnail-min-width': `${size.minWidth}px`,
-          '--thumbnail-gap': `${size.gap}px`,
-        } as CSSProperties
-      }
+      style={style}
     >
       {isVirtual
         ? slots

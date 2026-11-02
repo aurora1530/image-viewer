@@ -1,3 +1,5 @@
+import { requireValue } from '../../src/shared/validation';
+import { createDesktopApi } from '../helpers/desktopApi';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isNewerVersion, appVersion } from '../../src/shared/release';
 import { createReleaseClient } from '../../src/platform/releases';
@@ -11,10 +13,10 @@ afterEach(() => {
 
 describe('release version checks', () => {
   it('keeps a newer desktop event when the initial snapshot arrives late', async () => {
-    let complete!: (state: UpdateState) => void;
-    let notify!: (state: UpdateState) => void;
+    let complete: ((state: UpdateState) => void) | undefined;
+    let notify: ((state: UpdateState) => void) | undefined;
     const detach = vi.fn();
-    window.desktopApi = {
+    window.desktopApi = createDesktopApi({
       getUpdateState: () =>
         new Promise<UpdateState>((resolve) => {
           complete = resolve;
@@ -23,16 +25,16 @@ describe('release version checks', () => {
         notify = callback;
         return detach;
       },
-    } as unknown as Window['desktopApi'];
+    });
     const client = createReleaseClient();
     const stop = client.start();
-    notify({ status: 'ready', version: '2.0.0' });
-    complete({ status: 'idle', version: null });
+    requireValue(notify)({ status: 'ready', version: '2.0.0' });
+    requireValue(complete)({ status: 'idle', version: null });
     await Promise.resolve();
     expect(client.getSnapshot()).toEqual({ status: 'ready', version: '2.0.0' });
     stop();
     expect(detach).toHaveBeenCalledOnce();
-    notify({ status: 'error', version: null });
+    requireValue(notify)({ status: 'error', version: null });
     expect(client.getSnapshot().status).toBe('ready');
   });
   it('compares numeric stable versions and rejects prereleases or invalid values', () => {
@@ -67,7 +69,8 @@ describe('release version checks', () => {
 
   it('ignores a pending result after shutdown and can start again', async () => {
     vi.stubEnv('DEV', false);
-    let complete!: (value: { ok: boolean; json(): Promise<{ version: string }> }) => void;
+    let complete:
+      ((value: { ok: boolean; json(): Promise<{ version: string }> }) => void) | undefined;
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -80,7 +83,7 @@ describe('release version checks', () => {
     const client = createReleaseClient();
     const stop = client.start();
     stop();
-    complete({ ok: true, json: async () => ({ version: '999.0.0' }) });
+    requireValue(complete)({ ok: true, json: async () => ({ version: '999.0.0' }) });
     await Promise.resolve();
     await Promise.resolve();
     expect(client.getSnapshot().status).not.toBe('available');

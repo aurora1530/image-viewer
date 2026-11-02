@@ -1,3 +1,5 @@
+import { requireValue } from '../shared/validation';
+import type { FileHandle } from '../shared/fileSystem';
 import { renderPdfThumbnail } from './pdfDocument';
 import {
   encodeThumbnailInWorker,
@@ -52,10 +54,7 @@ export async function isAnimatedPng(blob: Blob): Promise<boolean> {
   return (await inspectPng(blob)).animated;
 }
 
-async function generate(
-  handle: FileSystemFileHandle,
-  request: ThumbnailRequest,
-): Promise<Blob | null> {
+async function generate(handle: FileHandle, request: ThumbnailRequest): Promise<Blob | null> {
   if (/\.pdf$/i.test(handle.name))
     return renderPdfThumbnail(handle, () => request.shouldContinue?.() !== false);
   let source: Source | null = null;
@@ -82,8 +81,9 @@ async function generate(
     const context = canvas.getContext('2d');
     if (!context) throw new Error('サムネイルを生成できませんでした。');
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const output = canvas;
     return await new Promise<Blob>((resolve, reject) =>
-      canvas!.toBlob(
+      output.toBlob(
         (result) =>
           result ? resolve(result) : reject(new Error('サムネイルの圧縮に失敗しました。')),
         format,
@@ -103,10 +103,10 @@ async function generate(
 export function createThumbnailCache({
   concurrency = THUMBNAIL_CONCURRENCY * 2,
 }: { concurrency?: number } = {}) {
-  let entries = new Map<string | FileSystemFileHandle, Entry>();
+  let entries = new Map<string | FileHandle, Entry>();
   let retainedBytes = 0;
   let maxBytes = 512 * 1024 * 1024;
-  const skipStored = new Set<string | FileSystemFileHandle>();
+  const skipStored = new Set<string | FileHandle>();
   // Disk hits must not wait for unrelated image encoding to finish.
   const reads = createThumbnailQueue(Math.max(4, concurrency));
   const generation = createThumbnailQueue(concurrency);
@@ -114,7 +114,7 @@ export function createThumbnailCache({
 
   function trim() {
     while (retainedBytes > maxBytes) {
-      const key = entries.keys().next().value!;
+      const key = requireValue(entries.keys().next().value);
       retainedBytes -= entries.get(key)?.blob?.size || 0;
       entries.delete(key);
     }
@@ -127,7 +127,7 @@ export function createThumbnailCache({
   }
 
   async function get(
-    handle: FileSystemFileHandle,
+    handle: FileHandle,
     shouldContinue: () => boolean = () => true,
     getPriority: () => number = () => 0,
   ): Promise<Source | null> {
@@ -156,12 +156,11 @@ export function createThumbnailCache({
       entry.promise = (async () => {
         let stored: Awaited<ReturnType<NonNullable<Window['desktopApi']>['readThumbnail']>> | null =
           null;
-        if (handle.nativePath && window.desktopApi) {
+        const nativePath = handle.nativePath;
+        const desktopApi = window.desktopApi;
+        if (nativePath && desktopApi) {
           try {
-            stored = await reads.enqueue(
-              () => window.desktopApi!.readThumbnail(handle.nativePath!),
-              request,
-            );
+            stored = await reads.enqueue(() => desktopApi.readThumbnail(nativePath), request);
           } catch {
             /* 保存領域が使えない場合も表示する */
           }
@@ -224,7 +223,7 @@ export function createThumbnailCache({
         : getOriginalImageSource(handle);
   }
 
-  function invalidate(handle: FileSystemFileHandle) {
+  function invalidate(handle: FileHandle) {
     const key = handle.nativePath || handle;
     const entry = entries.get(key);
     if (entry) entry.invalid = true;
@@ -252,7 +251,7 @@ export function createThumbnailCache({
       generation.setPaused(value);
       setThumbnailWorkersPaused(value);
     },
-    peek(handle: FileSystemFileHandle): Source | null {
+    peek(handle: FileHandle): Source | null {
       const blob = entries.get(handle.nativePath || handle)?.blob;
       return blob ? { url: URL.createObjectURL(blob), objectUrl: true } : null;
     },

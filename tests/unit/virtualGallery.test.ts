@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { describe, expect, it, vi } from 'vitest';
 import { createVirtualGallery } from '../../src/features/gallery/virtualGallery';
 
@@ -12,7 +13,7 @@ function harness(commitCards: (container: HTMLElement) => void = () => {}) {
   });
   window.scrollTo(0, 0);
   vi.spyOn(container, 'getBoundingClientRect').mockImplementation(
-    () => ({ top: -window.scrollY }) as DOMRect,
+    () => new DOMRect(0, -window.scrollY, 0, 0),
   );
   const disposeCard = vi.fn();
   let current = true;
@@ -44,7 +45,7 @@ describe('virtual gallery', () => {
   it('bounds mounted cards, reaches the final item and disposes offscreen cards', () => {
     const { container, view, disposeCard } = harness();
     expect(container.querySelectorAll('[data-item-index]').length).toBeLessThan(100);
-    const first = container.querySelector('[data-item-index="0"]')!;
+    const first = requireValue(container.querySelector('[data-item-index="0"]'));
     expect(view.scrollToItem(9999)?.textContent).toBe('9999');
     expect(first.isConnected).toBe(false);
     expect(disposeCard).toHaveBeenCalledWith(first);

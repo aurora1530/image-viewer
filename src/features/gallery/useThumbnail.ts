@@ -1,3 +1,5 @@
+import type { EntryHandle } from '../../shared/fileSystem';
+import { requireValue } from '../../shared/validation';
 import { useEffect, useState } from 'react';
 import type { RefObject } from 'react';
 import type { DirectoryCacheItem } from '../../shared/model';
@@ -13,12 +15,12 @@ export function useThumbnail(
 ) {
   const { media } = useApplication();
   const [retryState, setRetryState] = useState<{
-    handle: FileSystemHandle;
+    handle: EntryHandle;
     attempt: number;
   } | null>(null);
   const attempt = retryState?.handle === item.handle ? retryState.attempt : 0;
   const [loaded, setLoaded] = useState<{
-    handle: FileSystemHandle;
+    handle: EntryHandle;
     attempt: number;
     source: MediaSource | null;
     failed: boolean;
@@ -35,7 +37,7 @@ export function useThumbnail(
     let active = true;
     let owned: MediaSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    const element = card.current!;
+    const element = requireValue(card.current);
     const shouldContinue = () => active && element.isConnected;
     const getPriority = () => {
       const rect = element.getBoundingClientRect();

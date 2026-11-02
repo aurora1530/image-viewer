@@ -1,3 +1,4 @@
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import { CONFIG } from '../shared/model';
 import { defaultAppConfig } from '../shared/appConfig';
 import { isImageFileName } from '../shared/utils';
@@ -19,10 +20,10 @@ export function clearThumbnailCaches(): void {
   originalImageCache.clear();
 }
 
-export type DirectoryPreviewFile = { handle: FileSystemFileHandle; path: string[] };
+export type DirectoryPreviewFile = { handle: FileHandle; path: string[] };
 
 async function findPreferredFile(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   shouldContinue: () => boolean,
   names: readonly string[],
 ): Promise<DirectoryPreviewFile | null> {
@@ -40,7 +41,7 @@ async function findPreferredFile(
 }
 
 async function readSavedPreviewFile(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   location: DirectoryConfigLocation,
   shouldContinue: () => boolean,
 ): Promise<DirectoryPreviewFile | null> {
@@ -64,7 +65,7 @@ async function readSavedPreviewFile(
 }
 
 export async function selectDirectoryPreviewFile(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   location?: DirectoryConfigLocation,
   shouldContinue: () => boolean = () => true,
   names: readonly string[] = defaultAppConfig.directoryThumbnailNames,
@@ -87,8 +88,8 @@ export async function selectDirectoryPreviewFile(
   }
 
   // Enumerate only when neither a preferred file nor a valid saved path exists.
-  let direct: FileSystemFileHandle | undefined;
-  let child: FileSystemDirectoryHandle | undefined;
+  let direct: FileHandle | undefined;
+  let child: DirectoryHandle | undefined;
   try {
     for await (const entry of iterateDirectoryEntries(dirHandle, shouldContinue)) {
       if (entry.kind === 'directory') {
@@ -138,7 +139,7 @@ async function rememberPreferred(
 }
 
 export async function getDirectoryPreview(
-  dirHandle: FileSystemDirectoryHandle,
+  dirHandle: DirectoryHandle,
   request: ThumbnailRequest = {},
   location?: DirectoryConfigLocation,
   names: readonly string[] = defaultAppConfig.directoryThumbnailNames,

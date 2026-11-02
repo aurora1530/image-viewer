@@ -12,7 +12,7 @@ class TestWorker {
     TestWorker.instances.push(this);
   }
   reply(data: { blob?: Blob; error?: string }) {
-    this.onmessage?.({ data } as MessageEvent<typeof data>);
+    this.onmessage?.(new MessageEvent('message', { data }));
   }
 }
 

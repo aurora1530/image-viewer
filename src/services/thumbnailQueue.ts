@@ -4,8 +4,8 @@ export type ThumbnailRequest = {
 };
 
 type Job = {
-  work: () => Promise<unknown>;
-  resolve: (value: unknown) => void;
+  run: () => Promise<void>;
+  cancel: () => void;
   reject: (error: unknown) => void;
   request: ThumbnailRequest;
 };
@@ -20,7 +20,7 @@ export function createThumbnailQueue(concurrency: number) {
   function pump() {
     scheduled = false;
     for (let i = waiting.length - 1; i >= 0; i--) {
-      if (waiting[i].request.shouldContinue?.() === false) waiting.splice(i, 1)[0].resolve(null);
+      if (waiting[i].request.shouldContinue?.() === false) waiting.splice(i, 1)[0].cancel();
     }
     while (!paused && active < concurrency && waiting.length) {
       let best = 0;
@@ -35,8 +35,8 @@ export function createThumbnailQueue(concurrency: number) {
       const job = waiting.splice(best, 1)[0];
       active++;
       void Promise.resolve()
-        .then(job.work)
-        .then(job.resolve, job.reject)
+        .then(job.run)
+        .catch(job.reject)
         .finally(() => {
           active--;
           refresh();
@@ -55,7 +55,14 @@ export function createThumbnailQueue(concurrency: number) {
   return {
     enqueue<T>(work: () => Promise<T>, request: ThumbnailRequest = {}): Promise<T | null> {
       return new Promise((resolve, reject) => {
-        waiting.push({ work, resolve: (value) => resolve(value as T | null), reject, request });
+        waiting.push({
+          run: async () => {
+            resolve(await work());
+          },
+          cancel: () => resolve(null),
+          reject,
+          request,
+        });
         refresh();
       });
     },
@@ -72,7 +79,7 @@ export function createThumbnailQueue(concurrency: number) {
     clear(error?: Error) {
       for (const job of waiting.splice(0)) {
         if (error) job.reject(error);
-        else job.resolve(null);
+        else job.cancel();
       }
     },
   };

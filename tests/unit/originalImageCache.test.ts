@@ -1,12 +1,17 @@
+import { requireValue } from '../../src/shared/validation';
+import type { FileHandle } from '../../src/shared/fileSystem';
 import { describe, expect, it, vi } from 'vitest';
 import { createOriginalImageCache } from '../../src/services/originalImageCache';
 
 function file(name: string, size = 4) {
   return {
     name,
-    kind: 'file',
+    kind: 'file' as const,
+    createWritable: async () => {
+      throw new Error('Read-only file');
+    },
     getFile: vi.fn(async () => new File(['x'.repeat(size)], name)),
-  } as unknown as FileSystemFileHandle;
+  } satisfies FileHandle;
 }
 
 describe('shared original image cache', () => {
@@ -48,7 +53,7 @@ describe('shared original image cache', () => {
   it('does not repopulate a cleared cache when an older read completes', async () => {
     const cache = createOriginalImageCache();
     const handle = file('pending.jpg');
-    let release!: (file: File) => void;
+    let release: ((file: File) => void) | undefined;
     vi.mocked(handle.getFile).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -58,7 +63,7 @@ describe('shared original image cache', () => {
     const old = cache.get(handle);
     cache.clear();
     await cache.get(handle);
-    release(new File(['old'], handle.name));
+    requireValue(release)(new File(['old'], handle.name));
     await old;
     expect(await cache.get(handle)).not.toBe(await old);
     expect(handle.getFile).toHaveBeenCalledTimes(2);

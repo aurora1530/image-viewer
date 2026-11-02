@@ -1,16 +1,10 @@
-import { createRequire } from 'node:module';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { findFirstFile } = createRequire(import.meta.url)('../../electron/file-probes.cjs') as {
-  findFirstFile(
-    directory: unknown,
-    names: unknown,
-    requireAllowed: (target: string) => string,
-  ): Promise<string | null>;
-};
+import api from '../../electron/file-probes.cjs';
+const { findFirstFile } = api;
 let directory: string;
 const requireAllowed = (target: string) => {
   const resolved = path.resolve(target);

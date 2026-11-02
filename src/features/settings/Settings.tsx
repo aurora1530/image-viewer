@@ -35,16 +35,8 @@ export function Settings() {
   const fields: [CapacityConfigKey, string, number][] = [
     ['thumbnailMemoryMiB', 'サムネイルのメモリ', usage.thumbnail],
     ['originalMemoryMiB', '元画像のメモリ', usage.original],
-    ...(capabilities.desktop
-      ? [
-          ['thumbnailDiskMiB', 'サムネイルのディスク', usage.disk] as [
-            CapacityConfigKey,
-            string,
-            number,
-          ],
-        ]
-      : []),
   ];
+  if (capabilities.desktop) fields.push(['thumbnailDiskMiB', 'サムネイルのディスク', usage.disk]);
   return (
     <>
       <button

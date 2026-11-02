@@ -1,3 +1,5 @@
+import { requireValue } from '../../src/shared/validation';
+import type { FileHandle } from '../../src/shared/fileSystem';
 import type { PdfDocument } from '../../src/services/pdfDocument';
 import { createElement } from 'react';
 import { Viewer } from '../../src/features/viewer/Viewer';
@@ -18,13 +20,8 @@ const handles = ['1.png', '2.png', '3.png', '4.png', '5.png'].map((name) =>
 function harness(
   single = false,
   files = handles,
-  getThumbnailPreview?: (
-    handle: FileSystemFileHandle,
-  ) => { url: string; objectUrl: boolean } | null,
-  openPdfDocument?: (
-    handle: FileSystemFileHandle,
-    shouldContinue?: () => boolean,
-  ) => Promise<PdfDocument>,
+  getThumbnailPreview?: (handle: FileHandle) => { url: string; objectUrl: boolean } | null,
+  openPdfDocument?: (handle: FileHandle, shouldContinue?: () => boolean) => Promise<PdfDocument>,
 ) {
   let presentation = { ...closedViewer };
   let singleView = single;
@@ -33,13 +30,13 @@ function harness(
     createApplication(),
   );
   const update = () => mounted.update(createElement(Viewer, { presentation, single: singleView }));
-  const viewer = document.querySelector<HTMLElement>('#viewer')!;
-  const pages = document.querySelector<HTMLElement>('#viewer-pages')!;
-  const left = document.querySelector<HTMLImageElement>('#left-page')!;
-  const right = document.querySelector<HTMLImageElement>('#right-page')!;
-  const video = document.querySelector<HTMLVideoElement>('#viewer-video')!;
-  const counter = document.querySelector<HTMLElement>('#page-counter')!;
-  let currentFiles: FileSystemFileHandle[] = [];
+  const viewer = requireValue(document.querySelector<HTMLElement>('#viewer'));
+  const pages = requireValue(document.querySelector<HTMLElement>('#viewer-pages'));
+  const left = requireValue(document.querySelector<HTMLImageElement>('#left-page'));
+  const right = requireValue(document.querySelector<HTMLImageElement>('#right-page'));
+  const video = requireValue(document.querySelector<HTMLVideoElement>('#viewer-video'));
+  const counter = requireValue(document.querySelector<HTMLElement>('#page-counter'));
+  let currentFiles: FileHandle[] = [];
   let index = 0;
   let offset = 0;
   const ensureDirectoryCache = vi.fn(
@@ -154,7 +151,7 @@ describe('image viewer behavior', () => {
   });
 
   it('shows cached previews immediately and publishes ready spread pages independently', async () => {
-    let release!: (file: File) => void;
+    let release: ((file: File) => void) | undefined;
     vi.spyOn(handles[1], 'getFile').mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -169,18 +166,22 @@ describe('image viewer behavior', () => {
     await vi.waitFor(() => expect(view.right.dataset.url).toMatch(/^blob:image-/));
     expect(view.left.dataset.url).toBe('blob:preview-2.png');
     expect(view.left.style.visibility).toBe('visible');
-    expect(view.viewer.querySelector<HTMLElement>('.viewer-loading')!.hidden).toBe(false);
-    release(new File([''], '2.png'));
+    expect(requireValue(view.viewer.querySelector<HTMLElement>('.viewer-loading')).hidden).toBe(
+      false,
+    );
+    requireValue(release)(new File([''], '2.png'));
     await pending;
     expect(view.left.dataset.url).toMatch(/^blob:image-/);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview-2.png');
-    expect(view.viewer.querySelector<HTMLElement>('.viewer-loading')!.hidden).toBe(true);
+    expect(requireValue(view.viewer.querySelector<HTMLElement>('.viewer-loading')).hidden).toBe(
+      true,
+    );
     view.controller.closeViewer();
     view.controller.clearCache();
   });
 
   it('cleans up a preview and ignores the original that finishes after closing', async () => {
-    let release!: (file: File) => void;
+    let release: ((file: File) => void) | undefined;
     vi.spyOn(handles[0], 'getFile').mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -191,7 +192,7 @@ describe('image viewer behavior', () => {
     const pending = view.controller.openViewer(root.asHandle(), 0);
     await vi.waitFor(() => expect(view.right.dataset.url).toBe('blob:preview'));
     view.controller.closeViewer();
-    release(new File([''], '1.png'));
+    requireValue(release)(new File([''], '1.png'));
     await pending;
     expect(view.right.hasAttribute('src')).toBe(false);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
@@ -232,7 +233,7 @@ describe('image viewer behavior', () => {
   it('cleans up blob URLs and stops video on close', async () => {
     const view = harness(true);
     await view.controller.openViewer(root.asHandle(), 0);
-    const imageUrl = view.right.dataset.url!;
+    const imageUrl = requireValue(view.right.dataset.url);
     await view.controller.openVideoPlayer(root.file('clip.mp4').asHandle());
     expect(view.video.src).toContain('blob:image-');
     view.controller.closeViewer();
@@ -268,7 +269,7 @@ describe('image viewer behavior', () => {
   });
 
   it('does not let a slower old page overwrite a newer page after rapid navigation', async () => {
-    let release!: (file: File) => void;
+    let release: ((file: File) => void) | undefined;
     vi.spyOn(handles[1], 'getFile').mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -281,7 +282,7 @@ describe('image viewer behavior', () => {
     view.controller.navigatePages(1);
     await vi.waitFor(() => expect(view.counter.textContent).toBe('3 / 5'));
     const latestUrl = view.right.dataset.url;
-    release(new File([''], '2.png'));
+    requireValue(release)(new File([''], '2.png'));
     await vi.waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(5));
     expect(view.right.dataset.url).toBe(latestUrl);
     expect(view.counter.textContent).toBe('3 / 5');
@@ -289,7 +290,7 @@ describe('image viewer behavior', () => {
   });
 
   it('releases an in-flight preload after closing without restoring the image', async () => {
-    let release!: (file: File) => void;
+    let release: ((file: File) => void) | undefined;
     vi.spyOn(handles[1], 'getFile').mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -299,7 +300,7 @@ describe('image viewer behavior', () => {
     const view = harness(true);
     await view.controller.openViewer(root.asHandle(), 0);
     view.controller.closeViewer();
-    release(new File([''], '2.png'));
+    requireValue(release)(new File([''], '2.png'));
     view.controller.clearCache();
     await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2));
     expect(view.right.hasAttribute('src')).toBe(false);
@@ -333,7 +334,7 @@ describe('image viewer behavior', () => {
 
   it('discards a video source that finishes loading after the viewer is closed', async () => {
     const videoFile = root.file('late.mp4');
-    let release!: (file: File) => void;
+    let release: ((file: File) => void) | undefined;
     vi.spyOn(videoFile, 'getFile').mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -343,7 +344,7 @@ describe('image viewer behavior', () => {
     const view = harness();
     const pending = view.controller.openVideoPlayer(videoFile.asHandle());
     view.controller.closeViewer();
-    release(new File([''], 'late.mp4'));
+    requireValue(release)(new File([''], 'late.mp4'));
     await pending;
     expect(view.video.hasAttribute('src')).toBe(false);
     expect(view.viewer.style.display).toBe('none');
@@ -353,11 +354,11 @@ describe('image viewer behavior', () => {
 
   it('does not restore an older directory after another image list is opened', async () => {
     const view = harness(true);
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const original = view.ensureDirectoryCache.getMockImplementation()!;
+    const original = requireValue(view.ensureDirectoryCache.getMockImplementation());
     view.ensureDirectoryCache.mockImplementationOnce(async () => {
       await paused;
       return original();
@@ -365,7 +366,7 @@ describe('image viewer behavior', () => {
     const oldOpen = view.controller.openViewer(root.asHandle(), 0);
     await view.controller.openViewer(root.asHandle(), 0, [handles[4]]);
     const latestUrl = view.right.dataset.url;
-    release();
+    requireValue(release)();
     await oldOpen;
     expect(view.files).toEqual([handles[4]]);
     expect(view.counter.textContent).toBe('1 / 1');
@@ -379,7 +380,7 @@ describe('image viewer behavior', () => {
     Object.defineProperty(view.video, 'readyState', { configurable: true, value: 1 });
     Object.defineProperty(view.video, 'paused', { configurable: true, value: true });
     view.video.currentTime = 0.5;
-    const restore = view.controller.captureView()!;
+    const restore = requireValue(view.controller.captureView());
     view.controller.closeViewer();
     await restore();
     expect(view.video.hasAttribute('src')).toBe(true);
@@ -388,7 +389,7 @@ describe('image viewer behavior', () => {
   });
 
   it('keeps the latest view mode when a spread finishes loading after switching to single view', async () => {
-    let release!: (file: File) => void;
+    let release: ((file: File) => void) | undefined;
     vi.spyOn(handles[2], 'getFile').mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -400,7 +401,7 @@ describe('image viewer behavior', () => {
     view.controller.navigatePages(2);
     view.setSingle(true);
     const latestDisplay = view.controller.displayPages();
-    release(new File([''], '3.png'));
+    requireValue(release)(new File([''], '3.png'));
     await latestDisplay;
     expect(view.counter.textContent).toBe('3 / 5');
     expect(view.pages.classList.contains('single-view')).toBe(true);
@@ -411,7 +412,7 @@ describe('image viewer behavior', () => {
 
 describe('PDF viewer lifecycle', () => {
   it('discards a document that completes after closing and leaves images intact', async () => {
-    let finish!: (document: PdfDocument) => void;
+    let finish: ((document: PdfDocument) => void) | undefined;
     const loaded = new Promise<PdfDocument>((resolve) => {
       finish = resolve;
     });
@@ -421,7 +422,7 @@ describe('PDF viewer lifecycle', () => {
     view.controller.closeViewer();
     await view.controller.openViewer(root.asHandle(), 0, handles);
     const image = view.right.dataset.url;
-    finish(document);
+    requireValue(finish)(document);
     await pending;
     expect(document.destroy).toHaveBeenCalledOnce();
     expect(document.renderPage).not.toHaveBeenCalled();

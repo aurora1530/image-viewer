@@ -1,3 +1,5 @@
+import { parseConfig } from '../helpers/json';
+import { requireValue } from '../../src/shared/validation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildDirectoryCache,
@@ -203,7 +205,7 @@ describe('directory cache and previews', () => {
     jobs.push(getDirectoryPreview(makeFolder('visible'), { getPriority: () => 0 }));
     active = false;
     expect(started).toEqual(['0', '1', '2', '3']);
-    releases.shift()!();
+    requireValue(releases.shift())();
     await vi.waitFor(() => expect(started[4]).toBe('visible'));
     releases.splice(0).forEach((release) => release());
     await vi.waitFor(() => expect(started[5]).toBe('prefetch'));
@@ -335,9 +337,7 @@ describe('directory cache and previews', () => {
     await getDirectoryPreview(folder.asHandle(), {}, location);
     await flushRootConfig(root.asHandle());
     const text = await (await (await root.getFileHandle('.image-viewer.json')).getFile()).text();
-    const saved = JSON.parse(text) as {
-      directories: { album: { directoryThumbnail: { path: string[]; expiresAt: number } } };
-    };
+    const saved = parseConfig(text);
     expect(saved.directories.album.directoryThumbnail).toEqual({
       path: ['pages', 'cover.jpg'],
       expiresAt: now + 7 * 24 * 60 * 60 * 1000,
@@ -358,7 +358,8 @@ describe('directory cache and previews', () => {
     expect(scan).not.toHaveBeenCalled();
     expect(getFile).toHaveBeenCalledTimes(2);
     expect(
-      (await readRootConfig(reopened.asHandle())).directories.album.directoryThumbnail!.expiresAt,
+      requireValue((await readRootConfig(reopened.asHandle())).directories.album.directoryThumbnail)
+        .expiresAt,
     ).toBe(now + 7 * 24 * 60 * 60 * 1000);
   });
 

@@ -1,5 +1,6 @@
+import { installBrowserGuards } from '../helpers/browserGuards';
+import { requireValue } from '../../src/shared/validation';
 import { samplePdf } from '../helpers/pdf';
-import type { ConfigNode } from '../../src/services/storage';
 import { expect, test } from '@playwright/test';
 
 test('shows the built version and links to its release from the header and settings', async ({
@@ -26,14 +27,13 @@ test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail res
 }) => {
   await page.goto('/');
   const results = await page.evaluate(async () => {
-    const modulePath = '/src/services/thumbnailEncoder.ts';
-    const { encodeThumbnail } = (await import(
-      /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/services/thumbnailEncoder');
+    const { encodeThumbnail } = await import(
+      /* @vite-ignore */ '../../src/services/thumbnailEncoder.ts'
+    );
     const original = document.createElement('canvas');
     original.width = 3200;
     original.height = 1600;
-    const context = original.getContext('2d')!;
+    const context = window.__requireTestValue(original.getContext('2d'));
     for (const [color, x, y] of [
       ['red', 0, 0],
       ['lime', 1600, 0],
@@ -44,11 +44,11 @@ test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail res
       context.fillRect(x, y, 1600, 800);
     }
     const jpeg = await new Promise<Blob>((resolve) =>
-      original.toBlob((value) => resolve(value!), 'image/jpeg', 0.95),
+      original.toBlob((value) => resolve(window.__requireTestValue(value)), 'image/jpeg', 0.95),
     );
     const pixels = (image: ImageBitmap) => {
       const canvas = new OffscreenCanvas(image.width, image.height);
-      const context = canvas.getContext('2d')!;
+      const context = window.__requireTestValue(canvas.getContext('2d'));
       context.drawImage(image, 0, 0);
       return [
         [0.25, 0.25],
@@ -134,12 +134,11 @@ test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail res
 test('large PNG thumbnails preserve transparency and proportional sizing', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
-    const modulePath = '/src/services/thumbnailEncoder.ts';
-    const { encodeThumbnail } = (await import(
-      /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/services/thumbnailEncoder');
+    const { encodeThumbnail } = await import(
+      /* @vite-ignore */ '../../src/services/thumbnailEncoder.ts'
+    );
     const canvas = new OffscreenCanvas(3200, 1600);
-    const context = canvas.getContext('2d')!;
+    const context = window.__requireTestValue(canvas.getContext('2d'));
     context.fillStyle = 'rgba(255,0,0,.5)';
     context.fillRect(0, 0, 1600, 800);
     context.fillStyle = 'blue';
@@ -148,7 +147,7 @@ test('large PNG thumbnails preserve transparency and proportional sizing', async
     const encoded = await encodeThumbnail(source, 'image/webp');
     const bitmap = await createImageBitmap(encoded);
     const preview = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const pixels = preview.getContext('2d')!;
+    const pixels = window.__requireTestValue(preview.getContext('2d'));
     pixels.drawImage(bitmap, 0, 0);
     const at = (x: number, y: number) => Array.from(pixels.getImageData(x, y, 1, 1).data);
     const result = {
@@ -174,10 +173,9 @@ test('JPEG thumbnails retain proportional sizing for odd, portrait and small ori
   page,
 }) => {
   const results = await page.evaluate(async () => {
-    const modulePath = '/src/services/thumbnailEncoder.ts';
-    const { encodeThumbnail } = (await import(
-      /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/services/thumbnailEncoder');
+    const { encodeThumbnail } = await import(
+      /* @vite-ignore */ '../../src/services/thumbnailEncoder.ts'
+    );
     const results = [];
     for (const [width, height] of [
       [6001, 4003],
@@ -185,7 +183,7 @@ test('JPEG thumbnails retain proportional sizing for odd, portrait and small ori
       [100, 200],
     ]) {
       const canvas = new OffscreenCanvas(width, height);
-      canvas.getContext('2d')!.fillRect(0, 0, width, height);
+      window.__requireTestValue(canvas.getContext('2d')).fillRect(0, 0, width, height);
       const source = await canvas.convertToBlob({ type: 'image/jpeg' });
       const result = await encodeThumbnail(source, 'image/jpeg');
       const image = await createImageBitmap(result);
@@ -204,6 +202,7 @@ test('JPEG thumbnails retain proportional sizing for odd, portrait and small ori
 });
 
 test.beforeEach(async ({ page }) => {
+  await installBrowserGuards(page);
   await page.addInitScript(() => {
     const image = Uint8Array.from(
       atob(
@@ -218,13 +217,18 @@ test.beforeEach(async ({ page }) => {
         private content: Uint8Array | string = image,
       ) {}
       async getFile() {
-        return new File([this.content as BlobPart], this.name, {
-          type: this.name.endsWith('.mp4') ? 'video/mp4' : 'image/png',
-        });
+        return new File(
+          [typeof this.content === 'string' ? this.content : new Uint8Array(this.content)],
+          this.name,
+          {
+            type: this.name.endsWith('.mp4') ? 'video/mp4' : 'image/png',
+          },
+        );
       }
       async createWritable() {
         return {
-          write: async (value: string) => {
+          write: async (value: FileSystemWriteChunkType) => {
+            if (typeof value !== 'string') throw new Error('Expected text');
             this.content = value;
             if (this.name === '.image-viewer.json')
               sessionStorage.setItem('image-viewer-test-config', value);
@@ -269,29 +273,26 @@ test.beforeEach(async ({ page }) => {
     root.file('cover.gif');
     root.file('clip.mp4');
     root.directory('chapter').file('nested.png');
-    (window as unknown as { __imageViewerTestRoot: TestDirectory }).__imageViewerTestRoot = root;
+    window.__imageViewerTestRoot = root;
     const savedConfig = sessionStorage.getItem('image-viewer-test-config');
     if (savedConfig)
       root.entries.set('.image-viewer.json', new TestFile('.image-viewer.json', savedConfig));
     Object.defineProperty(window, 'showDirectoryPicker', { value: async () => root });
   });
   await page.goto('/');
+  await page.evaluate(async () => {
+    const { ensureConfigNode } = await import(/* @vite-ignore */ '../../src/services/storage.ts');
+    window.__parseTestConfig = ensureConfigNode;
+  });
   await page.getByRole('button', { name: 'ルートフォルダを選択' }).click();
   await expect(page.locator('#current-dir-name')).toHaveText('books');
 });
 
 test('cancels slow folder preview scans when navigating to another folder', async ({ page }) => {
   await expect(page.locator('#item-list .directory-card img')).toHaveJSProperty('naturalWidth', 1);
-  await page.evaluate(() => {
-    type Directory = {
-      directory(name: string): Directory;
-      getFileHandle(name: string): Promise<FileSystemFileHandle>;
-      values(): AsyncGenerator<FileSystemHandle>;
-    };
-    const root = (window as unknown as { __imageViewerTestRoot: Directory }).__imageViewerTestRoot;
-    const state = window as unknown as {
-      __previewScans: { active: number; peak: number; yielded: number; started: number };
-    };
+  await page.evaluate(async () => {
+    const root = window.__imageViewerTestRoot;
+    const state = window;
     const scans = (state.__previewScans = { active: 0, peak: 0, yielded: 0, started: 0 });
     for (let i = 0; i < 12; i++) {
       const folder = root.directory(`a-slow-${i.toString().padStart(2, '0')}`);
@@ -303,7 +304,14 @@ test('cancels slow folder preview scans when navigating to another folder', asyn
           for (let index = 0; index < 1000; index++) {
             await new Promise((resolve) => setTimeout(resolve, 30));
             scans.yielded++;
-            yield { kind: 'file', name: `${index}.txt` } as FileSystemFileHandle;
+            yield {
+              kind: 'file',
+              name: `${index}.txt`,
+              getFile: async () => new File([], `${index}.txt`),
+              createWritable: async () => {
+                throw new Error('Read-only');
+              },
+            };
           }
         } finally {
           scans.active--;
@@ -312,15 +320,7 @@ test('cancels slow folder preview scans when navigating to another folder', asyn
     }
   });
   await page.locator('#reload-btn').click();
-  const scans = () =>
-    page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            __previewScans: { active: number; peak: number; yielded: number; started: number };
-          }
-        ).__previewScans,
-    );
+  const scans = () => page.evaluate(() => window.__previewScans);
   await expect.poll(async () => (await scans()).active).toBe(4);
   await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
   await expect(page.locator('#item-list .media-card img')).toHaveAttribute('alt', 'nested.png');
@@ -362,12 +362,12 @@ test('back and forward restore folders and viewer pages and discard a branched h
   await page.keyboard.press('ArrowLeft');
   const counter = await page.locator('#page-counter').textContent();
   await page.keyboard.press('Alt+ArrowRight');
-  await expect(page.locator('#page-counter')).toHaveText(counter!);
+  await expect(page.locator('#page-counter')).toHaveText(requireValue(counter));
   await page.keyboard.press('Alt+ArrowLeft');
   await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
   await page.keyboard.press('Alt+ArrowRight');
   await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
-  await expect(page.locator('#page-counter')).toHaveText(counter!);
+  await expect(page.locator('#page-counter')).toHaveText(requireValue(counter));
   await page.keyboard.press('Escape');
   await page.keyboard.press('Alt+ArrowRight');
   await expect(page.locator('#current-dir-name')).toHaveText('books');
@@ -380,12 +380,7 @@ for (const count of [60, 260]) {
   }) => {
     await page.setViewportSize({ width: 800, height: 600 });
     await page.evaluate((count) => {
-      type Directory = {
-        file(name: string): void;
-        directory(name: string): Directory;
-      };
-      const root = (window as unknown as { __imageViewerTestRoot: Directory })
-        .__imageViewerTestRoot;
+      const root = window.__imageViewerTestRoot;
       const child = root.directory('zz-child');
       child.directory('zz-nested').file('nested.png');
       for (let i = 0; i < count; i++) {
@@ -455,15 +450,10 @@ test('keeps thumbnails visible after scrolling through a large folder and back',
   page,
 }) => {
   await page.evaluate(() => {
-    const state = window as unknown as {
-      __imageViewerTestRoot: {
-        file(name: string): void;
-        entries: Map<string, { getFile(): Promise<File> }>;
-      };
-      __firstImageReads: number;
-    };
+    const state = window;
     const root = state.__imageViewerTestRoot;
-    const first = root.entries.get('2.png')!;
+    const first = window.__requireTestValue(root.entries.get('2.png'));
+    if (first.kind !== 'file') throw new Error('Unexpected entry kind');
     const read = first.getFile.bind(first);
     state.__firstImageReads = 0;
     first.getFile = () => {
@@ -478,20 +468,22 @@ test('keeps thumbnails visible after scrolling through a large folder and back',
   const images = page.locator('#item-list .media-card img');
   await expect(images.first()).toHaveJSProperty('naturalWidth', 1);
   await page.evaluate(() => {
-    (window as unknown as { __unmountedThumb: Element }).__unmountedThumb = document.querySelector(
-      '#item-list img[alt="2.png"]',
-    )!;
+    window.__unmountedThumb = window.__requireTestValue(
+      document.querySelector('#item-list img[alt="2.png"]'),
+    );
   });
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   const lastImage = page.locator('#item-list img[alt="extra-1199.png"]');
   await expect(lastImage).toHaveJSProperty('naturalWidth', 1);
   await page.evaluate(() => {
-    const thumbnail = (window as unknown as { __unmountedThumb: Element }).__unmountedThumb;
+    const thumbnail = window.__unmountedThumb;
     if (thumbnail.isConnected) throw new Error('The first card should have been unmounted');
     thumbnail.dispatchEvent(new Event('error'));
   });
   await page.evaluate(() => {
-    const image = document.querySelector<HTMLImageElement>('#item-list img[alt="extra-1199.png"]')!;
+    const image = window.__requireTestValue(
+      document.querySelector<HTMLImageElement>('#item-list img[alt="extra-1199.png"]'),
+    );
     Object.assign(window, {
       __retainedCard: image.closest('.item-card'),
       __retainedImage: image,
@@ -510,12 +502,7 @@ test('keeps thumbnails visible after scrolling through a large folder and back',
   );
   expect(
     await page.evaluate(() => {
-      const saved = window as unknown as {
-        __retainedCard: Element;
-        __retainedImage: HTMLImageElement;
-        __retainedSrc: string;
-        __retainedScroll: number;
-      };
+      const saved = window;
       return {
         connected: saved.__retainedCard.isConnected && saved.__retainedImage.isConnected,
         sameUrl: saved.__retainedImage.src === saved.__retainedSrc,
@@ -523,16 +510,10 @@ test('keeps thumbnails visible after scrolling through a large folder and back',
       };
     }),
   ).toEqual({ connected: true, sameUrl: true, scrollDelta: 0 });
-  const readsBeforeReturning = await page.evaluate(
-    () => (window as unknown as { __firstImageReads: number }).__firstImageReads,
-  );
+  const readsBeforeReturning = await page.evaluate(() => window.__firstImageReads);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect(page.locator('#item-list img[alt="2.png"]')).toHaveJSProperty('naturalWidth', 1);
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { __firstImageReads: number }).__firstImageReads,
-    ),
-  ).toBe(readsBeforeReturning);
+  expect(await page.evaluate(() => window.__firstImageReads)).toBe(readsBeforeReturning);
   await expect(lastImage).toHaveCount(0);
   await page.locator('#search-input').fill('extra-1199');
   await expect(page.locator('#item-list .item-card')).toHaveCount(1);
@@ -546,13 +527,13 @@ test('shows a cached thumbnail during full-image decoding and reuses the decoded
   await expect(thumbnail).toHaveJSProperty('naturalWidth', 1);
   await page.evaluate(() => {
     const original = HTMLImageElement.prototype.decode;
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => {
       release = resolve;
     });
     Object.assign(window, { __releaseDecode: release, __viewerDecodes: 0 });
     HTMLImageElement.prototype.decode = async function () {
-      (window as unknown as { __viewerDecodes: number }).__viewerDecodes++;
+      window.__viewerDecodes++;
       await paused;
       return original.call(this);
     };
@@ -561,20 +542,14 @@ test('shows a cached thumbnail during full-image decoding and reuses the decoded
   await expect(page.locator('#viewer .viewer-loading')).toBeVisible();
   await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
   await expect(page.locator('#left-page')).toHaveJSProperty('naturalWidth', 1);
-  await page.evaluate(() => (window as unknown as { __releaseDecode(): void }).__releaseDecode());
+  await page.evaluate(() => window.__releaseDecode());
   await expect(page.locator('#viewer .viewer-loading')).toBeHidden();
   const originalUrl = await page.locator('#right-page').getAttribute('src');
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as unknown as { __viewerDecodes: number }).__viewerDecodes),
-    )
-    .toBe(3);
+  await expect.poll(() => page.evaluate(() => window.__viewerDecodes)).toBe(3);
   await page.keyboard.press('Escape');
   await thumbnail.click();
-  await expect(page.locator('#right-page')).toHaveAttribute('src', originalUrl!);
-  expect(
-    await page.evaluate(() => (window as unknown as { __viewerDecodes: number }).__viewerDecodes),
-  ).toBe(3);
+  await expect(page.locator('#right-page')).toHaveAttribute('src', requireValue(originalUrl));
+  expect(await page.evaluate(() => window.__viewerDecodes)).toBe(3);
 });
 
 test('virtual rows preserve original aspect ratios across resizing and returning to a distant folder', async ({
@@ -582,15 +557,7 @@ test('virtual rows preserve original aspect ratios across resizing and returning
 }) => {
   await page.setViewportSize({ width: 1360, height: 720 });
   await page.evaluate(async () => {
-    const root = (
-      window as unknown as {
-        __imageViewerTestRoot: {
-          entries: Map<string, unknown>;
-          file(name: string): void;
-          directory(name: string): { file(name: string): void };
-        };
-      }
-    ).__imageViewerTestRoot;
+    const root = window.__imageViewerTestRoot;
     for (let i = 0; i < 500; i++) root.file(`extra-${i}.png`);
     root.directory('zz-folder').file('child.png');
     for (const [name, width, height] of [
@@ -600,9 +567,14 @@ test('virtual rows preserve original aspect ratios across resizing and returning
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      const blob = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!)));
+      const blob = await new Promise<Blob>((resolve) =>
+        canvas.toBlob((value) => resolve(window.__requireTestValue(value))),
+      );
       root.entries.set(name, {
         kind: 'file',
+        createWritable: async () => {
+          throw new Error('Read-only fixture');
+        },
         name,
         getFile: async () => new File([blob], name, { type: 'image/png' }),
       });
@@ -654,11 +626,7 @@ test('keeps the complete recursive order when virtual cards are hidden or favori
   // Configure through the control: persisted storage is read only during startup.
   await page.locator('#toggle-view-btn').dispatchEvent('click');
   await page.evaluate(() => {
-    const root = (
-      window as unknown as {
-        __imageViewerTestRoot: { directory(name: string): { file(name: string): void } };
-      }
-    ).__imageViewerTestRoot;
+    const root = window.__imageViewerTestRoot;
     const child = root.directory('bulk');
     for (let i = 0; i < 500; i++) child.file(`zz-item-${i}.png`);
   });
@@ -694,11 +662,10 @@ test('keeps wheel scrolling uninterrupted when offscreen thumbnails finish loadi
 }) => {
   await expect(page.locator('#item-list img[alt="2.png"]')).toHaveJSProperty('naturalWidth', 1);
   await page.evaluate(async () => {
-    const modulePath = '/src/features/gallery/virtualGallery.ts';
-    const { createVirtualGallery } = (await import(
-      modulePath
-    )) as typeof import('../../src/features/gallery/virtualGallery');
-    const container = document.querySelector<HTMLElement>('#item-list')!;
+    const { createVirtualGallery } = await import(
+      /* @vite-ignore */ '../../src/features/gallery/virtualGallery.ts'
+    );
+    const container = window.__requireTestValue(document.querySelector<HTMLElement>('#item-list'));
     container.replaceChildren();
     const grown = new Set<number>();
     const view = createVirtualGallery(
@@ -716,17 +683,15 @@ test('keeps wheel scrolling uninterrupted when offscreen thumbnails finish loadi
       () => true,
       () => 180,
     );
-    const state = window as unknown as {
-      __finishVirtualThumbnails: () => void;
-      __virtualScrollCalls: number;
-    };
+    const state = window;
     state.__virtualScrollCalls = 0;
     state.__finishVirtualThumbnails = () => {
       const nativeScrollTo = window.scrollTo.bind(window);
-      window.scrollTo = ((...args: [number, number]) => {
+      window.scrollTo = (xOrOptions?: number | ScrollToOptions, y?: number) => {
         state.__virtualScrollCalls++;
-        nativeScrollTo(...args);
-      }) as typeof window.scrollTo;
+        if (typeof xOrOptions === 'number') nativeScrollTo(xOrOptions, y ?? 0);
+        else nativeScrollTo(xOrOptions);
+      };
       for (const card of container.querySelectorAll<HTMLElement>('[data-item-index]')) {
         if (card.getBoundingClientRect().bottom < 0) {
           grown.add(Number(card.dataset.itemIndex));
@@ -744,11 +709,15 @@ test('keeps wheel scrolling uninterrupted when offscreen thumbnails finish loadi
   await page.mouse.wheel(0, -240);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(lowerPosition);
   const anchor = await page.locator('#item-list [data-item-index]').evaluateAll((cards) => {
-    const card = cards.find((card) => card.getBoundingClientRect().bottom > 0)! as HTMLElement;
-    return { index: card.dataset.itemIndex!, top: card.getBoundingClientRect().top };
+    const card = cards.find((card) => card.getBoundingClientRect().bottom > 0);
+    if (!(card instanceof HTMLElement)) throw new Error('Expected visible card');
+    return {
+      index: window.__requireTestValue(card.dataset.itemIndex),
+      top: card.getBoundingClientRect().top,
+    };
   });
   await page.evaluate(async () => {
-    (window as unknown as { __finishVirtualThumbnails: () => void }).__finishVirtualThumbnails();
+    window.__finishVirtualThumbnails();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
   const anchoredCard = page.locator(`#item-list [data-item-index="${anchor.index}"]`);
@@ -760,11 +729,7 @@ test('keeps wheel scrolling uninterrupted when offscreen thumbnails finish loadi
       ),
     )
     .toBeLessThan(2);
-  expect(
-    await page.evaluate(
-      () => (window as unknown as { __virtualScrollCalls: number }).__virtualScrollCalls,
-    ),
-  ).toBe(0);
+  expect(await page.evaluate(() => window.__virtualScrollCalls)).toBe(0);
   const position = await page.evaluate(() => window.scrollY);
   await page.mouse.wheel(0, -300);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(position - 200);
@@ -772,12 +737,9 @@ test('keeps wheel scrolling uninterrupted when offscreen thumbnails finish loadi
 
 test('shows an image while the recursive list is still scanning', async ({ page }) => {
   await page.evaluate(() => {
-    const root = (
-      window as unknown as {
-        __imageViewerTestRoot: { entries: Map<string, { values(): AsyncIterable<unknown> }> };
-      }
-    ).__imageViewerTestRoot;
-    const child = root.entries.get('chapter')!;
+    const root = window.__imageViewerTestRoot;
+    const child = window.__requireTestValue(root.entries.get('chapter'));
+    if (child.kind !== 'directory') throw new Error('Unexpected entry kind');
     const originalValues = child.values.bind(child);
     child.values = async function* () {
       await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -806,10 +768,12 @@ test('filters, searches and opens the displayed image', async ({ page }) => {
       'ui-visibility-btn',
     ];
     const rects = ids.map((id) => {
-      const rect = document.getElementById(id)!.getBoundingClientRect();
+      const rect = window.__requireTestValue(document.getElementById(id)).getBoundingClientRect();
       return { id, top: Math.round(rect.top), height: Math.round(rect.height) };
     });
-    const selectStyle = getComputedStyle(document.getElementById('filter-select')!);
+    const selectStyle = getComputedStyle(
+      window.__requireTestValue(document.getElementById('filter-select')),
+    );
     return { rects, color: selectStyle.color, bg: selectStyle.backgroundColor };
   });
   for (const item of layoutBefore.rects) {
@@ -818,9 +782,11 @@ test('filters, searches and opens the displayed image', async ({ page }) => {
   }
   await page.locator('#filter-select').selectOption('image');
   const styleAfter = await page.evaluate(() => {
-    const selectStyle = getComputedStyle(document.getElementById('filter-select')!);
+    const selectStyle = getComputedStyle(
+      window.__requireTestValue(document.getElementById('filter-select')),
+    );
     const optionStyle = getComputedStyle(
-      document.querySelector('#filter-select option[value="image"]')!,
+      window.__requireTestValue(document.querySelector('#filter-select option[value="image"]')),
     );
     return {
       color: selectStyle.color,
@@ -836,17 +802,14 @@ test('filters, searches and opens the displayed image', async ({ page }) => {
   await expect(page.locator('#item-list .media-card')).toHaveCount(3);
   await expect(page.locator('#item-list img[alt="10.png"]')).toHaveJSProperty('naturalWidth', 1);
   await page.locator('#item-list img[alt="10.png"]').evaluate((image) => {
-    (window as unknown as { __retainedSearchImage: Element }).__retainedSearchImage = image;
+    window.__retainedSearchImage = image;
   });
   await page.locator('#search-input').fill('10');
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);
   expect(
     await page
       .locator('#item-list img[alt="10.png"]')
-      .evaluate(
-        (image) =>
-          image === (window as unknown as { __retainedSearchImage: Element }).__retainedSearchImage,
-      ),
+      .evaluate((image) => image === window.__retainedSearchImage),
   ).toBe(true);
   await page.locator('#item-list .media-card').click();
   await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
@@ -894,16 +857,11 @@ test('reuses recursive scans for view controls and rescans changed files on relo
 }) => {
   // 初期表示のフォルダープレビューが終わってから再帰走査の回数を測る。
   await expect(page.locator('#item-list .directory-card img')).toHaveJSProperty('naturalWidth', 1);
-  await page.evaluate(() => {
-    type Directory = {
-      values(): AsyncIterable<unknown>;
-      entries: Map<string, unknown>;
-      file(name: string): void;
-    };
-    const root = (window as unknown as { __imageViewerTestRoot: Directory }).__imageViewerTestRoot;
-    const state = window as unknown as { __recursiveReads: number };
+  await page.evaluate(async () => {
+    const root = window.__imageViewerTestRoot;
+    const state = window;
     state.__recursiveReads = 0;
-    for (const directory of [root, root.entries.get('chapter') as Directory]) {
+    for (const directory of [root, await root.getDirectoryHandle('chapter')]) {
       const original = directory.values.bind(directory);
       directory.values = async function* () {
         state.__recursiveReads++;
@@ -911,8 +869,7 @@ test('reuses recursive scans for view controls and rescans changed files on relo
       };
     }
   });
-  const reads = () =>
-    page.evaluate(() => (window as unknown as { __recursiveReads: number }).__recursiveReads);
+  const reads = () => page.evaluate(() => window.__recursiveReads);
   const names = () =>
     page
       .locator('#item-list .media-card img')
@@ -946,11 +903,10 @@ test('reuses recursive scans for view controls and rescans changed files on relo
   await expect.poll(names).toEqual(['2.png', '10.png', 'cover.gif']);
   expect(await reads()).toBe(2);
 
-  await page.evaluate(() => {
-    type Directory = { entries: Map<string, unknown>; file(name: string): void };
-    const root = (window as unknown as { __imageViewerTestRoot: Directory }).__imageViewerTestRoot;
+  await page.evaluate(async () => {
+    const root = window.__imageViewerTestRoot;
     root.entries.delete('2.png');
-    (root.entries.get('chapter') as Directory).file('new.png');
+    (await root.getDirectoryHandle('chapter')).file('new.png');
   });
   await page.locator('#reload-btn').click();
   await expect.poll(names).toEqual(['10.png', 'new.png', 'cover.gif']);
@@ -961,12 +917,10 @@ test('favorite collection preserves cross-folder navigation, filters and saved m
   page,
 }) => {
   await page.evaluate(async () => {
-    const modulePath = '/src/services/storage.ts';
-    const { writeRootConfig, normalizeRootConfig } = (await import(
-      /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/services/storage');
-    const root = (window as unknown as { __imageViewerTestRoot: FileSystemDirectoryHandle })
-      .__imageViewerTestRoot;
+    const { writeRootConfig, normalizeRootConfig } = await import(
+      /* @vite-ignore */ '../../src/services/storage.ts'
+    );
+    const root = window.__imageViewerTestRoot;
     await writeRootConfig(
       root,
       normalizeRootConfig({
@@ -1011,15 +965,10 @@ test('favorite collection preserves cross-folder navigation, filters and saved m
 
 test('stops queued favorite reads after switching back to the directory view', async ({ page }) => {
   await page.evaluate(async () => {
-    const modulePath = '/src/services/storage.ts';
-    const { writeRootConfig, normalizeRootConfig } = (await import(
-      /* @vite-ignore */ modulePath
-    )) as typeof import('../../src/services/storage');
-    const root = (
-      window as unknown as {
-        __imageViewerTestRoot: FileSystemDirectoryHandle & { file(name: string): void };
-      }
-    ).__imageViewerTestRoot;
+    const { writeRootConfig, normalizeRootConfig } = await import(
+      /* @vite-ignore */ '../../src/services/storage.ts'
+    );
+    const root = window.__imageViewerTestRoot;
     const favorites = Array.from({ length: 20 }, (_, index) => `favorite-${index}.png`);
     favorites.forEach((name) => root.file(name));
     await writeRootConfig(root, normalizeRootConfig({ favorites }));
@@ -1027,12 +976,7 @@ test('stops queued favorite reads after switching back to the directory view', a
   await page.locator('#reload-btn').click();
   await expect(page.locator('#item-list .item-card')).toHaveCount(25);
   await page.evaluate(() => {
-    const state = window as unknown as {
-      __imageViewerTestRoot: FileSystemDirectoryHandle;
-      __favoriteReleases: (() => void)[];
-      __favoriteReads: number;
-      __favoriteCompleted: number;
-    };
+    const state = window;
     state.__favoriteReleases = [];
     state.__favoriteReads = 0;
     state.__favoriteCompleted = 0;
@@ -1049,28 +993,14 @@ test('stops queued favorite reads after switching back to the directory view', a
   });
   page.once('dialog', (dialog) => dialog.accept());
   await page.locator('#favorite-list-btn').click();
-  await expect
-    .poll(() =>
-      page.evaluate(() => (window as unknown as { __favoriteReads: number }).__favoriteReads),
-    )
-    .toBe(6);
+  await expect.poll(() => page.evaluate(() => window.__favoriteReads)).toBe(6);
   await page.locator('#directory-mode-btn').click();
   await expect(page.locator('#item-list .item-card')).toHaveCount(25);
   await page.evaluate(() => {
-    (window as unknown as { __favoriteReleases: (() => void)[] }).__favoriteReleases
-      .splice(0)
-      .forEach((release) => release());
+    window.__favoriteReleases.splice(0).forEach((release) => window.__requireTestValue(release)());
   });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as unknown as { __favoriteCompleted: number }).__favoriteCompleted,
-      ),
-    )
-    .toBe(6);
-  expect(
-    await page.evaluate(() => (window as unknown as { __favoriteReads: number }).__favoriteReads),
-  ).toBe(6);
+  await expect.poll(() => page.evaluate(() => window.__favoriteCompleted)).toBe(6);
+  expect(await page.evaluate(() => window.__favoriteReads)).toBe(6);
   await expect(page.locator('#item-list .item-card')).toHaveCount(25);
 });
 
@@ -1129,8 +1059,9 @@ test('restores saved sorting and filtering when the folder is opened again', asy
     .poll(() =>
       page.evaluate(
         () =>
-          (JSON.parse(sessionStorage.getItem('image-viewer-test-config') || '{}') as ConfigNode)
-            .settings,
+          window.__parseTestConfig(
+            JSON.parse(sessionStorage.getItem('image-viewer-test-config') || '{}'),
+          ).settings,
       ),
     )
     .toMatchObject({
@@ -1155,13 +1086,12 @@ test('keeps config reads out of search and sorting and reloads only on explicit 
     .poll(() => page.evaluate(() => sessionStorage.getItem('image-viewer-test-config')))
     .not.toBeNull();
   await page.evaluate(() => {
-    type TestFile = { getFile(): Promise<File> };
-    const state = window as unknown as {
-      __imageViewerTestRoot: { entries: Map<string, TestFile> };
-      __configReads: number;
-    };
+    const state = window;
     state.__configReads = 0;
-    const file = state.__imageViewerTestRoot.entries.get('.image-viewer.json')!;
+    const file = window.__requireTestValue(
+      state.__imageViewerTestRoot.entries.get('.image-viewer.json'),
+    );
+    if (file.kind !== 'file') throw new Error('Unexpected entry kind');
     const original = file.getFile.bind(file);
     file.getFile = async () => {
       state.__configReads++;
@@ -1172,8 +1102,7 @@ test('keeps config reads out of search and sorting and reloads only on explicit 
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);
   await page.locator('#toggle-sort-btn').click();
   await expect(page.locator('#toggle-sort-btn')).toContainText('降順');
-  const reads = () =>
-    page.evaluate(() => (window as unknown as { __configReads: number }).__configReads);
+  const reads = () => page.evaluate(() => window.__configReads);
   expect(await reads()).toBe(0);
   await page.locator('#reload-btn').click();
   await expect.poll(reads).toBe(1);
@@ -1185,16 +1114,18 @@ test('saves settings to the original folder when navigating before the save dela
   await page.locator('.directory-card[data-dir-name="chapter"] .dir-title').click();
   await expect(page.locator('#current-dir-name')).toHaveText('chapter');
   await page.evaluate(() => {
-    document.querySelector<HTMLButtonElement>('#toggle-sort-btn')!.click();
-    document.querySelector<HTMLButtonElement>('#up-dir-btn')!.click();
+    window
+      .__requireTestValue(document.querySelector<HTMLButtonElement>('#toggle-sort-btn'))
+      .click();
+    window.__requireTestValue(document.querySelector<HTMLButtonElement>('#up-dir-btn')).click();
   });
   await expect(page.locator('#current-dir-name')).toHaveText('books');
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const config = JSON.parse(
-          sessionStorage.getItem('image-viewer-test-config') || '{}',
-        ) as ConfigNode;
+        const config = window.__parseTestConfig(
+          JSON.parse(sessionStorage.getItem('image-viewer-test-config') || '{}'),
+        );
         return {
           child: config.directories?.chapter?.settings.sortOrder,
           root: config.settings?.sortOrder,
@@ -1217,17 +1148,14 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
         .evaluateAll(
           (images) =>
             images.length === 3 &&
-            images.every((image) => (image as HTMLImageElement).naturalWidth === 1),
+            images.every(
+              (image) => (image instanceof HTMLImageElement ? image.naturalWidth : 0) === 1,
+            ),
         ),
     )
     .toBe(true);
   await page.evaluate(() => {
-    type TestFile = { getFile(): Promise<File> };
-    const state = window as unknown as {
-      __imageViewerTestRoot: { entries: Map<string, TestFile> };
-      __pageReads: Record<string, number>;
-      __pageDecodes: number;
-    };
+    const state = window;
     state.__pageReads = {};
     state.__pageDecodes = 0;
     const decode = HTMLImageElement.prototype.decode;
@@ -1236,7 +1164,8 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
       return decode.call(this);
     };
     for (const name of ['2.png', '10.png', 'cover.gif']) {
-      const file = state.__imageViewerTestRoot.entries.get(name)!;
+      const file = window.__requireTestValue(state.__imageViewerTestRoot.entries.get(name));
+      if (file.kind !== 'file') throw new Error('Unexpected entry kind');
       const original = file.getFile.bind(file);
       file.getFile = async () => {
         state.__pageReads[name] = (state.__pageReads[name] || 0) + 1;
@@ -1248,17 +1177,14 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
   await expect(page.locator('#page-counter')).toHaveText('1 / 3');
   await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
   const firstUrl = await page.locator('#right-page').getAttribute('src');
-  const reads = () =>
-    page.evaluate(() => (window as unknown as { __pageReads: Record<string, number> }).__pageReads);
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { __pageDecodes: number }).__pageDecodes))
-    .toBe(3);
+  const reads = () => page.evaluate(() => window.__pageReads);
+  await expect.poll(() => page.evaluate(() => window.__pageDecodes)).toBe(3);
   expect(await reads()).toEqual({});
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('#page-counter')).toHaveText('2 / 3');
   await page.keyboard.press('ArrowRight');
   await expect(page.locator('#page-counter')).toHaveText('1 / 3');
-  await expect(page.locator('#right-page')).toHaveAttribute('src', firstUrl!);
+  await expect(page.locator('#right-page')).toHaveAttribute('src', requireValue(firstUrl));
   expect(await reads()).toEqual({});
 });
 
@@ -1275,16 +1201,14 @@ test('keeps the latest page when an older page decode finishes after rapid navig
         .evaluateAll(
           (images) =>
             images.length === 3 &&
-            images.every((image) => (image as HTMLImageElement).naturalWidth === 1),
+            images.every(
+              (image) => (image instanceof HTMLImageElement ? image.naturalWidth : 0) === 1,
+            ),
         ),
     )
     .toBe(true);
   await page.evaluate(() => {
-    const state = window as unknown as {
-      __imageViewerTestRoot: { entries: Map<string, { getFile(): Promise<File> }> };
-      __releaseSlowPage: () => void;
-      __slowPageFinished: boolean;
-    };
+    const state = window;
     const decode = HTMLImageElement.prototype.decode;
     let calls = 0;
     const paused = new Promise<void>((resolve) => {
@@ -1303,18 +1227,16 @@ test('keeps the latest page when an older page decode finishes after rapid navig
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('#page-counter')).toHaveText('3 / 3');
   const latestUrl = await page.locator('#right-page').getAttribute('src');
-  await page.evaluate(() =>
-    (window as unknown as { __releaseSlowPage: () => void }).__releaseSlowPage(),
-  );
+  await page.evaluate(() => window.__releaseSlowPage());
   await expect
     .poll(() =>
       page.evaluate(async () => {
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        return (window as unknown as { __slowPageFinished: boolean }).__slowPageFinished;
+        return window.__slowPageFinished;
       }),
     )
     .toBe(true);
-  await expect(page.locator('#right-page')).toHaveAttribute('src', latestUrl!);
+  await expect(page.locator('#right-page')).toHaveAttribute('src', requireValue(latestUrl));
   await expect(page.locator('#page-counter')).toHaveText('3 / 3');
 });
 
@@ -1327,19 +1249,18 @@ test('reuses reduced thumbnails, keeps full viewer resolution and refreshes repl
     const canvas = document.createElement('canvas');
     canvas.width = 3000;
     canvas.height = 1500;
-    canvas.getContext('2d')!.fillRect(0, 0, canvas.width, canvas.height);
+    window.__requireTestValue(canvas.getContext('2d')).fillRect(0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob>((resolve) =>
-      canvas.toBlob((result) => resolve(result!), 'image/jpeg'),
+      canvas.toBlob((result) => resolve(window.__requireTestValue(result)), 'image/jpeg'),
     );
-    const state = window as unknown as {
-      __imageViewerTestRoot: { entries: Map<string, unknown> };
-      __largeFile: File;
-      __largeReads: number;
-    };
+    const state = window;
     state.__largeFile = new File([blob], 'large.jpg', { type: 'image/jpeg' });
     state.__largeReads = 0;
     state.__imageViewerTestRoot.entries.set('large.jpg', {
       kind: 'file',
+      createWritable: async () => {
+        throw new Error('Read-only fixture');
+      },
       name: 'large.jpg',
       getFile: async () => {
         state.__largeReads++;
@@ -1351,8 +1272,7 @@ test('reuses reduced thumbnails, keeps full viewer resolution and refreshes repl
   const thumbnail = page.locator('#item-list img[alt="large.jpg"]');
   await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
   await expect(thumbnail).toHaveJSProperty('naturalHeight', 640);
-  const reads = () =>
-    page.evaluate(() => (window as unknown as { __largeReads: number }).__largeReads);
+  const reads = () => page.evaluate(() => window.__largeReads);
   expect(await reads()).toBe(1);
   await page.locator('#toggle-sort-btn').click();
   await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
@@ -1369,9 +1289,9 @@ test('reuses reduced thumbnails, keeps full viewer resolution and refreshes repl
     canvas.width = 4000;
     canvas.height = 1000;
     const blob = await new Promise<Blob>((resolve) =>
-      canvas.toBlob((result) => resolve(result!), 'image/jpeg'),
+      canvas.toBlob((result) => resolve(window.__requireTestValue(result)), 'image/jpeg'),
     );
-    (window as unknown as { __largeFile: File }).__largeFile = new File([blob], 'large.jpg', {
+    window.__largeFile = new File([blob], 'large.jpg', {
       type: 'image/jpeg',
     });
   });
@@ -1395,17 +1315,16 @@ for (const single of [false, true]) {
           canvas.width = width;
           canvas.height = height;
           const blob = await new Promise<Blob>((resolve) =>
-            canvas.toBlob((blob) => resolve(blob!)),
+            canvas.toBlob((blob) => resolve(window.__requireTestValue(blob))),
           );
-          const root = (
-            window as unknown as {
-              __imageViewerTestRoot: { entries: Map<string, unknown> };
-            }
-          ).__imageViewerTestRoot;
+          const root = window.__imageViewerTestRoot;
           root.entries.delete('cover.gif');
           for (const name of ['2.png', '10.png'])
             root.entries.set(name, {
               kind: 'file',
+              createWritable: async () => {
+                throw new Error('Read-only fixture');
+              },
               name,
               getFile: async () => new File([blob], name, { type: 'image/png' }),
             });
@@ -1481,11 +1400,7 @@ for (const originalAspect of [false, true]) {
     }) => {
       await page.setViewportSize({ width: 1280, height: 720 });
       await page.evaluate(async () => {
-        const root = (
-          window as unknown as {
-            __imageViewerTestRoot: { directory(name: string): { entries: Map<string, unknown> } };
-          }
-        ).__imageViewerTestRoot;
+        const root = window.__imageViewerTestRoot;
         const bulk = root.directory('bulk');
         const images: Blob[] = [];
         for (const [width, height] of [
@@ -1497,13 +1412,18 @@ for (const originalAspect of [false, true]) {
           canvas.width = width;
           canvas.height = height;
           images.push(
-            await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!))),
+            await new Promise<Blob>((resolve) =>
+              canvas.toBlob((value) => resolve(window.__requireTestValue(value))),
+            ),
           );
         }
         for (let index = 0; index < 1800; index++) {
           const name = `image-${index}.png`;
           bulk.entries.set(name, {
             kind: 'file',
+            createWritable: async () => {
+              throw new Error('Read-only fixture');
+            },
             name,
             getFile: async () => {
               await new Promise((resolve) => setTimeout(resolve, (index % 3) * 10));
@@ -1518,7 +1438,7 @@ for (const originalAspect of [false, true]) {
       await expect(page.locator('#item-list')).toHaveAttribute('data-virtual', 'true');
       if (hiddenUi) await page.locator('#ui-visibility-btn').click();
       await page.evaluate(() => {
-        const state = window as unknown as { __emptyGalleryFrames: number };
+        const state = window;
         state.__emptyGalleryFrames = 0;
         window.addEventListener('scroll', () =>
           requestAnimationFrame(() => {
@@ -1556,11 +1476,7 @@ for (const originalAspect of [false, true]) {
         expect(snapshot.order).toEqual([...snapshot.order].sort((a, b) => a - b));
       }
       await expect(page.locator('#status-area')).not.toContainText('読み込んでいます');
-      expect(
-        await page.evaluate(
-          () => (window as unknown as { __emptyGalleryFrames: number }).__emptyGalleryFrames,
-        ),
-      ).toBe(0);
+      expect(await page.evaluate(() => window.__emptyGalleryFrames)).toBe(0);
     });
   }
 }
@@ -1605,17 +1521,21 @@ test('PDF thumbnails and single/spread navigation stay within the selected docum
   page,
 }) => {
   await page.evaluate((content) => {
-    const { __imageViewerTestRoot: root } = window as unknown as {
-      __imageViewerTestRoot: { entries: Map<string, unknown> };
-    };
+    const { __imageViewerTestRoot: root } = window;
     for (const name of ['book.PDF', 'other.pdf'])
       root.entries.set(name, {
         kind: 'file',
+        createWritable: async () => {
+          throw new Error('Read-only fixture');
+        },
         name,
         getFile: async () => new File([content], name, { type: 'application/pdf' }),
       });
     root.entries.set('broken.pdf', {
       kind: 'file',
+      createWritable: async () => {
+        throw new Error('Read-only fixture');
+      },
       name: 'broken.pdf',
       getFile: async () => new File(['invalid pdf'], 'broken.pdf'),
     });
@@ -1631,7 +1551,7 @@ test('PDF thumbnails and single/spread navigation stay within the selected docum
     page.locator(selector).evaluate((image: HTMLImageElement) => {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 1;
-      const context = canvas.getContext('2d')!;
+      const context = window.__requireTestValue(canvas.getContext('2d'));
       context.drawImage(image, image.naturalWidth / 2, image.naturalHeight / 2, 1, 1, 0, 0, 1, 1);
       return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3);
     });
@@ -1641,7 +1561,7 @@ test('PDF thumbnails and single/spread navigation stay within the selected docum
     const canvas = document.createElement('canvas');
     canvas.width = 200;
     canvas.height = 300;
-    const context = canvas.getContext('2d')!;
+    const context = window.__requireTestValue(canvas.getContext('2d'));
     context.drawImage(image, 0, 0, 200, 300);
     const pixels = context.getImageData(20, 260, 70, 25).data;
     let white = 0;

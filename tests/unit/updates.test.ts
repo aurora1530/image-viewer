@@ -1,33 +1,12 @@
-import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UpdateState } from '../../src/shared/release';
 
-type FakeUpdater = EventEmitter & {
-  checkForUpdates: ReturnType<typeof vi.fn>;
-  quitAndInstall: ReturnType<typeof vi.fn>;
-  autoInstallOnAppQuit?: boolean;
-};
-const require = createRequire(import.meta.url);
-const { createUpdates } = require('../../electron/updates.cjs') as {
-  createUpdates(options: {
-    enabled: boolean;
-    updater: FakeUpdater;
-    broadcast(state: UpdateState): void;
-    requestInstall(): boolean;
-  }): {
-    getState(): UpdateState;
-    check(): Promise<UpdateState>;
-    start(): void;
-    stop(): void;
-    install(): boolean;
-    cancelInstall(): void;
-    finishInstall(): boolean;
-  };
-};
+import api from '../../electron/updates.cjs';
+const { createUpdates } = api;
 
 function setup(enabled = true) {
   const updater = Object.assign(new EventEmitter(), {
+    autoInstallOnAppQuit: true,
     checkForUpdates: vi.fn(async (): Promise<{ downloadPromise: Promise<unknown> | null }> => ({
       downloadPromise: null,
     })),
@@ -70,7 +49,7 @@ describe('desktop updates', () => {
     updates.finishInstall();
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
     expect(requestInstall).toHaveBeenCalledTimes(2);
-    expect((updater as FakeUpdater).autoInstallOnAppQuit).toBe(false);
+    expect(updater.autoInstallOnAppQuit).toBe(false);
   });
 
   it('coalesces checks and recovers from network and download errors', async () => {

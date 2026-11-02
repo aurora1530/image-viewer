@@ -48,7 +48,7 @@ export function createVirtualGallery(
 
   function removeRow(index: number, row: HTMLElement) {
     resizeObserver?.unobserve(row);
-    for (const card of Array.from(row.children)) disposeCard(card as HTMLElement);
+    for (const card of Array.from(row.children)) if (card instanceof HTMLElement) disposeCard(card);
     row.remove();
     rows.delete(index);
     cardsChanged = true;
@@ -161,7 +161,8 @@ export function createVirtualGallery(
             const index = Array.from(rows.entries()).find(([, row]) => row === entry.target)?.[0];
             if (index === undefined) continue;
             const height =
-              entry.borderBoxSize?.[0]?.blockSize || (entry.target as HTMLElement).offsetHeight;
+              entry.borderBoxSize?.[0]?.blockSize ||
+              (entry.target instanceof HTMLElement ? entry.target.offsetHeight : 0);
             if (height > 0 && Math.abs(heights[index] - height) > 0.5) {
               heights[index] = height;
               changed = true;

@@ -1,9 +1,10 @@
+import type { DirectoryHandle, FileHandle } from './fileSystem';
 export type SortOrder = 'asc' | 'desc';
 export type FilterType = 'all' | 'directory' | 'image' | 'gif' | 'video' | 'pdf';
 
 export type DirectoryCacheDirectoryItem = {
   type: 'directory';
-  handle: FileSystemDirectoryHandle;
+  handle: DirectoryHandle;
   name: string;
   nameLower: string;
   imageIndex?: number;
@@ -14,7 +15,7 @@ export type DirectoryCacheDirectoryItem = {
 
 export type DirectoryCacheImageItem = {
   type: 'image';
-  handle: FileSystemFileHandle;
+  handle: FileHandle;
   name: string;
   nameLower: string;
   imageIndex?: number;
@@ -25,7 +26,7 @@ export type DirectoryCacheImageItem = {
 
 export type DirectoryCacheVideoItem = {
   type: 'video';
-  handle: FileSystemFileHandle;
+  handle: FileHandle;
   name: string;
   nameLower: string;
   imageIndex?: number;

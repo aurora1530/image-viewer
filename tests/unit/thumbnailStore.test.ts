@@ -1,24 +1,11 @@
-import { createRequire } from 'node:module';
+import { requireValue } from '../../src/shared/validation';
 import { mkdtemp, mkdir, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createThumbnailStore } = createRequire(import.meta.url)(
-  '../../electron/thumbnail-store.cjs',
-) as {
-  createThumbnailStore(options: {
-    cacheDirectory: () => string;
-    requireAllowed: (file: string) => string;
-    maxEntries?: number;
-    maxBytes?: number;
-  }): {
-    configure(value: number): Promise<void>;
-    stats(): Promise<{ bytes: number }>;
-    read(file: string): Promise<{ version: string; bytes: Uint8Array | null }>;
-    write(file: string, version: string, bytes: Uint8Array): Promise<boolean>;
-  };
-};
+import api from '../../electron/thumbnail-store.cjs';
+const { createThumbnailStore } = api;
 let directory: string;
 let source: string;
 let cacheDirectory: string;
@@ -60,7 +47,7 @@ describe('persistent desktop thumbnails', () => {
     const initial = await store().read(source);
     expect(initial.bytes).toBeNull();
     expect(await store().write(source, initial.version, bytes)).toBe(true);
-    expect(new Uint8Array((await store().read(source)).bytes!)).toEqual(bytes);
+    expect(new Uint8Array(requireValue((await store().read(source)).bytes))).toEqual(bytes);
     await writeFile(source, 'updated original');
     await utimes(source, new Date('2025-01-01'), new Date('2025-01-01'));
     const updated = await store().read(source);
@@ -110,9 +97,7 @@ describe('persistent desktop thumbnails', () => {
         ),
       );
     }
-    const fs = createRequire(import.meta.url)(
-      'node:fs/promises',
-    ) as typeof import('node:fs/promises');
+    const { default: fs } = await import('node:fs/promises');
     const scans = vi.spyOn(fs, 'readdir');
     const metadata = vi.spyOn(fs, 'stat');
     const cache = store();

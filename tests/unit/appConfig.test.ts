@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createConfig } from '../../src/app/createConfig';
 import { createAppStore } from '../../src/app/store';
@@ -44,7 +45,7 @@ describe('central app configuration', () => {
     expect(thumbnail).toHaveBeenLastCalledWith(512 * 1024 * 1024);
     const restored = createConfig(createAppStore());
     await restored.load();
-    expect(JSON.parse(localStorage.getItem('image-viewer-config')!)).toMatchObject({
+    expect(JSON.parse(requireValue(localStorage.getItem('image-viewer-config')))).toMatchObject({
       originalMemoryMiB: 0,
     });
   });

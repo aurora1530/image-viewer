@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createImagePageCache } from '../../src/services/imagePageCache';
 import { getMediaSource } from '../../src/platform/nativeFs';
@@ -60,7 +61,7 @@ describe('decoded image page cache', () => {
   });
 
   it('releases a source that arrives after its pending entry was cleared', async () => {
-    let release!: (source: { url: string; objectUrl: boolean }) => void;
+    let release: ((source: { url: string; objectUrl: boolean }) => void) | undefined;
     vi.mocked(getMediaSource).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -70,7 +71,7 @@ describe('decoded image page cache', () => {
     const cache = createImagePageCache();
     const pending = cache.get(first);
     cache.clear();
-    release({ url: 'blob:late', objectUrl: true });
+    requireValue(release)({ url: 'blob:late', objectUrl: true });
     expect(await pending).toBeNull();
     expect(decode).not.toHaveBeenCalled();
     expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:late');
@@ -78,7 +79,7 @@ describe('decoded image page cache', () => {
   });
 
   it('releases a pending decode without publishing its result', async () => {
-    let release!: () => void;
+    let release: (() => void) | undefined;
     decode.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -89,7 +90,7 @@ describe('decoded image page cache', () => {
     const pending = cache.get(first);
     await vi.waitFor(() => expect(decode).toHaveBeenCalledOnce());
     cache.clear();
-    release();
+    requireValue(release)();
     expect(await pending).toBeNull();
     expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:one.png');
   });

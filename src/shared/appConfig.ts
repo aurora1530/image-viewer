@@ -1,3 +1,4 @@
+import { isRecord } from './validation';
 export const MiB = 1024 * 1024;
 export const defaultAppConfig = {
   thumbnailMemoryMiB: 512,
@@ -22,13 +23,13 @@ export function normalizeAppConfig(value: unknown): AppConfig {
     ...defaultAppConfig,
     directoryThumbnailNames: [...defaultAppConfig.directoryThumbnailNames],
   };
-  if (!value || typeof value !== 'object') return result;
+  if (!isRecord(value)) return result;
   for (const key of ['thumbnailMemoryMiB', 'originalMemoryMiB', 'thumbnailDiskMiB'] as const) {
-    const number = (value as Record<string, unknown>)[key];
+    const number = value[key];
     if (typeof number === 'number' && Number.isInteger(number) && number >= 0 && number <= 1048576)
       result[key] = number;
   }
-  const names = (value as Record<string, unknown>).directoryThumbnailNames;
+  const names = value.directoryThumbnailNames;
   if (Array.isArray(names) && names.every(isDirectoryThumbnailName))
     result.directoryThumbnailNames = [...new Set(names.map((name) => name.trim()))];
   return result;

@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAppStore } from '../../src/app/store';
 import { createDirectoryViews } from '../../src/app/createDirectoryViews';
@@ -63,7 +64,7 @@ describe('gallery data and state coordination', () => {
         [['Photo10.GIF', 0]],
       );
       expect(appStore.getState().displayImages).toEqual([
-        root.entries.get('Photo10.GIF')!.asHandle(),
+        requireValue(root.entries.get('Photo10.GIF')).asHandle(),
       ]);
       expect(compare).not.toHaveBeenCalled();
       expect(read).not.toHaveBeenCalled();
@@ -158,7 +159,7 @@ describe('gallery data and state coordination', () => {
       await views.render(root.asHandle(), { useConfig: false, forceRefresh: true });
       expect(appStore.getState().displayImages).toEqual([
         replacement.asHandle(),
-        root.entries.get('two.png')!.asHandle(),
+        requireValue(root.entries.get('two.png')).asHandle(),
       ]);
     },
   );
@@ -188,7 +189,7 @@ describe('gallery data and state coordination', () => {
     await views.render(root.asHandle());
     expect(appStore.getState().entries.map((entry) => entry.item.name)).toEqual(['Photo10.GIF']);
     expect(appStore.getState().displayImages).toEqual([
-      root.entries.get('Photo10.GIF')!.asHandle(),
+      requireValue(root.entries.get('Photo10.GIF')).asHandle(),
     ]);
   });
 
@@ -197,7 +198,7 @@ describe('gallery data and state coordination', () => {
     old.file('old.png');
     const latest = new MemoryDirectory('latest');
     latest.file('latest.png');
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const wait = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -211,7 +212,7 @@ describe('gallery data and state coordination', () => {
     activate(latest);
     await views.render(latest.asHandle());
     const published = appStore.getState().entries;
-    release();
+    requireValue(release)();
     await pending;
     expect(appStore.getState().entries).toBe(published);
     expect(published.map((entry) => entry.item.name)).toEqual(['latest.png']);
@@ -239,7 +240,7 @@ describe('gallery data and state coordination', () => {
     appStore.setState({ listMode: 'directory' });
     await views.render(latest.asHandle());
     const published = appStore.getState().entries;
-    releases.forEach((release) => release());
+    releases.forEach((release) => requireValue(release)());
     await pending;
     expect(releases).toHaveLength(6);
     expect(appStore.getState().entries).toBe(published);
@@ -255,7 +256,7 @@ describe('gallery data and state coordination', () => {
     const root = new MemoryDirectory('scan');
     root.file('cover.png');
     const child = root.directory('slow');
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const wait = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -268,16 +269,16 @@ describe('gallery data and state coordination', () => {
     appStore.setState({ listMode: 'recursive' });
     const pending = views.render(root.asHandle());
     await vi.waitFor(() => expect(appStore.getState().scanPreview?.url).toBe('blob:scan-preview'));
-    appStore.getState().scanPreview!.open();
+    requireValue(appStore.getState().scanPreview).open();
     expect(openPreview).toHaveBeenCalledWith(root.asHandle(), [
-      root.entries.get('cover.png')!.asHandle(),
+      requireValue(root.entries.get('cover.png')).asHandle(),
     ]);
     const latest = new MemoryDirectory('latest');
     latest.file('latest.png');
     activate(latest);
     appStore.setState({ listMode: 'directory' });
     await views.render(latest.asHandle());
-    release();
+    requireValue(release)();
     await pending;
     expect(revoke).toHaveBeenCalledWith('blob:scan-preview');
     expect(appStore.getState().scanPreview).toBeNull();

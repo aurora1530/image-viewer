@@ -1,3 +1,4 @@
+import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import type {
   DirectoryCacheEntry,
   DirectoryCacheImageItem,
@@ -20,13 +21,13 @@ type CacheEntry = DirectoryCacheEntry;
 
 type ViewerDeps = {
   openPdfDocument?: typeof openPdfDocument;
-  getImageSource?: (handle: FileSystemFileHandle) => Promise<Source>;
-  getThumbnailPreview?: (handle: FileSystemFileHandle) => Source | null;
+  getImageSource?: (handle: FileHandle) => Promise<Source>;
+  getThumbnailPreview?: (handle: FileHandle) => Source | null;
   setBackgroundWorkPaused?: (paused: boolean) => void;
   render: (patch: Partial<ViewerPresentation>) => void;
   getVideoPlayback?: () => { time: number; paused: boolean };
-  getCurrentImageFiles: () => FileSystemFileHandle[];
-  setCurrentImageFiles: (files: FileSystemFileHandle[]) => void;
+  getCurrentImageFiles: () => FileHandle[];
+  setCurrentImageFiles: (files: FileHandle[]) => void;
   getCurrentImageIndex: () => number;
   setCurrentImageIndex: (index: number) => void;
   getPageOffset: () => number;
@@ -35,7 +36,7 @@ type ViewerDeps = {
   getIsSinglePageView: () => boolean;
   setIsSinglePageView: (value: boolean) => void;
   showStatus: (message: string, type: StatusType) => void;
-  ensureDirectoryCache: (dirHandle: FileSystemDirectoryHandle) => Promise<CacheEntry>;
+  ensureDirectoryCache: (dirHandle: DirectoryHandle) => Promise<CacheEntry>;
 };
 
 export function createViewer(deps: ViewerDeps) {
@@ -71,9 +72,9 @@ export function createViewer(deps: ViewerDeps) {
     document: PdfDocument;
     cache: ReturnType<typeof createPageCache<number>>;
   } | null = null;
-  let pdfHandle: FileSystemFileHandle | null = null;
-  let currentVideo: FileSystemFileHandle | null = null;
-  let currentImageDirectory: FileSystemDirectoryHandle | null = null;
+  let pdfHandle: FileHandle | null = null;
+  let currentVideo: FileHandle | null = null;
+  let currentImageDirectory: DirectoryHandle | null = null;
 
   function captureView(): (() => Promise<void>) | null {
     if (mediaMode === 'image' && pdfHandle) {
@@ -146,9 +147,9 @@ export function createViewer(deps: ViewerDeps) {
   }
 
   async function openViewer(
-    dirHandle: FileSystemDirectoryHandle,
+    dirHandle: DirectoryHandle,
     startIndex: number,
-    overrideImageList: FileSystemFileHandle[] | null = null,
+    overrideImageList: FileHandle[] | null = null,
   ) {
     const session = resetMedia();
     currentImageDirectory = dirHandle;
@@ -193,7 +194,7 @@ export function createViewer(deps: ViewerDeps) {
     }
   }
 
-  async function openPdf(handle: FileSystemFileHandle) {
+  async function openPdf(handle: FileHandle) {
     const session = resetMedia();
     mediaMode = 'image';
     pdfHandle = handle;
@@ -228,7 +229,7 @@ export function createViewer(deps: ViewerDeps) {
     }
   }
 
-  async function openVideoPlayer(videoHandle: FileSystemFileHandle) {
+  async function openVideoPlayer(videoHandle: FileHandle) {
     const session = resetMedia();
     mediaMode = 'video';
     currentVideo = videoHandle;

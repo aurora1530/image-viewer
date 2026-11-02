@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { describe, expect, it, vi } from 'vitest';
 import {
   collectImagesRecursively,
@@ -54,7 +55,7 @@ describe('image traversal', () => {
     const fast = root.directory('fast');
     slow.file('one.png');
     fast.file('two.png');
-    let releaseSlow!: () => void;
+    let releaseSlow: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => {
       releaseSlow = resolve;
     });
@@ -66,7 +67,7 @@ describe('image traversal', () => {
     const fastRead = vi.spyOn(fast, 'values');
     const result = collectImagesRecursively(root.asHandle());
     await vi.waitFor(() => expect(fastRead).toHaveBeenCalledOnce());
-    releaseSlow();
+    requireValue(releaseSlow)();
     expect((await result).map((item) => item.path)).toEqual(['slow/one.png', 'fast/two.png']);
   });
 
@@ -75,7 +76,7 @@ describe('image traversal', () => {
     root.file('cover.png');
     const child = root.directory('child');
     child.file('later.png');
-    let releaseChild!: () => void;
+    let releaseChild: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => {
       releaseChild = resolve;
     });
@@ -89,7 +90,7 @@ describe('image traversal', () => {
     await vi.waitFor(() =>
       expect(firstImages).toHaveBeenCalledWith([expect.objectContaining({ path: 'cover.png' })]),
     );
-    releaseChild();
+    requireValue(releaseChild)();
     expect((await result).map((item) => item.path)).toEqual(['cover.png', 'child/later.png']);
   });
 

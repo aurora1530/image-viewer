@@ -1,12 +1,10 @@
-import { createRequire } from 'node:module';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-const { serveMedia } = createRequire(import.meta.url)('../../electron/media-protocol.cjs') as {
-  serveMedia(request: Request, filePath: string): Promise<Response>;
-};
+import api from '../../electron/media-protocol.cjs';
+const { serveMedia } = api;
 let directory: string;
 let file: string;
 

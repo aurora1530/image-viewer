@@ -17,10 +17,21 @@ export function isImageFileName(name: string, extensions: string[]): boolean {
  * パス表現をディレクトリセグメント配列に正規化する。
  */
 export function normalizeDirPathSegments(path: unknown): string[] {
+  const text = (value: unknown): string | null => {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint')
+      return String(value);
+    return null;
+  };
   if (!path) return [];
-  if (Array.isArray(path)) return path.filter(Boolean).map(String);
-  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve legacy coercion for paths loaded from older configuration files.
-  return String(path).split('/').filter(Boolean);
+  if (Array.isArray(path)) {
+    const segments: unknown[] = path;
+    return segments
+      .filter(Boolean)
+      .map(text)
+      .filter((part) => part !== null);
+  }
+  return text(path)?.split('/').filter(Boolean) ?? [];
 }
 
 /**

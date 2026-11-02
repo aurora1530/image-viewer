@@ -1,3 +1,4 @@
+import { requireValue } from '../../src/shared/validation';
 import { describe, expect, it, vi } from 'vitest';
 import { createRecursiveImageCache } from '../../src/services/recursiveImageCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
@@ -102,7 +103,7 @@ describe('recursive image cache', () => {
     const root = new MemoryDirectory('root');
     root.file('old.png');
     const originalValues = root.values.bind(root);
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const paused = new Promise<void>((resolve) => {
       release = resolve;
     });
@@ -116,7 +117,7 @@ describe('recursive image cache', () => {
     cache.clear();
     root.entries.delete('old.png');
     root.file('new.png');
-    release();
+    requireValue(release)();
     await pending;
     expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual(['new.png']);
     expect(read).toHaveBeenCalledTimes(2);
