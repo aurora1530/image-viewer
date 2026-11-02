@@ -834,8 +834,20 @@ test('filters, searches and opens the displayed image', async ({ page }) => {
   expect(styleAfter.optionColor).toBe(layoutBefore.color);
   expect(styleAfter.optionBg).toBe(layoutBefore.bg);
   await expect(page.locator('#item-list .media-card')).toHaveCount(3);
+  await expect(page.locator('#item-list img[alt="10.png"]')).toHaveJSProperty('naturalWidth', 1);
+  await page.locator('#item-list img[alt="10.png"]').evaluate((image) => {
+    (window as unknown as { __retainedSearchImage: Element }).__retainedSearchImage = image;
+  });
   await page.locator('#search-input').fill('10');
   await expect(page.locator('#item-list .media-card')).toHaveCount(1);
+  expect(
+    await page
+      .locator('#item-list img[alt="10.png"]')
+      .evaluate(
+        (image) =>
+          image === (window as unknown as { __retainedSearchImage: Element }).__retainedSearchImage,
+      ),
+  ).toBe(true);
   await page.locator('#item-list .media-card').click();
   await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
   await expect(page.locator('#page-counter')).toContainText('/ 1');
@@ -943,6 +955,123 @@ test('reuses recursive scans for view controls and rescans changed files on relo
   await page.locator('#reload-btn').click();
   await expect.poll(names).toEqual(['10.png', 'new.png', 'cover.gif']);
   expect(await reads()).toBe(4);
+});
+
+test('favorite collection preserves cross-folder navigation, filters and saved metadata', async ({
+  page,
+}) => {
+  await page.evaluate(async () => {
+    const modulePath = '/src/services/storage.ts';
+    const { writeRootConfig, normalizeRootConfig } = (await import(
+      /* @vite-ignore */ modulePath
+    )) as typeof import('../../src/services/storage');
+    const root = (window as unknown as { __imageViewerTestRoot: FileSystemDirectoryHandle })
+      .__imageViewerTestRoot;
+    await writeRootConfig(
+      root,
+      normalizeRootConfig({
+        favorites: ['10.png', '2.png', 'missing.png'],
+        directories: { chapter: { favorites: ['nested.png'] } },
+      }),
+    );
+  });
+  await page.locator('#reload-btn').click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#favorite-list-btn').click();
+  const names = () =>
+    page
+      .locator('#item-list .media-card img')
+      .evaluateAll((images) => images.map((image) => image.getAttribute('alt')));
+  await expect.poll(names).toEqual(['2.png', '10.png', 'nested.png']);
+  await page.locator('#item-list .media-card').first().click();
+  await page.locator('#toggle-view-btn').click();
+  await expect(page.locator('#page-counter')).toHaveText('1 / 3');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('2 / 3');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('#page-counter')).toHaveText('3 / 3');
+  await page.keyboard.press('Escape');
+  await page.locator('#search-input').fill('nested');
+  await expect.poll(names).toEqual(['nested.png']);
+  await page.locator('#search-input').fill('');
+  await expect.poll(names).toHaveLength(3);
+  await page
+    .locator('#item-list .media-card', { has: page.locator('img[alt="10.png"]') })
+    .locator('.favorite-btn')
+    .click();
+  await expect.poll(names).toEqual(['2.png', 'nested.png']);
+  await page
+    .locator('#item-list .media-card', { has: page.locator('img[alt="nested.png"]') })
+    .locator('.hidden-toggle-btn')
+    .click();
+  await expect.poll(names).toEqual(['2.png']);
+  await page.locator('#reload-btn').click();
+  await expect.poll(names).toEqual(['2.png']);
+});
+
+test('stops queued favorite reads after switching back to the directory view', async ({ page }) => {
+  await page.evaluate(async () => {
+    const modulePath = '/src/services/storage.ts';
+    const { writeRootConfig, normalizeRootConfig } = (await import(
+      /* @vite-ignore */ modulePath
+    )) as typeof import('../../src/services/storage');
+    const root = (
+      window as unknown as {
+        __imageViewerTestRoot: FileSystemDirectoryHandle & { file(name: string): void };
+      }
+    ).__imageViewerTestRoot;
+    const favorites = Array.from({ length: 20 }, (_, index) => `favorite-${index}.png`);
+    favorites.forEach((name) => root.file(name));
+    await writeRootConfig(root, normalizeRootConfig({ favorites }));
+  });
+  await page.locator('#reload-btn').click();
+  await expect(page.locator('#item-list .item-card')).toHaveCount(25);
+  await page.evaluate(() => {
+    const state = window as unknown as {
+      __imageViewerTestRoot: FileSystemDirectoryHandle;
+      __favoriteReleases: (() => void)[];
+      __favoriteReads: number;
+      __favoriteCompleted: number;
+    };
+    state.__favoriteReleases = [];
+    state.__favoriteReads = 0;
+    state.__favoriteCompleted = 0;
+    const root = state.__imageViewerTestRoot;
+    const read = root.getFileHandle.bind(root);
+    root.getFileHandle = async (name, options) => {
+      if (!name.startsWith('favorite-')) return read(name, options);
+      state.__favoriteReads++;
+      await new Promise<void>((resolve) => state.__favoriteReleases.push(resolve));
+      const handle = await read(name, options);
+      state.__favoriteCompleted++;
+      return handle;
+    };
+  });
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#favorite-list-btn').click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __favoriteReads: number }).__favoriteReads),
+    )
+    .toBe(6);
+  await page.locator('#directory-mode-btn').click();
+  await expect(page.locator('#item-list .item-card')).toHaveCount(25);
+  await page.evaluate(() => {
+    (window as unknown as { __favoriteReleases: (() => void)[] }).__favoriteReleases
+      .splice(0)
+      .forEach((release) => release());
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { __favoriteCompleted: number }).__favoriteCompleted,
+      ),
+    )
+    .toBe(6);
+  expect(
+    await page.evaluate(() => (window as unknown as { __favoriteReads: number }).__favoriteReads),
+  ).toBe(6);
+  await expect(page.locator('#item-list .item-card')).toHaveCount(25);
 });
 
 test('favorites can be shown alone and survive another directory render', async ({ page }) => {

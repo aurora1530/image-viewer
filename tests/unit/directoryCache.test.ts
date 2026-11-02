@@ -89,6 +89,31 @@ describe('directory cache and previews', () => {
     await flushRootConfig(root.asHandle());
   });
 
+  it('stops after a canceled candidate batch without probing another name, enumerating or saving', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('__0.png');
+    const getFile = root.getFileHandle.bind(root);
+    const releases: (() => void)[] = [];
+    let active = true;
+    const lookup = vi.spyOn(root, 'getFileHandle').mockImplementation(async (name) => {
+      if (name !== '__0.jpg') await new Promise<void>((resolve) => releases.push(resolve));
+      return getFile(name);
+    });
+    const enumerate = vi.spyOn(root, 'values');
+    const pending = selectDirectoryPreviewFile(
+      root.asHandle(),
+      { rootHandle: root.asHandle(), path: [] },
+      () => active,
+    );
+    await vi.waitFor(() => expect(releases).toHaveLength(2));
+    active = false;
+    releases.forEach((release) => release());
+    expect(await pending).toBeNull();
+    expect(lookup.mock.calls.map(([name]) => name)).toEqual(['__0.jpg', '__0.jpeg', '__0.png']);
+    expect(enumerate).not.toHaveBeenCalled();
+    expect(root.entries.has('.image-viewer.json')).toBe(false);
+  });
+
   it('uses a valid descendant path without enumerating the folder or descendants', async () => {
     const root = new MemoryDirectory('root', { caseSensitive: false });
     const pages = root.directory('pages');

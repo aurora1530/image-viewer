@@ -44,4 +44,6 @@ contextBridge.exposeInMainWorld('desktopApi', {
   readFile: (path) => ipcRenderer.invoke('desktop:read-file', path),
   writeFile: (path, data) => ipcRenderer.invoke('desktop:write-file', path, data),
   exists: (path, kind) => ipcRenderer.invoke('desktop:exists', path, kind),
+  findFirstFile: (directory, names) =>
+    ipcRenderer.invoke('desktop:find-first-file', directory, names),
 });

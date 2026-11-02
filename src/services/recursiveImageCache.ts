@@ -4,6 +4,7 @@ import type { RecursiveImageItem } from './directoryTraversal';
 type CollectionOptions = {
   shouldContinue?: () => boolean;
   onFirstImages?: (images: RecursiveImageItem[]) => void;
+  onReadError?: () => void;
 };
 
 export function createRecursiveImageCache() {
@@ -18,7 +19,7 @@ export function createRecursiveImageCache() {
   async function get(
     directory: FileSystemDirectoryHandle,
     basePath = '',
-    { shouldContinue = () => true, onFirstImages }: CollectionOptions = {},
+    { shouldContinue = () => true, onFirstImages, onReadError }: CollectionOptions = {},
   ): Promise<RecursiveImageItem[]> {
     if (!shouldContinue()) return [];
     const cache = entries;
@@ -36,6 +37,7 @@ export function createRecursiveImageCache() {
       onFirstImages,
       () => {
         readFailed = true;
+        onReadError?.();
       },
     );
     // 中断・失敗した部分一覧や、更新前に開始した走査の結果は保存しない。

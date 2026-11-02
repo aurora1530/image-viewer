@@ -624,6 +624,31 @@ for (const bundled of [false, true]) {
         png.toString('base64'),
       );
       await writeFile(path.join(album, '__0.png'), Buffer.from(newPng, 'base64'));
+      expect(
+        await page.evaluate(
+          (folder) =>
+            window.desktopApi!.findFirstFile(folder, ['missing.jpg', '__0.png', 'ordinary.png']),
+          album,
+        ),
+      ).toBe('__0.png');
+      expect(
+        await page.evaluate(
+          (folder) => window.desktopApi!.findFirstFile(folder, ['ordinary.png', '__0.png']),
+          album,
+        ),
+      ).toBe('ordinary.png');
+      await expect(
+        page.evaluate(
+          (folder) => window.desktopApi!.findFirstFile(folder, ['../private.png']),
+          album,
+        ),
+      ).rejects.toThrow('不正な候補');
+      await expect(
+        page.evaluate(
+          (folder) => window.desktopApi!.findFirstFile(folder, ['ordinary.png']),
+          profile,
+        ),
+      ).rejects.toThrow('許可されていません');
       await utimes(album, fixedTime, fixedTime);
       expect((await stat(album)).mtimeMs).toBe(mtimeMs);
       expect(

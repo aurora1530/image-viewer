@@ -1,12 +1,12 @@
-import { useImperativeHandle, useRef } from 'react';
+import { useImperativeHandle, useMemo, useRef } from 'react';
 import type { CSSProperties, Ref } from 'react';
 import { createPortal } from 'react-dom';
-import { useShallow } from 'zustand/react/shallow';
 import { useAppState } from '../../app/ApplicationProvider';
 import { sizeOptions } from '../../app/store';
 import type { GalleryNavigation } from '../../app/ports';
 import { GalleryCard } from './GalleryCard';
 import { useVirtualGallery } from './useVirtualGallery';
+import { createGalleryLayoutSelector } from './galleryLayout';
 
 export function Gallery({ ref }: { ref?: Ref<GalleryNavigation> }) {
   const entries = useAppState((state) => state.entries);
@@ -14,8 +14,8 @@ export function Gallery({ ref }: { ref?: Ref<GalleryNavigation> }) {
   const home = useAppState((state) => state.screen === 'home');
   const size = sizeOptions[sizeIndex];
   const container = useRef<HTMLDivElement>(null);
-  const items = useAppState(useShallow((state) => state.entries.map((entry) => entry.item.handle)));
-  const keys = useAppState(useShallow((state) => state.entries.map((entry) => entry.key)));
+  const selectLayout = useMemo(() => createGalleryLayoutSelector(), []);
+  const { items, keys } = useAppState(selectLayout);
   const { virtual, slots, isVirtual } = useVirtualGallery(container, items, keys);
 
   useImperativeHandle(
