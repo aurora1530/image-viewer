@@ -7,6 +7,7 @@ const { pathToFileURL } = require('node:url');
 const { createThumbnailStore } = require('./thumbnail-store.cjs');
 const { serveMedia } = require('./media-protocol.cjs');
 const { writeConfigFile } = require('./config-file.cjs');
+const { findFirstFile } = require('./file-probes.cjs');
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -204,6 +205,9 @@ function registerIpc() {
       throw error;
     }
   });
+  ipcMain.handle('desktop:find-first-file', (_event, directory, names) =>
+    findFirstFile(directory, names, requireAllowed),
+  );
 }
 
 function createWindow() {

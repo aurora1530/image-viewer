@@ -1,7 +1,7 @@
 import { CONFIG } from '../shared/model';
 import { defaultAppConfig } from '../shared/appConfig';
 import { isImageFileName } from '../shared/utils';
-import { iterateDirectoryEntries } from '../platform/nativeFs';
+import { findFirstFileHandle, iterateDirectoryEntries } from '../platform/nativeFs';
 import { readDirectoryThumbnail, saveDirectoryThumbnail } from './storage';
 import type { DirectoryConfigLocation } from './storage';
 import { thumbnailCache } from './thumbnailCache';
@@ -27,20 +27,14 @@ async function findPreferredFile(
   names: readonly string[],
 ): Promise<DirectoryPreviewFile | null> {
   for (const base of names) {
-    for (const extension of CONFIG.IMAGE_EXTENSIONS) {
-      if (!shouldContinue()) return null;
-      try {
-        const handle = await dirHandle.getFileHandle(`${base}${extension}`);
-        return shouldContinue() ? { handle, path: [handle.name] } : null;
-      } catch (error) {
-        if (
-          error instanceof DOMException &&
-          (error.name === 'NotFoundError' || error.name === 'TypeMismatchError')
-        )
-          continue;
-        throw error;
-      }
-    }
+    if (!shouldContinue()) return null;
+    const handle = await findFirstFileHandle(
+      dirHandle,
+      CONFIG.IMAGE_EXTENSIONS.map((extension) => `${base}${extension}`),
+      shouldContinue,
+    );
+    if (!shouldContinue()) return null;
+    if (handle) return { handle, path: [handle.name] };
   }
   return null;
 }
@@ -81,7 +75,7 @@ export async function selectDirectoryPreviewFile(
   try {
     const preferred = await findPreferredFile(dirHandle, shouldContinue, names);
     if (!shouldContinue()) return null;
-    if (preferred) return rememberPreferred(preferred, location);
+    if (preferred) return rememberPreferred(preferred, location, shouldContinue);
     if (location) {
       const previous = await readSavedPreviewFile(dirHandle, location, shouldContinue);
       if (!shouldContinue()) return null;
@@ -132,9 +126,11 @@ export async function selectDirectoryPreviewFile(
 async function rememberPreferred(
   selected: DirectoryPreviewFile,
   location?: DirectoryConfigLocation,
-): Promise<DirectoryPreviewFile> {
+  shouldContinue: () => boolean = () => true,
+): Promise<DirectoryPreviewFile | null> {
   if (location) {
     const previous = await readDirectoryThumbnail(location);
+    if (!shouldContinue()) return null;
     if (previous?.path.length !== 1 || previous.path[0] !== selected.path[0])
       await saveDirectoryThumbnail(location, selected.path);
   }

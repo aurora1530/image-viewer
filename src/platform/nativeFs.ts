@@ -134,6 +134,50 @@ export async function openDirectoryExternally(handle: FileSystemDirectoryHandle)
   await window.desktopApi.openDirectoryExternally(handle.nativePath);
 }
 
+export async function findFirstFileHandle(
+  directory: FileSystemDirectoryHandle,
+  names: string[],
+  shouldContinue: () => boolean = () => true,
+): Promise<FileSystemFileHandle | null> {
+  if (names.length > 7) throw new Error('候補ファイルが多すぎます。');
+  if (!names.length || !shouldContinue()) return null;
+  if (directory.nativePath && window.desktopApi) {
+    const name = await window.desktopApi.findFirstFile(directory.nativePath, names);
+    if (!shouldContinue() || name === null) return null;
+    if (!names.includes(name)) throw new Error('不正な候補ファイルです。');
+    return asFileHandle(new NativeFileHandle(joinPath(directory.nativePath, name)));
+  }
+
+  const probe = async (name: string) => {
+    if (!shouldContinue()) return null;
+    try {
+      return await directory.getFileHandle(name);
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        (error.name === 'NotFoundError' || error.name === 'TypeMismatchError')
+      )
+        return null;
+      throw error;
+    }
+  };
+  const first = await probe(names[0]);
+  if (!shouldContinue()) return null;
+  if (first) return first;
+  // Try the common JPEG/PNG pair before the remaining formats. Await each
+  // bounded batch so speculative reads cannot outlive the outer search slot.
+  for (const batch of [names.slice(1, 3), names.slice(3)]) {
+    if (!batch.length) continue;
+    const results = await Promise.allSettled(batch.map(probe));
+    if (!shouldContinue()) return null;
+    for (const result of results) {
+      if (result.status === 'rejected') throw result.reason;
+      if (result.value) return result.value;
+    }
+  }
+  return null;
+}
+
 export async function listDirectoryEntries(
   dirHandle: FileSystemDirectoryHandle,
 ): Promise<Array<FileSystemDirectoryHandle | FileSystemFileHandle>> {
