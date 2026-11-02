@@ -142,6 +142,24 @@ function registerIpc() {
   ipcMain.handle('desktop:write-thumbnail', (_event, filePath, version, bytes) =>
     thumbnails.write(filePath, version, bytes),
   );
+  ipcMain.handle('desktop:confirm-list-mode', async (event, mode) => {
+    if (mode !== 'recursive' && mode !== 'favorites') throw new Error('不正な一覧モードです。');
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    if (!parent || parent.isDestroyed()) return false;
+    const result = await dialog.showMessageBox(parent, {
+      type: 'question',
+      title: mode === 'recursive' ? '全画像一覧' : 'お気に入り一覧',
+      message:
+        mode === 'recursive'
+          ? 'このフォルダ配下のすべての画像を読み込みます。続行しますか？'
+          : 'ルート設定の .image-viewer.json からお気に入りファイルをすべて読み込みます。続行しますか？',
+      buttons: ['続行', 'キャンセル'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    return result.response === 0;
+  });
   ipcMain.handle('desktop:choose-directory', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],

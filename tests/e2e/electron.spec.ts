@@ -210,6 +210,49 @@ for (const bundled of [false, true]) {
       await expect(page.locator('#item-list .media-card')).toHaveCount(1);
       await expect(page.locator('#item-list img')).toHaveJSProperty('naturalWidth', 1);
       await expect(page.locator('#item-list img')).toHaveAttribute('src', /^blob:/);
+      // Exercise the preload/IPC path, cancellation and keyboard input without
+      // using Playwright fill(), which can hide a broken native keyboard focus.
+      await app.evaluate(({ dialog, BrowserWindow }) => {
+        dialog.showMessageBox = async (
+          parent: Electron.BaseWindow | Electron.MessageBoxOptions,
+          options?: Electron.MessageBoxOptions,
+        ) => {
+          if (parent !== BrowserWindow.getAllWindows()[0]) throw new Error('Missing dialog parent');
+          if (options?.cancelId !== 1 || options.buttons?.[0] !== '続行')
+            throw new Error('Invalid confirmation options');
+          return { response: options.title === 'お気に入り一覧' ? 1 : 0, checkboxChecked: false };
+        };
+      });
+      const browserDialogs: string[] = [];
+      page.on('dialog', (dialog) => {
+        browserDialogs.push(dialog.type());
+        void dialog.dismiss();
+      });
+      for (const mode of ['recursive-btn', 'directory-mode-btn', 'favorite-list-btn']) {
+        await page.locator(`#${mode}`).click();
+        await expect(page.locator('#directory-mode-btn')).toHaveAttribute(
+          'aria-pressed',
+          mode === 'recursive-btn' ? 'false' : 'true',
+        );
+        await page.locator('#search-input').click();
+        await expect(page.locator('#search-input')).toBeFocused();
+        await page.keyboard.type('sample');
+        await expect(page.locator('#search-input')).toHaveValue('sample');
+        await expect(page.locator('#item-list .media-card')).toHaveCount(1);
+        await page.locator('#search-input').press('ControlOrMeta+A');
+        await page.locator('#search-input').press('Backspace');
+      }
+      expect(browserDialogs).toEqual([]);
+      expect(
+        await page.evaluate(async () => {
+          try {
+            await window.desktopApi!.confirmListMode('invalid' as 'recursive');
+            return false;
+          } catch {
+            return true;
+          }
+        }),
+      ).toBe(true);
       expect(
         await page.evaluate(
           () =>
