@@ -224,4 +224,53 @@ describe('React gallery', () => {
     expect(card?.querySelector('.favorite-btn')?.getAttribute('aria-pressed')).toBe('true');
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:retained');
   });
+
+  it('does not read gallery handles on unrelated viewer updates', async () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1024);
+    const readHandle = vi.fn(() => first);
+    const entries = Array.from({ length: 300 }, (_, index) => {
+      const value = { ...entry(), key: String(index) };
+      Object.defineProperty(value.item, 'handle', { get: readHandle });
+      return value;
+    });
+    appStore.setState({ entries });
+    render(createElement(Gallery));
+    await vi.waitFor(() => expect(document.querySelector('img')).not.toBeNull());
+    const card = document.querySelector('.item-card');
+    readHandle.mockClear();
+
+    flushSync(() => {
+      for (let index = 0; index < 100; index++)
+        appStore.setState({ viewer: { ...appStore.getState().viewer, counter: String(index) } });
+    });
+
+    expect(readHandle).not.toHaveBeenCalled();
+    expect(document.querySelector('.item-card')).toBe(card);
+  });
+
+  it('updates virtual cards after reordering, replacing a handle or changing a key', () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1024);
+    const entries = Array.from({ length: 300 }, (_, index) => ({
+      ...entry(index === 1 ? second : first),
+      key: String(index),
+    }));
+    appStore.setState({ entries });
+    render(createElement(Gallery));
+    expect(document.querySelector('.item-card')?.getAttribute('title')).toBe(first.name);
+
+    const reordered = [entries[1], entries[0], ...entries.slice(2)];
+    flushSync(() => appStore.setState({ entries: reordered }));
+    expect(document.querySelector('.item-card')?.getAttribute('title')).toBe(second.name);
+
+    const replaced = [{ ...entry(first), key: reordered[0].key }, ...reordered.slice(1)];
+    flushSync(() => appStore.setState({ entries: replaced }));
+    expect(document.querySelector('.item-card')?.getAttribute('title')).toBe(first.name);
+
+    const previousCard = document.querySelector('.item-card');
+    flushSync(() =>
+      appStore.setState({ entries: [{ ...replaced[0], key: 'new-key' }, ...replaced.slice(1)] }),
+    );
+    expect(document.querySelector('.item-card')).not.toBe(previousCard);
+    expect(document.querySelector('.item-card')?.getAttribute('title')).toBe(first.name);
+  });
 });
