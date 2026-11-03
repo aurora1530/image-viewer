@@ -49,6 +49,15 @@ test('home favorites keep their order and persist handle reordering across resta
     await page.reload();
     const names = () => page.locator('#favorite-roots .library-name');
     await expect(names()).toHaveText(['first', 'second', 'third']);
+    const favoriteHeight = await page
+      .locator('#favorite-roots .library-card')
+      .first()
+      .evaluate((card) => card.getBoundingClientRect().height);
+    const recentHeight = await page
+      .locator('#recent-roots .library-card')
+      .first()
+      .evaluate((card) => card.getBoundingClientRect().height);
+    expect(favoriteHeight).toBe(recentHeight);
     await expect(page.locator('#recent-roots .library-name')).toHaveText([
       'first',
       'third',

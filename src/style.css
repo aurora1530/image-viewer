@@ -166,7 +166,6 @@ body.mono-body {
 }
 .favorite-root-slot .library-card {
   grid-template-columns: 28px 42px minmax(0, 1fr) auto;
-  height: 100%;
 }
 
 .favorite-drag-handle {
