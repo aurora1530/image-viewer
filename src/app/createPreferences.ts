@@ -23,6 +23,7 @@ export function createPreferences(deps: PreferenceDependencies) {
     const s = get();
     return {
       thumbnailSizeIndex: s.thumbnailSizeIndex,
+      denseGallery: s.denseGallery,
       sortOrder: s.sortOrder,
       filterType: s.filterType,
       favoriteFirst: s.favoriteFirst,
@@ -39,6 +40,7 @@ export function createPreferences(deps: PreferenceDependencies) {
     ) {
       next.thumbnailSizeIndex = normalizeThumbnailSize(Number(settings.thumbnailSizeIndex));
     }
+    if (typeof settings.denseGallery === 'boolean') next.denseGallery = settings.denseGallery;
     if (settings.sortOrder === 'asc' || settings.sortOrder === 'desc')
       next.sortOrder = settings.sortOrder;
     if (typeof settings.filterType === 'string' && isFilterType(settings.filterType))
@@ -47,6 +49,7 @@ export function createPreferences(deps: PreferenceDependencies) {
     if (typeof settings.favoriteOnly === 'boolean') next.favoriteOnly = settings.favoriteOnly;
     set({
       thumbnailSizeIndex: next.thumbnailSizeIndex,
+      denseGallery: next.denseGallery,
       sortOrder: next.sortOrder,
       filterType: next.filterType,
       favoriteFirst: next.favoriteFirst,
@@ -62,6 +65,12 @@ export function createPreferences(deps: PreferenceDependencies) {
         const thumbnailSizeIndex = normalizeThumbnailSize(value);
         set({ thumbnailSizeIndex });
         deps.persist('thumbnailSizeIndex', String(thumbnailSizeIndex));
+        scheduleSaveCurrentDirectoryConfig();
+      },
+      toggleDenseGallery() {
+        const denseGallery = !get().denseGallery;
+        set({ denseGallery });
+        deps.persist('denseGallery', denseGallery ? '1' : '0');
         scheduleSaveCurrentDirectoryConfig();
       },
       setFilter(value: string) {

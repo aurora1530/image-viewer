@@ -47,6 +47,7 @@ export function initialAppState(): AppState {
     favoriteFirst: false,
     favoriteOnly: false,
     thumbnailSizeIndex: 1,
+    denseGallery: false,
     sortOrder: 'asc',
     filterType: 'all',
     searchQuery: '',
@@ -91,6 +92,7 @@ export type AppState = {
   favoriteFirst: boolean;
   favoriteOnly: boolean;
   thumbnailSizeIndex: number;
+  denseGallery: boolean;
   sortOrder: SortOrder;
   filterType: FilterType;
   searchQuery: string;

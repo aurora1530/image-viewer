@@ -1706,3 +1706,81 @@ test('settings closes outside and locks background scrolling until closed', asyn
     .poll(() => page.evaluate(() => document.documentElement.style.overflow))
     .toBe('auto');
 });
+
+for (const count of [18, 300]) {
+  test(`dense gallery fills mixed aspect columns and switches back (${count} images)`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.evaluate(async (count) => {
+      const root = window.__imageViewerTestRoot;
+      root.entries.clear();
+      for (let i = 0; i < count; i++) {
+        const name = `${String(i).padStart(3, '0')}-長い画像ファイル名.png`;
+        const canvas = document.createElement('canvas');
+        canvas.width = 200;
+        canvas.height = i % 3 === 0 ? 600 : i % 3 === 1 ? 100 : 200;
+        const context = window.__requireTestValue(canvas.getContext('2d'));
+        context.fillStyle = ['#c46540', '#468e85', '#596aa5'][i % 3] || '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = '#ffffff';
+        context.font = '32px sans-serif';
+        context.fillText(String(i), 20, 50);
+        const blob = await new Promise<Blob>((resolve) =>
+          canvas.toBlob((value) => resolve(window.__requireTestValue(value))),
+        );
+        root.entries.set(name, {
+          kind: 'file',
+          name,
+          createWritable: async () => {
+            throw new Error('Read-only fixture');
+          },
+          getFile: async () => new File([blob], name, { type: 'image/png' }),
+        });
+      }
+    }, count);
+    await page.locator('#reload-btn').click();
+    await page.locator('#size-select').selectOption('3');
+    await page.locator('#dense-gallery-btn').click();
+    await expect(page.locator('#dense-gallery-btn')).toHaveAttribute('aria-pressed', 'true');
+    const list = page.locator('#item-list');
+    await expect(list).toHaveClass(/dense-gallery/);
+    const image = (index: number) =>
+      list.locator(`img[alt="${String(index).padStart(3, '0')}-長い画像ファイル名.png"]`);
+    for (const i of [0, 1, 2, 3]) await expect(image(i)).toHaveJSProperty('naturalWidth', 200);
+    await expect
+      .poll(async () => {
+        const portrait = await image(0).boundingBox();
+        const landscape = await image(1).boundingBox();
+        const next = await image(3).boundingBox();
+        if (!portrait || !landscape || !next) return false;
+        return (
+          Math.abs(next.y - landscape.y - landscape.height) < 1 &&
+          Math.abs(next.x - landscape.x) < 1 &&
+          next.y < portrait.y + portrait.height &&
+          Math.abs(portrait.height / portrait.width - 3) < 0.01
+        );
+      })
+      .toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('dense-wide.png') });
+    await image(1).click();
+    await expect(page.locator('#page-counter')).toHaveText(`2 - 1 / ${count}`);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(image(count - 1)).toHaveJSProperty('naturalWidth', 200);
+    if (count > 200) await expect.poll(() => list.locator('.item-card').count()).toBeLessThan(100);
+    await page.setViewportSize({ width: 420, height: 800 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(image(0)).toHaveJSProperty('naturalWidth', 200);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('dense-narrow.png') });
+    await page.locator('#dense-gallery-btn').click();
+    await expect(list).not.toHaveClass(/dense-gallery/);
+    await page.screenshot({ path: testInfo.outputPath('regular-narrow.png') });
+    await page.locator('#size-select').selectOption('1');
+    await expect(page.locator('#dense-gallery-btn')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('thumbnail-narrow.png') });
+  });
+}

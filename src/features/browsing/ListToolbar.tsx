@@ -6,6 +6,7 @@ export function ListToolbar() {
   const s = useAppState(
     useShallow((state) => ({
       size: state.thumbnailSizeIndex,
+      dense: state.denseGallery,
       filter: state.filterType,
       search: state.searchQuery,
       favoriteOnly: state.favoriteOnly,
@@ -128,6 +129,18 @@ export function ListToolbar() {
               </option>
             ))}
           </select>
+          {sizeOptions[s.size].originalAspect && (
+            <button
+              id="dense-gallery-btn"
+              type="button"
+              className={`ui-btn ghost${s.dense ? ' is-active' : ''}`}
+              aria-pressed={s.dense}
+              title="縦横比を保ち、高さの低い列へ画像を詰めて表示"
+              onClick={() => actions.toggleDenseGallery()}
+            >
+              隙間を詰める
+            </button>
+          )}
           <button
             id="ui-visibility-btn"
             type="button"
