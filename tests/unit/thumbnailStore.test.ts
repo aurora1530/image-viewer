@@ -184,3 +184,22 @@ describe('persistent desktop thumbnails', () => {
     expect((await cache.read(source)).bytes).toEqual(Buffer.from(bytes));
   });
 });
+
+describe('clearing persistent thumbnails', () => {
+  it('clears existing and in-flight writes while preserving source and unrelated files', async () => {
+    const cache = store();
+    const { version } = await cache.read(source);
+    const writing = cache.write(source, version, bytes);
+    const clearing = cache.clear();
+    await Promise.all([writing, clearing]);
+    expect(await cache.stats()).toEqual({ bytes: 0 });
+    expect((await cache.read(source)).bytes).toBeNull();
+    await cache.write(source, version, bytes);
+    await writeFile(path.join(cacheDirectory, 'settings.json'), '{}');
+    await store().clear();
+    expect(await readdir(cacheDirectory)).toEqual(['settings.json']);
+    expect(await readFile(source, 'utf8')).toBe('original');
+    expect(await cache.write(source, version, bytes)).toBe(true);
+    expect((await store().stats()).bytes).toBe(3);
+  });
+});

@@ -37,6 +37,14 @@ export function createConfig(store: AppStore) {
           saving = false;
         }
       },
+      async clearPersistentCache() {
+        try {
+          await window.desktopApi?.clearPersistentCache();
+          return true;
+        } catch {
+          return false;
+        }
+      },
       async refreshCacheUsage() {
         try {
           const disk = await window.desktopApi?.cacheStats();

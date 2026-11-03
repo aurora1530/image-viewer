@@ -129,17 +129,39 @@ function createThumbnailStore({
     return true;
   }
 
+  // Serialize disk operations so clearing cannot race a thumbnail write or index scan.
+  let pending = Promise.resolve();
+  function serialize(operation) {
+    const result = pending.then(operation);
+    pending = result.catch(() => undefined);
+    return result;
+  }
   return {
-    read,
-    write,
-    async configure(value) {
-      if (!Number.isSafeInteger(value) || value < 0) throw new Error('不正な容量です。');
-      maxBytes = value;
-      await schedulePrune();
+    read: (...args) => serialize(() => read(...args)),
+    write: (...args) => serialize(() => write(...args)),
+    clear: () =>
+      serialize(async () => {
+        await schedulePrune();
+        indexLoaded = false;
+        for (const file of cachedFiles.keys()) {
+          await fs.unlink(file).catch((error) => {
+            if (error.code !== 'ENOENT') throw error;
+          });
+          cachedFiles.delete(file);
+        }
+      }),
+    configure(value) {
+      return serialize(async () => {
+        if (!Number.isSafeInteger(value) || value < 0) throw new Error('不正な容量です。');
+        maxBytes = value;
+        await schedulePrune();
+      });
     },
-    async stats() {
-      await schedulePrune();
-      return { bytes: [...cachedFiles.values()].reduce((sum, entry) => sum + entry.size, 0) };
+    stats() {
+      return serialize(async () => {
+        await schedulePrune();
+        return { bytes: [...cachedFiles.values()].reduce((sum, entry) => sum + entry.size, 0) };
+      });
     },
   };
 }

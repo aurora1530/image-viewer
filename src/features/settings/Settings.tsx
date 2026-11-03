@@ -24,6 +24,8 @@ export function Settings() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState('');
   useEffect(() => {
     if (!open) return;
     void actions.refreshCacheUsage();
@@ -48,6 +50,7 @@ export function Settings() {
           dialog.current?.querySelector('textarea')?.setCustomValidity('');
           setNamesText(config.directoryThumbnailNames.join('\n'));
           setSaved(false);
+          setCacheMessage('');
           setOpen(true);
           dialog.current?.showModal();
         }}
@@ -66,6 +69,9 @@ export function Settings() {
         className="settings-dialog"
         aria-labelledby="settings-title"
         onClose={() => setOpen(false)}
+        onCancel={(event) => {
+          if (saving || clearing) event.preventDefault();
+        }}
         onKeyDown={(event) => event.stopPropagation()}
       >
         <div className="settings-header">
@@ -73,7 +79,7 @@ export function Settings() {
           <button
             type="button"
             className="ui-btn ghost"
-            disabled={saving}
+            disabled={saving || clearing}
             onClick={() => dialog.current?.close()}
           >
             閉じる
@@ -128,6 +134,36 @@ export function Settings() {
             使用量は保持中の画像データです。表示・デコード中の画像やアプリ全体のメモリは含みません。
           </p>
           {usage.path && <p className="settings-note">キャッシュ保存先: {usage.path}</p>}
+          {capabilities.desktop && (
+            <>
+              <button
+                type="button"
+                className="ui-btn ghost"
+                disabled={clearing || saving}
+                onClick={() => {
+                  setClearing(true);
+                  setCacheMessage('');
+                  void actions.clearPersistentCache().then(async (success) => {
+                    setCacheMessage(
+                      success
+                        ? '永続キャッシュを削除しました。'
+                        : '永続キャッシュを削除できませんでした。再試行してください。',
+                    );
+                    await actions.refreshCacheUsage();
+                    setClearing(false);
+                  });
+                }}
+              >
+                {clearing ? '削除中…' : '永続キャッシュを削除'}
+              </button>
+              <p className="settings-note">
+                ディスク上のサムネイルを削除します。必要な画像は再生成します。お気に入り・履歴・設定は保持します。
+              </p>
+              <p role="status" aria-label="キャッシュの削除状況">
+                {cacheMessage}
+              </p>
+            </>
+          )}
           <h3>フォルダーの代表画像</h3>
           <p className="settings-desc" id="thumbnail-names-help">
             拡張子を除いた名前を1行に1つ入力します。上の行から優先します。
@@ -174,7 +210,11 @@ export function Settings() {
             <p role="status" aria-label="設定の保存状況" className="settings-status">
               {error || (saved ? '保存しました。' : '')}
             </p>
-            <button type="submit" className="ui-btn primary" disabled={saving || !ready}>
+            <button
+              type="submit"
+              className="ui-btn primary"
+              disabled={saving || clearing || !ready}
+            >
               {saving ? '保存中…' : '設定を保存'}
             </button>
           </div>

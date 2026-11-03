@@ -21,6 +21,7 @@ interface Window {
     ): Promise<boolean>;
     readAppConfig(): Promise<unknown>;
     writeAppConfig(config: import('./shared/appConfig').AppConfig): Promise<void>;
+    clearPersistentCache(): Promise<void>;
     confirmRemoval(kind: 'favorite' | 'history', name: string): Promise<boolean>;
     cacheStats(): Promise<{ bytes: number; path: string; configPath: string }>;
     chooseDirectory(): Promise<string | null>;

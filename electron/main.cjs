@@ -133,6 +133,7 @@ function registerIpc() {
     await saveJson(settingsPath(), clean);
     await thumbnails.configure(clean.thumbnailDiskMiB * 1024 * 1024);
   });
+  ipcMain.handle('desktop:clear-persistent-cache', () => thumbnails.clear());
   ipcMain.handle('desktop:confirm-removal', async (event, kind, name) => {
     if ((kind !== 'favorite' && kind !== 'history') || typeof name !== 'string')
       throw new Error('不正な削除確認です。');

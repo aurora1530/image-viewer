@@ -1,3 +1,4 @@
+import { createDesktopApi } from '../helpers/desktopApi';
 import { requireValue } from '../../src/shared/validation';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createConfig } from '../../src/app/createConfig';
@@ -64,4 +65,16 @@ describe('central app configuration', () => {
     expect(store.getState().config).toBe(before);
     expect(store.getState().configError).toContain('保存できません');
   });
+});
+
+it('reports persistent cache removal failures and allows a retry', async () => {
+  const clearPersistentCache = vi
+    .fn()
+    .mockRejectedValueOnce(new Error('disk'))
+    .mockResolvedValue(undefined);
+  window.desktopApi = createDesktopApi({ clearPersistentCache });
+  const config = createConfig(createAppStore());
+  expect(await config.actions.clearPersistentCache()).toBe(false);
+  expect(await config.actions.clearPersistentCache()).toBe(true);
+  expect(clearPersistentCache).toHaveBeenCalledTimes(2);
 });
