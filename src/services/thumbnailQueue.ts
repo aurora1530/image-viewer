@@ -15,9 +15,11 @@ type Job = {
 };
 
 // Re-evaluate positions at dispatch time: scroll targets can overtake earlier requests.
-export function createThumbnailQueue(concurrency: number) {
+export function createThumbnailQueue(concurrency: number, reserveForVisible = false) {
   const waiting: Job[] = [];
-  let active = 0;
+  const active = new Set<Job>();
+  // Keep room for newly visible cards without stopping useful work already in progress.
+  const prefetchLimit = Math.max(1, Math.floor(concurrency * 0.75));
   let scheduled = false;
   let paused = false;
 
@@ -26,7 +28,10 @@ export function createThumbnailQueue(concurrency: number) {
     for (let i = waiting.length - 1; i >= 0; i--) {
       if (waiting[i].request.shouldContinue?.() === false) waiting.splice(i, 1)[0].cancel();
     }
-    while (!paused && active < concurrency && waiting.length) {
+    let prefetchActive = reserveForVisible
+      ? [...active].filter((job) => (job.request.getPriority?.() ?? 0) > 0).length
+      : 0;
+    while (!paused && active.size < concurrency && waiting.length) {
       let best = 0;
       let priority = waiting[0].request.getPriority?.() ?? 0;
       for (let i = 1; i < waiting.length; i++) {
@@ -36,13 +41,15 @@ export function createThumbnailQueue(concurrency: number) {
           priority = candidate;
         }
       }
+      if (reserveForVisible && priority > 0 && prefetchActive >= prefetchLimit) break;
       const job = waiting.splice(best, 1)[0];
-      active++;
+      active.add(job);
+      if (priority > 0) prefetchActive++;
       void Promise.resolve()
         .then(job.run)
         .catch(job.reject)
         .finally(() => {
-          active--;
+          active.delete(job);
           refresh();
         });
     }

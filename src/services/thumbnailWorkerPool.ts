@@ -18,7 +18,7 @@ type Slot = { worker: Worker; job: Job | null };
 
 export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
   const slots: Slot[] = [];
-  const queue = createThumbnailQueue(size);
+  const queue = createThumbnailQueue(size, true);
   let failed = false;
 
   function fail() {

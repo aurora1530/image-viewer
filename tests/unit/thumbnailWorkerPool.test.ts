@@ -22,6 +22,26 @@ beforeEach(() => {
 });
 
 describe('thumbnail worker pool', () => {
+  it('starts a newly visible image without waiting for useful prefetch to finish', async () => {
+    const pool = createThumbnailWorkerPool(2);
+    const first = pool.encode(new Blob(['prefetch one']), { getPriority: () => 100 });
+    const second = pool.encode(new Blob(['prefetch two']), { getPriority: () => 200 });
+    await vi.waitFor(() => expect(TestWorker.instances).toHaveLength(1));
+    const target = pool.encode(new Blob(['visible']));
+    await vi.waitFor(() => expect(TestWorker.instances).toHaveLength(2));
+    const [backgroundWorker, visibleWorker] = TestWorker.instances;
+    const output = new Blob(['thumbnail']);
+    visibleWorker.reply({ blob: output });
+    expect(await target).toBe(output);
+    expect(backgroundWorker.terminate).not.toHaveBeenCalled();
+    expect(backgroundWorker.postMessage).toHaveBeenCalledOnce();
+    backgroundWorker.reply({ blob: output });
+    await first;
+    await vi.waitFor(() => expect(backgroundWorker.postMessage).toHaveBeenCalledTimes(2));
+    backgroundWorker.reply({ blob: output });
+    expect(await second).toBe(output);
+  });
+
   it('pauses queued encoding while preserving completed work and resumes on close', async () => {
     const pool = createThumbnailWorkerPool(1);
     const first = pool.encode(new Blob());

@@ -52,6 +52,25 @@ afterEach(() => {
 });
 
 describe('thumbnail generation and reuse', () => {
+  it('keeps visible generation available while prefetched originals are still being read', async () => {
+    const cache = createThumbnailCache({ concurrency: 4 });
+    const releases: (() => void)[] = [];
+    const prefetch = Array.from({ length: 4 }, (_, index) => {
+      const file = root.file(`reserved-prefetch-${index}.jpg`);
+      vi.spyOn(file, 'getFile').mockImplementationOnce(
+        () =>
+          new Promise((resolve) => releases.push(() => resolve(new File(['image'], file.name)))),
+      );
+      return cache.get(file.asHandle(), undefined, () => 100, 640);
+    });
+    await vi.waitFor(() => expect(releases).toHaveLength(3));
+    expect((await cache.get(root.file('reserved-visible.jpg').asHandle()))?.objectUrl).toBe(true);
+    expect(releases).toHaveLength(3);
+    cache.clear();
+    releases.forEach((release) => release());
+    await Promise.all(prefetch);
+  });
+
   it('releases a generation slot when an abandoned original read has not finished', async () => {
     const cache = createThumbnailCache({ concurrency: 1 });
     const slow = root.file('abandoned.jpg');

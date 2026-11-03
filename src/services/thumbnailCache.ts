@@ -138,7 +138,7 @@ export function createThumbnailCache({
   const skipStored = new Set<string | symbol>();
   // Disk hits must not wait for unrelated image encoding to finish.
   const reads = createThumbnailQueue(Math.max(4, concurrency));
-  const generation = createThumbnailQueue(concurrency);
+  const generation = createThumbnailQueue(concurrency, true);
   const counters = { memoryHits: 0, diskHits: 0, generated: 0, sharedRequests: 0 };
 
   function trim() {
