@@ -47,7 +47,7 @@ export function FolderControls() {
           </button>
         </div>
         <div className="dir-chip">
-          <span className="chip-label">現在のフォルダ</span>
+          {screen !== 'home' && <span className="chip-label">現在のフォルダ</span>}
           <span id="current-dir-name" className="chip-value">
             {screen === 'home'
               ? 'ホーム'
@@ -56,7 +56,19 @@ export function FolderControls() {
         </div>
       </div>
 
-      <div className={`panel-controls${hidden}`}>
+      {screen === 'home' && (
+        <button
+          id="home-select-dir-btn"
+          type="button"
+          className="ui-btn primary"
+          onClick={() => {
+            void actions.selectRootDirectory();
+          }}
+        >
+          新しいフォルダーを開く
+        </button>
+      )}
+      <div className={`panel-controls${screen === 'home' ? ' hidden' : hidden}`}>
         <div className="toolbar-group" role="group" aria-label="一覧モード">
           <span className="toolbar-group-label">一覧モード</span>
           <div className="segmented-control">

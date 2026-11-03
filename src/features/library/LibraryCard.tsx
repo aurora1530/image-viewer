@@ -49,7 +49,11 @@ export function LibraryCard({ item, reorder }: { item: DesktopLibraryItem; reord
           ⠿
         </button>
       )}
-      <div className="library-folder-icon">▰</div>
+      <div className="library-folder-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+        </svg>
+      </div>
       <div className="library-copy">
         <div className="library-name">{item.name}</div>
         <div className="library-path">{item.path}</div>
