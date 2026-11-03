@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.invoke('desktop:write-thumbnail', path, version, bytes, maxEdge),
   readAppConfig: () => ipcRenderer.invoke('desktop:read-app-config'),
   writeAppConfig: (config) => ipcRenderer.invoke('desktop:write-app-config', config),
+  confirmRemoval: (kind, name) => ipcRenderer.invoke('desktop:confirm-removal', kind, name),
   cacheStats: () => ipcRenderer.invoke('desktop:cache-stats'),
   chooseDirectory: () => ipcRenderer.invoke('desktop:choose-directory'),
   confirmListMode: (mode) => ipcRenderer.invoke('desktop:confirm-list-mode', mode),

@@ -998,6 +998,13 @@ test('favorite collection preserves cross-folder navigation, filters and saved m
   await expect.poll(names).toEqual(['nested.png']);
   await page.locator('#search-input').fill('');
   await expect.poll(names).toHaveLength(3);
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await page
+    .locator('#item-list .media-card', { has: page.locator('img[alt="10.png"]') })
+    .locator('.favorite-btn')
+    .click();
+  await expect.poll(names).toEqual(['2.png', '10.png', 'nested.png']);
+  page.once('dialog', (dialog) => dialog.accept());
   await page
     .locator('#item-list .media-card', { has: page.locator('img[alt="10.png"]') })
     .locator('.favorite-btn')

@@ -18,6 +18,7 @@ export function createDesktopApi(overrides: Partial<DesktopApi> = {}): DesktopAp
     readAppConfig: unsupported,
     writeAppConfig: unsupported,
     cacheStats: unsupported,
+    confirmRemoval: unsupported,
     chooseDirectory: unsupported,
     openRoot: unsupported,
     openDirectoryExternally: unsupported,
