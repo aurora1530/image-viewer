@@ -97,9 +97,9 @@ body.mono-body {
 }
 
 .home-view {
-  padding: 24px 20px 30px;
+  padding: 12px 20px 30px;
 }
-.library-section {
+.library-section:not(.hidden) ~ .library-section {
   margin-top: 28px;
 }
 .library-heading {
