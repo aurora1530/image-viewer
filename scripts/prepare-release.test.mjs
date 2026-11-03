@@ -21,7 +21,7 @@ test('increments stable semantic versions and rejects malformed versions', () =>
 });
 
 for (const mode of ['minor', 'initial']) {
-  test(`re-running ${mode} reuses its tag, even after main has advanced`, () => {
+  test(`${mode} only promotes after verification and rolls back failures`, () => {
     const root = mkdtempSync(path.join(tmpdir(), 'image-viewer-release-test-'));
     const checkout = path.join(root, 'checkout');
     const remote = path.join(root, 'remote.git');
@@ -53,6 +53,7 @@ for (const mode of ['minor', 'initial']) {
       git('commit', '-m', 'initial');
       git('remote', 'add', 'origin', remote);
       git('push', '-u', 'origin', 'main');
+      const base = git('rev-parse', 'HEAD');
       const output = path.join(root, 'output');
       const run = (runId = '12345') =>
         execFileSync(
@@ -66,6 +67,8 @@ for (const mode of ['minor', 'initial']) {
               HUSKY: '0',
               GITHUB_ACTIONS: 'true',
               GITHUB_RUN_ID: runId,
+              GITHUB_SHA: base,
+              RELEASE_BUNDLE: path.join(root, 'source.bundle'),
               GITHUB_REF: 'refs/heads/main',
               GITHUB_OUTPUT: output,
               GIT_CONFIG_GLOBAL: path.join(root, 'no-global-config'),
@@ -80,7 +83,50 @@ for (const mode of ['minor', 'initial']) {
         JSON.parse(readFileSync(path.join(checkout, 'package-lock.json'))).packages[''].version,
         version,
       );
+      assert.equal(git('rev-parse', 'origin/main'), base);
+      assert.equal(git('ls-remote', 'origin', `refs/tags/${tag}`), '');
+      // A separate runner can consume the candidate without any published ref.
+      const consumer = path.join(root, 'consumer');
+      git('clone', path.join(root, 'source.bundle'), consumer);
+      assert.equal(git('-C', consumer, 'rev-parse', `${tag}^{commit}`), released);
+      git('-C', consumer, 'checkout', '--detach', released);
+      assert.equal(JSON.parse(readFileSync(path.join(consumer, 'package.json'))).version, version);
+      const finalize = (action, runId = '12345') =>
+        execFileSync(
+          process.execPath,
+          [fileURLToPath(new URL('./finalize-release.mjs', import.meta.url)), action],
+          {
+            cwd: checkout,
+            stdio: 'pipe',
+            env: {
+              ...process.env,
+              GITHUB_ACTIONS: 'true',
+              GITHUB_RUN_ID: runId,
+              GITHUB_REPOSITORY: '',
+              RELEASE_BASE: base,
+              RELEASE_SHA: released,
+              RELEASE_TAG: tag,
+              GIT_CONFIG_GLOBAL: path.join(root, 'no-global-config'),
+            },
+          },
+        );
+      // A failed verify/build requires no cleanup: neither ref has been published.
+      finalize('rollback');
+      assert.equal(git('rev-parse', 'origin/main'), base);
+      git('tag', '-d', tag);
+      run();
+      assert.equal(git('rev-parse', `${tag}^{commit}`), released);
+      finalize('promote');
       assert.equal(git('rev-parse', 'origin/main'), released);
+      assert.throws(() => finalize('rollback', 'another-run'));
+      finalize('rollback');
+      assert.equal(git('rev-parse', 'origin/main'), base);
+      assert.equal(git('ls-remote', 'origin', `refs/tags/${tag}`), '');
+      // Simulate a fresh retry after publication failure, including tag cleanup.
+      git('tag', '-d', tag);
+      run();
+      finalize('promote');
+      finalize('promote');
       git('switch', 'main');
       git('merge', '--ff-only', 'origin/main');
       writeFileSync(path.join(checkout, 'later.txt'), 'newer main');
@@ -91,9 +137,16 @@ for (const mode of ['minor', 'initial']) {
       run();
       assert.equal(git('rev-parse', 'origin/main'), latest);
       assert.equal(git('tag', '--list'), tag);
+      assert.throws(() => finalize('rollback'));
+      assert.equal(git('rev-parse', 'origin/main'), latest);
+      // With no published tag, a changed main must also prevent promotion.
+      git('push', 'origin', `:refs/tags/${tag}`);
+      assert.throws(() => finalize('promote'));
+      assert.equal(git('ls-remote', 'origin', `refs/tags/${tag}`), '');
+      assert.equal(git('rev-parse', 'origin/main'), latest);
       assert.equal(
         readFileSync(output, 'utf8'),
-        `tag=${tag}\nsha=${released}\ntag=${tag}\nsha=${released}\n`,
+        `tag=${tag}\nsha=${released}\nbase=${base}\n`.repeat(4),
       );
       if (mode === 'initial') assert.throws(() => run('67890'));
     } finally {
