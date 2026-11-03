@@ -56,7 +56,7 @@ async function serveMedia(request, filePath) {
   const body =
     request.method === 'HEAD' || size === 0
       ? null
-      : Readable.toWeb(createReadStream(filePath, { start, end }));
+      : Readable.toWeb(createReadStream(filePath, { start, end, signal: request.signal }));
   return new Response(body, { status: range ? 206 : 200, headers });
 }
 

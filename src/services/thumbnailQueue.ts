@@ -1,6 +1,7 @@
 import type { ThumbnailSize } from '../shared/thumbnail';
 
 export type ThumbnailRequest = {
+  signal?: AbortSignal;
   maxEdge?: ThumbnailSize;
   shouldContinue?: () => boolean;
   getPriority?: () => number;

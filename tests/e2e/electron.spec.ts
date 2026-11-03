@@ -441,6 +441,65 @@ for (const bundled of [false, true]) {
       expect(await page.evaluate(() => window.__thumbnailWorkerReplies)).toBe(0);
 
       if (!bundled) {
+        const probePath = path.join(images, 'cancel-probe.jpg');
+        await writeFile(probePath, Buffer.from(jpeg));
+        await app.evaluate(({ net }) => {
+          globalThis.nativeReadProbe = { started: false, cancelled: false };
+          const original = net.fetch;
+          net.fetch = (input, options) => {
+            const url =
+              typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+            if (!url.endsWith('/cancel-probe.jpg')) return original(input, options);
+            globalThis.nativeReadProbe.started = true;
+            // Keep the body open to test cancellation after headers arrive.
+            return Promise.resolve(
+              new Response(
+                new ReadableStream<Uint8Array>({
+                  start(stream) {
+                    stream.enqueue(new Uint8Array([0xff, 0xd8]));
+                    options?.signal?.addEventListener(
+                      'abort',
+                      () => {
+                        globalThis.nativeReadProbe.cancelled = true;
+                        stream.error(new DOMException('aborted', 'AbortError'));
+                      },
+                      { once: true },
+                    );
+                  },
+                  cancel() {
+                    globalThis.nativeReadProbe.cancelled = true;
+                  },
+                }),
+                { headers: { 'Content-Type': 'image/jpeg' } },
+              ),
+            );
+          };
+        });
+        await page.evaluate(async (root) => {
+          const { openNativeDirectory } = await import(
+            /* @vite-ignore */ '../../src/platform/nativeFs.ts'
+          );
+          const { originalImageCache } = await import(
+            /* @vite-ignore */ '../../src/services/originalImageCache.ts'
+          );
+          const directory = await openNativeDirectory(root);
+          const handle = await directory.getFileHandle('cancel-probe.jpg');
+          const controller = new AbortController();
+          window.__abortNativeRead = () => controller.abort();
+          window.__nativeReadResult = originalImageCache.get(handle, controller.signal).then(
+            () => 'completed',
+            (error: unknown) => (error instanceof DOMException ? error.name : 'error'),
+          );
+        }, images);
+        await expect
+          .poll(() => requireValue(app).evaluate(() => globalThis.nativeReadProbe.started))
+          .toBe(true);
+        await page.evaluate(() => window.__abortNativeRead());
+        expect(await page.evaluate(() => window.__nativeReadResult)).toBe('AbortError');
+        await expect
+          .poll(() => requireValue(app).evaluate(() => globalThis.nativeReadProbe.cancelled))
+          .toBe(true);
+
         const orientation = await page.evaluate(async () => {
           const { encodeThumbnail } = await import(
             /* @vite-ignore */ '../../src/services/thumbnailEncoder.ts'

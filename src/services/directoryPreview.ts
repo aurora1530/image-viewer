@@ -156,6 +156,7 @@ export async function getDirectoryPreview(
       request.shouldContinue,
       request.getPriority,
       request.maxEdge,
+      request.signal,
     );
     if (request.shouldContinue?.() === false) {
       if (source?.objectUrl) URL.revokeObjectURL(source.url);

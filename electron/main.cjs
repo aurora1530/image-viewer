@@ -350,7 +350,10 @@ app.whenReady().then(async () => {
     // small Node stream chunks across processes. Media byte ranges retain the
     // explicit partial-response path needed for seeking.
     if (!request.headers.has('range') && /\.(jpe?g|png|gif|webp|bmp|heic)$/i.test(filePath)) {
-      return net.fetch(pathToFileURL(filePath).toString(), { method: request.method });
+      return net.fetch(pathToFileURL(filePath).toString(), {
+        method: request.method,
+        signal: request.signal,
+      });
     }
     return serveMedia(request, filePath);
   });

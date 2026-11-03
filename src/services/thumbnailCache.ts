@@ -14,11 +14,13 @@ import type { ThumbnailRequest } from './thumbnailQueue';
 import { getOriginalImageSource, originalImageCache } from './originalImageCache';
 import { thumbnailSizes } from '../shared/thumbnail';
 import type { ThumbnailSize } from '../shared/thumbnail';
+import { waitWithSignal } from '../shared/abort';
 
 type Source = { url: string; objectUrl: boolean };
 type Entry = {
   promise: Promise<Blob | null>;
-  consumers: Map<() => boolean, () => number>;
+  consumers: Map<symbol, { needed: () => boolean; priority: () => number }>;
+  controller: AbortController;
   blob?: Blob | null;
   invalid?: boolean;
 };
@@ -60,12 +62,17 @@ async function generate(
   maxEdge: ThumbnailSize,
 ): Promise<Blob | null> {
   if (/\.pdf$/i.test(handle.name))
-    return renderPdfThumbnail(handle, () => request.shouldContinue?.() !== false, maxEdge);
+    return renderPdfThumbnail(
+      handle,
+      () => request.shouldContinue?.() !== false,
+      maxEdge,
+      request.signal,
+    );
   let source: Source | null = null;
   const image = new Image();
   let canvas: HTMLCanvasElement | null = null;
   try {
-    const blob = await originalImageCache.get(handle);
+    const blob = await originalImageCache.get(handle, request.signal);
     await waitForThumbnailResume();
     if (request.shouldContinue?.() === false) return null;
     const png = handle.name.toLowerCase().endsWith('.png') ? await inspectPng(blob) : null;
@@ -108,6 +115,9 @@ export function createThumbnailCache({
   concurrency = THUMBNAIL_CONCURRENCY * 2,
 }: { concurrency?: number } = {}) {
   let entries = new Map<string | symbol, Entry>();
+  const pending = new Map<Entry, string | symbol>();
+  const needed = (entry: Entry) =>
+    !entry.invalid && [...entry.consumers.values()].some((consumer) => consumer.needed());
   const handleKeys = new WeakMap<FileHandle, Map<ThumbnailSize, symbol>>();
   function keyFor(handle: FileHandle, maxEdge: ThumbnailSize) {
     if (handle.nativePath) return `${maxEdge}:${handle.nativePath}`;
@@ -140,6 +150,12 @@ export function createThumbnailCache({
   }
 
   function refresh() {
+    for (const [entry, key] of pending) {
+      if (!needed(entry)) {
+        if (entries.get(key) === entry) entries.delete(key);
+        entry.controller.abort();
+      }
+    }
     reads.refresh();
     generation.refresh();
     refreshThumbnailWorkers();
@@ -150,26 +166,33 @@ export function createThumbnailCache({
     shouldContinue: () => boolean = () => true,
     getPriority: () => number = () => 0,
     maxEdge: ThumbnailSize = 1280,
+    signal?: AbortSignal,
   ): Promise<Source | null> {
+    if (signal?.aborted || !shouldContinue()) return null;
     if (/\.(gif|webp)$/i.test(handle.name))
-      return shouldContinue() ? getOriginalImageSource(handle) : null;
+      return getOriginalImageSource(handle, signal).catch((error: unknown) => {
+        if (signal?.aborted) return null;
+        throw error;
+      });
     const key = keyFor(handle, maxEdge);
+    const consumer = Symbol();
+    const usage = { needed: () => !signal?.aborted && shouldContinue(), priority: getPriority };
     let entry = entries.get(key);
     if (!entry) {
       const cache = entries;
-      const consumers = new Map([[shouldContinue, getPriority]]);
-      entry = { consumers, promise: Promise.resolve(null) };
+      const consumers = new Map([[consumer, usage]]);
+      entry = { consumers, controller: new AbortController(), promise: Promise.resolve(null) };
       cache.set(key, entry);
       const current = entry;
+      pending.set(current, key);
       const request: ThumbnailRequest = {
+        signal: current.controller.signal,
         shouldContinue: () =>
-          !current.invalid &&
-          cache === entries &&
-          [...consumers.keys()].some((consumer) => consumer()),
+          !current.controller.signal.aborted && cache === entries && needed(current),
         getPriority: () => {
           let priority = Infinity;
-          for (const [needed, getPriority] of consumers)
-            if (needed()) priority = Math.min(priority, getPriority());
+          for (const consumer of consumers.values())
+            if (consumer.needed()) priority = Math.min(priority, consumer.priority());
           return priority;
         },
       };
@@ -220,6 +243,7 @@ export function createThumbnailCache({
       })()
         .catch(() => null)
         .then((blob) => {
+          pending.delete(current);
           current.blob = blob;
           consumers.clear();
           if (!blob && cache.get(key) === current) cache.delete(key);
@@ -233,19 +257,32 @@ export function createThumbnailCache({
     } else {
       if (entry.blob) counters.memoryHits++;
       else counters.sharedRequests++;
-      entry.consumers.set(shouldContinue, getPriority);
+      entry.consumers.set(consumer, usage);
       entries.delete(key);
       entries.set(key, entry);
     }
+    const current = entry;
+    const release = () => {
+      current.consumers.delete(consumer);
+      refresh();
+    };
+    signal?.addEventListener('abort', release, { once: true });
     refresh();
-    const blob = await entry.promise;
-    entry.consumers.delete(shouldContinue);
-    if (!shouldContinue()) return null;
-    return blob
-      ? { url: URL.createObjectURL(blob), objectUrl: true }
-      : /\.pdf$/i.test(handle.name)
-        ? null
-        : getOriginalImageSource(handle);
+    try {
+      const blob = await waitWithSignal(current.promise, signal);
+      if (!shouldContinue() || signal?.aborted || current.controller.signal.aborted) return null;
+      return blob
+        ? { url: URL.createObjectURL(blob), objectUrl: true }
+        : /\.pdf$/i.test(handle.name)
+          ? null
+          : await getOriginalImageSource(handle, signal);
+    } catch (error) {
+      if (signal?.aborted) return null;
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', release);
+      release();
+    }
   }
 
   function invalidate(handle: FileHandle) {
@@ -261,6 +298,7 @@ export function createThumbnailCache({
   }
 
   function clear() {
+    for (const entry of pending.keys()) entry.controller.abort();
     entries = new Map();
     retainedBytes = 0;
     skipStored.clear();

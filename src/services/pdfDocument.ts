@@ -12,13 +12,14 @@ export type PdfDocument = {
 export async function openPdfDocument(
   handle: FileHandle,
   shouldContinue: () => boolean = () => true,
+  signal?: AbortSignal,
 ): Promise<PdfDocument> {
   const [{ getDocument, GlobalWorkerOptions }, { default: workerSrc }] = await Promise.all([
     import('pdfjs-dist/legacy/build/pdf.mjs'),
     import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
   ]);
   GlobalWorkerOptions.workerSrc = workerSrc;
-  const blob = await originalImageCache.get(handle);
+  const blob = await originalImageCache.get(handle, signal);
   if (!shouldContinue()) throw new Error('PDFの読み込みを中止しました。');
   const assetBase = new URL(`${import.meta.env.BASE_URL}pdfjs/`, window.location.href).href;
   const task = getDocument({
@@ -78,8 +79,9 @@ export async function renderPdfThumbnail(
   handle: FileHandle,
   shouldContinue: () => boolean,
   maxEdge: ThumbnailSize = 1280,
+  signal?: AbortSignal,
 ) {
-  const document = await openPdfDocument(handle, shouldContinue);
+  const document = await openPdfDocument(handle, shouldContinue, signal);
   try {
     return shouldContinue() ? await document.renderPage(1, maxEdge) : null;
   } finally {

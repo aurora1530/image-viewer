@@ -40,6 +40,7 @@ export function useThumbnail(
   useEffect(() => {
     if (attempt > 2 || maxEdge === null) return;
     let active = true;
+    const controller = new AbortController();
     let owned: MediaSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
     const element = requireValue(card.current);
@@ -57,13 +58,20 @@ export function useThumbnail(
         try {
           let result: MediaSource | null;
           if (item.type === 'image' || item.type === 'pdf')
-            result = await media.getThumbnail(item.handle, shouldContinue, getPriority, maxEdge);
+            result = await media.getThumbnail(
+              item.handle,
+              shouldContinue,
+              getPriority,
+              maxEdge,
+              controller.signal,
+            );
           else if (item.type === 'video') result = await media.getMediaSource(item.handle);
           else {
             result = await media.getDirectoryPreview(item.handle, {
               shouldContinue,
               getPriority,
               maxEdge,
+              signal: controller.signal,
             });
           }
           if (!shouldContinue()) {
@@ -92,6 +100,7 @@ export function useThumbnail(
     const videoElement = video.current;
     return () => {
       active = false;
+      controller.abort();
       stopObserving();
       clearTimeout(retry);
       if (videoElement) {

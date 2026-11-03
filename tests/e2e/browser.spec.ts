@@ -22,6 +22,52 @@ test('shows the built version and links to its release from the header and setti
   );
 });
 
+test('scrolling releases thumbnail slots before abandoned browser file reads finish', async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const root = window.__imageViewerTestRoot;
+    root.entries.clear();
+    const pixels = Uint8Array.from(
+      atob(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ),
+      (char) => char.charCodeAt(0),
+    );
+    const releases: (() => void)[] = [];
+    window.__abandonedReadCount = 0;
+    window.__releaseAbandonedReads = () => releases.forEach((release) => release());
+    for (let i = 0; i < 300; i++) {
+      const name = `${String(i).padStart(3, '0')}.png`;
+      root.entries.set(name, {
+        kind: 'file',
+        name,
+        createWritable: async () => {
+          throw new Error('Read-only fixture');
+        },
+        getFile: async () => {
+          const file = new File([pixels], name, { type: 'image/png' });
+          if (i >= 100) return file;
+          window.__abandonedReadCount++;
+          return new Promise<File>((resolve) => releases.push(() => resolve(file)));
+        },
+      });
+    }
+  });
+  await page.locator('#reload-btn').click();
+  await expect.poll(() => page.evaluate(() => window.__abandonedReadCount)).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const last = page.locator('#item-list img[alt="299.png"]');
+  await expect(last).toHaveJSProperty('naturalWidth', 1);
+  // The original getFile promises are still pending when the new viewport loads.
+  await page.evaluate(() => window.__releaseAbandonedReads());
+  await expect(last).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.__abandonedReadCount)).toBeGreaterThan(1);
+  await page.evaluate(() => window.__releaseAbandonedReads());
+  await expect(page.locator('#item-list img[alt="000.png"]')).toHaveJSProperty('naturalWidth', 1);
+});
+
 test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail resolution', async ({
   page,
 }) => {

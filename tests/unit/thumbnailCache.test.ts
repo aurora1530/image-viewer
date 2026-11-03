@@ -52,6 +52,52 @@ afterEach(() => {
 });
 
 describe('thumbnail generation and reuse', () => {
+  it('releases a generation slot when an abandoned original read has not finished', async () => {
+    const cache = createThumbnailCache({ concurrency: 1 });
+    const slow = root.file('abandoned.jpg');
+    let finish: ((file: File) => void) | undefined;
+    vi.spyOn(slow, 'getFile').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const first = cache.get(slow.asHandle(), undefined, undefined, 640, controller.signal);
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    const second = cache.get(root.file('next-visible.jpg').asHandle(), undefined, undefined, 640);
+    controller.abort();
+    expect(await first).toBeNull();
+    expect((await second)?.objectUrl).toBe(true);
+    expect(decode).toHaveBeenCalledOnce();
+    requireValue(finish)(new File(['unused'], 'abandoned.jpg'));
+    await Promise.resolve();
+    expect(cache.stats().generated).toBe(1);
+  });
+
+  it('keeps a shared thumbnail request alive after one card is removed', async () => {
+    const cache = createThumbnailCache();
+    const file = root.file('two-consumers.jpg');
+    const handle = file.asHandle();
+    let finish: ((file: File) => void) | undefined;
+    const read = vi.spyOn(file, 'getFile').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const removed = cache.get(handle, undefined, undefined, 640, controller.signal);
+    const retained = cache.get(handle, undefined, undefined, 640);
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    controller.abort();
+    expect(await removed).toBeNull();
+    requireValue(finish)(new File(['shared'], 'two-consumers.jpg'));
+    expect((await retained)?.objectUrl).toBe(true);
+    expect(read).toHaveBeenCalledOnce();
+    expect(cache.stats().generated).toBe(1);
+  });
+
   it('keeps sizes separate, shares originals and invalidates every size', async () => {
     const file = root.file('two-sizes.jpg');
     const handle = file.asHandle();

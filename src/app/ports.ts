@@ -11,11 +11,17 @@ export type MediaServices = {
     shouldContinue: () => boolean,
     getPriority: () => number,
     maxEdge?: ThumbnailSize,
+    signal?: AbortSignal,
   ) => Promise<MediaSource | null>;
   invalidateThumbnail: (handle: FileHandle) => void;
   getDirectoryPreview: (
     handle: DirectoryHandle,
-    options: { shouldContinue: () => boolean; getPriority: () => number; maxEdge?: ThumbnailSize },
+    options: {
+      shouldContinue: () => boolean;
+      getPriority: () => number;
+      maxEdge?: ThumbnailSize;
+      signal?: AbortSignal;
+    },
   ) => Promise<MediaSource | null>;
   getMediaSource: (handle: FileHandle) => Promise<MediaSource>;
 };

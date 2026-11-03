@@ -7,6 +7,7 @@ export interface TestDirectory extends DirectoryHandle {
 }
 declare global {
   var openedDirectories: string[];
+  var nativeReadProbe: { started: boolean; cancelled: boolean };
   interface Window {
     __parseTestConfig: typeof import('../../src/services/storage').ensureConfigNode;
     __imageViewerTestRoot: TestDirectory;
@@ -36,5 +37,9 @@ declare global {
     __emptyGalleryFrames: number;
     __thumbnailWorkerReplies: number;
     __originalReads: Record<string, number>;
+    __releaseAbandonedReads: () => void;
+    __abandonedReadCount: number;
+    __abortNativeRead: () => void;
+    __nativeReadResult: Promise<string>;
   }
 }
