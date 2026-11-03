@@ -652,15 +652,14 @@ for (const bundled of [false, true]) {
     await utimes(album, fixedTime, fixedTime);
     const mtimeMs = (await stat(album)).mtimeMs;
     // Seed the same persistent main-process cache that was stale in the reported folder.
+    const legacyListing = {
+      mtimeMs,
+      cachedAt: Date.now(),
+      entries: [{ name: 'ordinary.png', kind: 'file' }],
+    };
     await writeFile(
       path.join(profile, 'directory-cache.json'),
-      JSON.stringify({
-        [album.toLowerCase()]: {
-          mtimeMs,
-          cachedAt: Date.now(),
-          entries: [{ name: 'ordinary.png', kind: 'file' }],
-        },
-      }),
+      JSON.stringify({ [album.toLowerCase()]: legacyListing }),
     );
     let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
     try {
@@ -763,9 +762,7 @@ for (const bundled of [false, true]) {
       const legacyCache = parseRecord(
         await readFile(path.join(profile, 'directory-cache.json'), 'utf8'),
       );
-      expect(legacyCache[album.toLowerCase()]).toEqual({
-        entries: [{ name: 'ordinary.png', kind: 'file' }],
-      });
+      expect(legacyCache[album.toLowerCase()]).toEqual(legacyListing);
     } finally {
       await app?.close();
       await rm(profile, { recursive: true, force: true });
