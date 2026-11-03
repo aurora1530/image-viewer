@@ -1031,6 +1031,7 @@ html:fullscreen #viewer-toolbar.hidden {
 }
 
 .settings-dialog {
+  overscroll-behavior: contain;
   width: min(580px, calc(100vw - 32px));
   max-height: 85vh;
   overflow: auto;

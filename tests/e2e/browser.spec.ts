@@ -1672,3 +1672,33 @@ test('PDF thumbnails and single/spread navigation stay within the selected docum
   await expect(page.locator('#viewer')).toBeHidden();
   await expect(page.locator('#status-area')).toContainText('PDFを開けませんでした');
 });
+
+test('settings closes outside and locks background scrolling until closed', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.body.style.minHeight = '3000px';
+    document.documentElement.style.overflow = 'auto';
+  });
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: '設定' });
+  await expect(settings).toBeVisible();
+  await settings.getByRole('heading', { name: '設定', exact: true }).click();
+  await expect(settings).toBeVisible();
+  await page.mouse.move(5, 5);
+  await page.mouse.wheel(0, 700);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.style.overflow))
+    .toBe('hidden');
+  await page.mouse.click(5, 5);
+  await expect(settings).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.style.overflow))
+    .toBe('auto');
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(settings).toBeHidden();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.style.overflow))
+    .toBe('auto');
+});

@@ -28,6 +28,14 @@ export function Settings() {
   const [cacheMessage, setCacheMessage] = useState('');
   useEffect(() => {
     if (!open) return;
+    const previous = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.documentElement.style.overflow = previous;
+    };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
     void actions.refreshCacheUsage();
     const timer = setInterval(() => {
       void actions.refreshCacheUsage();
@@ -71,6 +79,17 @@ export function Settings() {
         onClose={() => setOpen(false)}
         onCancel={(event) => {
           if (saving || clearing) event.preventDefault();
+        }}
+        onClick={(event) => {
+          if (event.target !== event.currentTarget || saving || clearing) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          if (
+            event.clientX < bounds.left ||
+            event.clientX > bounds.right ||
+            event.clientY < bounds.top ||
+            event.clientY > bounds.bottom
+          )
+            event.currentTarget.close();
         }}
         onKeyDown={(event) => event.stopPropagation()}
       >
