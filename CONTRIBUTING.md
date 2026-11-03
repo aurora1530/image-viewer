@@ -113,6 +113,17 @@ npm run test:coverage    # 単体・統合テストのカバレッジ
 
 操作テストは Vite を自動で起動し、テスト用ファイルを使います。Electron の操作テストは開発版と `dist/` のビルド済み画面を確認するため、先に `npm run build` を実行してください。カバレッジ表示には Chromium・Electron の操作テストは含まれません。
 
+通常の `test:e2e` はヘッドレス、`test:desktop` と `desktop:smoke` はウインドウ非表示で実行し、作業中の画面のフォーカスを奪わないようにします。Electron の非表示実行では、オフスクリーン描画を使い、描画やタイマーのバックグラウンド抑制をテスト用に無効化します。操作テストのスクリーンショットとトレースによる失敗時の診断は引き続き利用できます。
+
+画面を表示して調査する場合は、Chromium では `npm run test:e2e -- --headed`、Electron では次のように実行してください。Electron の非表示テストではOS上のウインドウ切り替えやフォーカスの検証はできないため、その確認にも表示モードを使います。
+
+```powershell
+$env:IMAGE_VIEWER_TEST_SHOW_WINDOW = '1'
+try { npm run test:desktop } finally { Remove-Item Env:IMAGE_VIEWER_TEST_SHOW_WINDOW }
+```
+
+`desktop:smoke` も同じ環境変数で表示モードに切り替えられます。非表示化に対応した生成物を確認するには、変更後に `npm run desktop:pack` でビルドし直してください。
+
 同じ作業ディレクトリでは `npm run check`、`npm run test:e2e`、`npm run test:desktop` を順番に実行してください。操作テスト同士は `test-results/` と開発サーバーを共有するため、別プロセスで同時に起動すると診断ファイルの競合やサーバー停止の影響を受けます。`npm run check` 内のビルド・配布関連テストも、Viteの監視対象にある成果物を変更するため、操作テストと並行実行しないでください。
 
 失敗後に再実行する場合は、必要な診断を先に保存し、失敗内容と再実行の結果を区別して報告してください。一部のテストだけを再実行して成功した場合は、全件を一度で通過したとは扱いません。

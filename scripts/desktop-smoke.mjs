@@ -82,6 +82,11 @@ try {
   await writeFile(path.join(libraryFolder, 'child', 'sample-child.png'), png);
   child = spawn(executable, [`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`], {
     stdio: 'ignore',
+    windowsHide: true,
+    env: {
+      ...process.env,
+      IMAGE_VIEWER_TEST_HIDDEN: process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1',
+    },
   });
   const cdp = await connectCdp(await waitForTarget());
   for (let attempt = 0; attempt < 40; attempt++) {
@@ -197,7 +202,10 @@ try {
   if (child && !child.killed) {
     if (process.platform === 'win32') {
       try {
-        execFileSync('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+        execFileSync('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
       } catch {
         /* already stopped */
       }
