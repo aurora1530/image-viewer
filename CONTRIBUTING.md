@@ -29,6 +29,11 @@ npm run desktop:build   # Windowsのインストーラーとポータブル版�
 
 正式リリース用の `--release` では、CIのアップロードに必要な配布ファイルを従来どおり `release/` 直下にもコピーします。これは新規チェックアウトで動くReleaseワークフロー向けの動作です。
 
+## アイコン
+
+Web・Windows・macOS のアイコンは共通の元画像から生成します。元画像・生成手順・出力先は
+[アイコンのガイド](design/app-icon/README.md) を参照してください。生成済みファイルを管理しているため、通常の開発・ビルドで Python は不要です。
+
 ## リリース
 
 GitHub Actions の `Release` をmainで手動実行し、`patch`（修正）・`minor`（互換性のある機能追加）・`major`（互換性を壊す変更）を選びます。GitHub CLIをインストールして `gh auth login` 済みなら、ローカルから同じ処理を開始できます。

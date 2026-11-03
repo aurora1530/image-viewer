@@ -65,6 +65,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "build/icon.png",
       "package.json"
     ],
     "asar": true,
@@ -75,6 +76,7 @@
       "releaseType": "release"
     },
     "win": {
+      "icon": "build/icon.ico",
       "verifyUpdateCodeSignature": false,
       "target": [
         "nsis",
@@ -93,6 +95,7 @@
       "artifactName": "image-viewer-${version}-windows-${arch}-portable.${ext}"
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
