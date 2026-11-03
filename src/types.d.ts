@@ -29,6 +29,7 @@ interface Window {
     openRoot(path: string): Promise<string>;
     openDirectoryExternally(path: string): Promise<void>;
     getLibrary(): Promise<DesktopLibraryItem[]>;
+    moveFavoriteRoot(source: string, target: string): Promise<void>;
     toggleFavoriteRoot(path: string): Promise<boolean>;
     removeRecent(path: string): Promise<void>;
     listDirectory(path: string): Promise<Array<{ name: string; kind: 'directory' | 'file' }>>;
@@ -44,4 +45,5 @@ type DesktopLibraryItem = {
   name: string;
   openedAt: number;
   favorite: boolean;
+  favoriteOrder?: number;
 };

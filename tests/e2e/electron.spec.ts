@@ -8,6 +8,95 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+test('home favorites keep their order and persist handle reordering across restart', async () => {
+  const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-favorite-order-'));
+  const folders = ['first', 'second', 'third'].map((name) => path.join(profile, name));
+  for (const folder of folders) await mkdir(folder);
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
+  env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:5173';
+  delete env.ELECTRON_RUN_AS_NODE;
+  const launch = () =>
+    electron.launch({
+      executablePath: path.join(
+        process.cwd(),
+        'node_modules',
+        'electron',
+        'dist',
+        process.platform === 'win32'
+          ? 'electron.exe'
+          : process.platform === 'darwin'
+            ? 'Electron.app/Contents/MacOS/Electron'
+            : 'electron',
+      ),
+      args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
+      env,
+    });
+  let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  try {
+    app = await launch();
+    let page = await app.firstWindow();
+    await installBrowserGuards(page);
+    await expect(page.locator('#home-view')).toBeVisible();
+    await page.evaluate(async (folders) => {
+      const api = window.__requireTestValue(window.desktopApi);
+      for (const folder of folders) {
+        await api.openRoot(folder);
+        await api.toggleFavoriteRoot(folder);
+      }
+      await api.openRoot(folders[0]);
+    }, folders);
+    await page.reload();
+    const names = () => page.locator('#favorite-roots .library-name');
+    await expect(names()).toHaveText(['first', 'second', 'third']);
+    const favoriteHeight = await page
+      .locator('#favorite-roots .library-card')
+      .first()
+      .evaluate((card) => card.getBoundingClientRect().height);
+    const recentHeight = await page
+      .locator('#recent-roots .library-card')
+      .first()
+      .evaluate((card) => card.getBoundingClientRect().height);
+    expect(favoriteHeight).toBe(recentHeight);
+    await expect(page.locator('#recent-roots .library-name')).toHaveText([
+      'first',
+      'third',
+      'second',
+    ]);
+    await page
+      .locator('#favorite-roots .favorite-drag-handle')
+      .first()
+      .dragTo(page.locator('#favorite-roots .library-card').nth(2));
+    await expect(names()).toHaveText(['second', 'third', 'first']);
+    await expect(page.locator('#home-view')).toBeVisible();
+    await page.locator('#favorite-roots .favorite-drag-handle').last().press('ArrowLeft');
+    await expect(names()).toHaveText(['second', 'first', 'third']);
+    // Unknown paths must not replace registered favorites through IPC.
+    expect(
+      await page.evaluate(async () => {
+        try {
+          await window.__requireTestValue(window.desktopApi).moveFavoriteRoot('/unknown', '/other');
+          return false;
+        } catch {
+          return true;
+        }
+      }),
+    ).toBe(true);
+    await app.close();
+    app = await launch();
+    page = await app.firstWindow();
+    await expect(names()).toHaveText(['second', 'first', 'third']);
+    await expect(page.locator('#recent-roots .library-name')).toHaveText([
+      'first',
+      'third',
+      'second',
+    ]);
+  } finally {
+    if (app) await app.close();
+    await rm(profile, { recursive: true, force: true });
+  }
+});
+
 test('flushes pending config changes before acknowledging a desktop close request', async () => {
   const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-config-close-'));
   const images = path.join(profile, 'images');

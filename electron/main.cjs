@@ -68,6 +68,7 @@ async function getLibrary() {
         existing.push({
           ...item,
           favorite: (library.favorites || []).some((p) => samePath(p, item.path)),
+          favoriteOrder: (library.favorites || []).findIndex((p) => samePath(p, item.path)),
         });
     } catch {
       /* unavailable folders remain out of the home screen */
@@ -210,10 +211,24 @@ function registerIpc() {
     const favorites = library.favorites || [];
     const index = favorites.findIndex((item) => samePath(item, resolved));
     if (index >= 0) favorites.splice(index, 1);
-    else favorites.unshift(resolved);
+    else favorites.push(resolved);
     library.favorites = favorites;
     await saveJson(libraryPath(), library);
     return index < 0;
+  });
+  ipcMain.handle('desktop:move-favorite-root', async (_event, source, target) => {
+    if (typeof source !== 'string' || typeof target !== 'string')
+      throw new Error('不正なお気に入りです。');
+    const favorites = library.favorites || [];
+    const from = favorites.findIndex((item) => samePath(item, source));
+    const to = favorites.findIndex((item) => samePath(item, target));
+    if (from < 0 || to < 0) throw new Error('お気に入りが見つかりません。');
+    if (from === to) return;
+    const next = [...favorites];
+    next.splice(from, 1);
+    next.splice(to, 0, favorites[from]);
+    await saveJson(libraryPath(), { ...library, favorites: next });
+    library.favorites = next;
   });
   ipcMain.handle('desktop:remove-recent', async (_event, rootPath) => {
     const resolved = normalize(rootPath);

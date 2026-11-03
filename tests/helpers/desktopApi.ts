@@ -24,6 +24,7 @@ export function createDesktopApi(overrides: Partial<DesktopApi> = {}): DesktopAp
     openRoot: unsupported,
     openDirectoryExternally: unsupported,
     getLibrary: unsupported,
+    moveFavoriteRoot: unsupported,
     toggleFavoriteRoot: unsupported,
     removeRecent: unsupported,
     listDirectory: unsupported,

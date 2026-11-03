@@ -164,6 +164,34 @@ body.mono-body {
     transform 0.15s ease,
     background 0.15s ease;
 }
+.favorite-root-slot .library-card {
+  grid-template-columns: 28px 42px minmax(0, 1fr) auto;
+}
+
+.favorite-drag-handle {
+  cursor: grab;
+  flex-shrink: 0;
+  font-size: 24px;
+}
+
+.favorite-drag-handle:active {
+  cursor: grabbing;
+}
+
+.favorite-drag-handle:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.favorite-root-slot.is-dragging {
+  opacity: 0.5;
+}
+
+.favorite-root-slot.is-drop-target .library-card {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .library-card:hover {
   border-color: rgba(255, 255, 255, 0.2);
   transform: translateY(-2px);
