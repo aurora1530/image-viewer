@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
   openRoot: (path) => ipcRenderer.invoke('desktop:open-root', path),
   openDirectoryExternally: (path) => ipcRenderer.invoke('desktop:open-directory-externally', path),
   getLibrary: () => ipcRenderer.invoke('desktop:get-library'),
+  moveFavoriteRoot: (source, target) =>
+    ipcRenderer.invoke('desktop:move-favorite-root', source, target),
   toggleFavoriteRoot: (path) => ipcRenderer.invoke('desktop:toggle-favorite-root', path),
   removeRecent: (path) => ipcRenderer.invoke('desktop:remove-recent', path),
   listDirectory: (path) => ipcRenderer.invoke('desktop:list-directory', path),

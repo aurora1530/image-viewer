@@ -341,6 +341,18 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       await requireValue(window.desktopApi).toggleFavoriteRoot(item.path);
       await showHome();
     },
+    async moveLibraryFavorite(source: string, target: string) {
+      if (source === target) return;
+      try {
+        const api = requireValue(window.desktopApi);
+        await api.moveFavoriteRoot(source, target);
+        const library = await api.getLibrary();
+        set({ library });
+      } catch (error) {
+        console.error(error);
+        showStatus('お気に入りの順番を保存できませんでした。もう一度お試しください。', 'error');
+      }
+    },
     async removeLibrary(item: DesktopLibraryItem) {
       if (!(await confirmRemoval('history', item.name))) return;
       await requireValue(window.desktopApi).removeRecent(item.path);
