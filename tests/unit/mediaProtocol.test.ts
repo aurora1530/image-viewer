@@ -18,6 +18,16 @@ afterEach(async () => {
 });
 
 describe('local media byte ranges', () => {
+  it('stops the file stream when the request is aborted', async () => {
+    const controller = new AbortController();
+    const response = await serveMedia(
+      new Request('http://localhost/clip', { signal: controller.signal }),
+      file,
+    );
+    controller.abort();
+    await expect(response.text()).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('streams the complete file and advertises seeking support', async () => {
     const response = await serveMedia(new Request('http://localhost/clip'), file);
     expect(response.status).toBe(200);

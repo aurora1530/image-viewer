@@ -1,8 +1,12 @@
-const MAX_EDGE = 1280;
+import type { ThumbnailSize } from '../shared/thumbnail';
 
 // JPEG's decoder can discard high-frequency detail before allocating a full-size
 // RGBA image. PNG does not support this optimization in Chromium.
-export async function encodeThumbnail(blob: Blob, format: string): Promise<Blob> {
+export async function encodeThumbnail(
+  blob: Blob,
+  format: string,
+  maxEdge: ThumbnailSize = 1280,
+): Promise<Blob> {
   let image: ImageBitmap | VideoFrame | null = null;
   let decoder: ImageDecoder | null = null;
   let canvas: OffscreenCanvas | null = null;
@@ -12,8 +16,8 @@ export async function encodeThumbnail(blob: Blob, format: string): Promise<Blob>
         decoder = new ImageDecoder({
           data: blob.stream(),
           type: 'image/jpeg',
-          desiredWidth: MAX_EDGE,
-          desiredHeight: MAX_EDGE,
+          desiredWidth: maxEdge,
+          desiredHeight: maxEdge,
         });
         image = (await decoder.decode({ frameIndex: 0 })).image;
       } catch {
@@ -27,7 +31,7 @@ export async function encodeThumbnail(blob: Blob, format: string): Promise<Blob>
     // a larger image, so the final proportional resize is still necessary.
     const width = 'displayWidth' in image ? image.displayWidth : image.width;
     const height = 'displayHeight' in image ? image.displayHeight : image.height;
-    const scale = Math.min(1, MAX_EDGE / Math.max(width, height));
+    const scale = Math.min(1, maxEdge / Math.max(width, height));
     canvas = new OffscreenCanvas(
       Math.max(1, Math.round(width * scale)),
       Math.max(1, Math.round(height * scale)),

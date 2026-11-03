@@ -469,7 +469,9 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
         handle: FileHandle,
         shouldContinue: () => boolean,
         getPriority: () => number,
-      ) => thumbnailCache.get(handle, shouldContinue, getPriority),
+        maxEdge?: import('../shared/thumbnail').ThumbnailSize,
+        signal?: AbortSignal,
+      ) => thumbnailCache.get(handle, shouldContinue, getPriority, maxEdge, signal),
       invalidateThumbnail: (handle: FileHandle) => thumbnailCache.invalidate(handle),
       getDirectoryPreview: (handle, request) => {
         const rootHandle = getRootDirHandle();

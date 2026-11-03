@@ -28,9 +28,9 @@ contextBridge.exposeInMainWorld('desktopApi', {
     ipcRenderer.on('desktop:navigate', listener);
     return () => ipcRenderer.removeListener('desktop:navigate', listener);
   },
-  readThumbnail: (path) => ipcRenderer.invoke('desktop:read-thumbnail', path),
-  writeThumbnail: (path, version, bytes) =>
-    ipcRenderer.invoke('desktop:write-thumbnail', path, version, bytes),
+  readThumbnail: (path, maxEdge) => ipcRenderer.invoke('desktop:read-thumbnail', path, maxEdge),
+  writeThumbnail: (path, version, bytes, maxEdge) =>
+    ipcRenderer.invoke('desktop:write-thumbnail', path, version, bytes, maxEdge),
   readAppConfig: () => ipcRenderer.invoke('desktop:read-app-config'),
   writeAppConfig: (config) => ipcRenderer.invoke('desktop:write-app-config', config),
   cacheStats: () => ipcRenderer.invoke('desktop:cache-stats'),

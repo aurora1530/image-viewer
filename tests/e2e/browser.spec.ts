@@ -22,6 +22,52 @@ test('shows the built version and links to its release from the header and setti
   );
 });
 
+test('scrolling releases thumbnail slots before abandoned browser file reads finish', async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const root = window.__imageViewerTestRoot;
+    root.entries.clear();
+    const pixels = Uint8Array.from(
+      atob(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ),
+      (char) => char.charCodeAt(0),
+    );
+    const releases: (() => void)[] = [];
+    window.__abandonedReadCount = 0;
+    window.__releaseAbandonedReads = () => releases.forEach((release) => release());
+    for (let i = 0; i < 300; i++) {
+      const name = `${String(i).padStart(3, '0')}.png`;
+      root.entries.set(name, {
+        kind: 'file',
+        name,
+        createWritable: async () => {
+          throw new Error('Read-only fixture');
+        },
+        getFile: async () => {
+          const file = new File([pixels], name, { type: 'image/png' });
+          if (i >= 100) return file;
+          window.__abandonedReadCount++;
+          return new Promise<File>((resolve) => releases.push(() => resolve(file)));
+        },
+      });
+    }
+  });
+  await page.locator('#reload-btn').click();
+  await expect.poll(() => page.evaluate(() => window.__abandonedReadCount)).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const last = page.locator('#item-list img[alt="299.png"]');
+  await expect(last).toHaveJSProperty('naturalWidth', 1);
+  // The original getFile promises are still pending when the new viewport loads.
+  await page.evaluate(() => window.__releaseAbandonedReads());
+  await expect(last).toHaveJSProperty('naturalWidth', 1);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.__abandonedReadCount)).toBeGreaterThan(1);
+  await page.evaluate(() => window.__releaseAbandonedReads());
+  await expect(page.locator('#item-list img[alt="000.png"]')).toHaveJSProperty('naturalWidth', 1);
+});
+
 test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail resolution', async ({
   page,
 }) => {
@@ -104,18 +150,21 @@ test('reduced JPEG decoding preserves EXIF orientation, colors and thumbnail res
       ]);
       const source = new Blob([jpeg.slice(0, 2), exif, jpeg.slice(2)], { type: 'image/jpeg' });
       const expected = await createImageBitmap(source);
-      const blob = await encodeThumbnail(source, 'image/jpeg');
-      const actual = await createImageBitmap(blob);
-      const scale = 1280 / Math.max(expected.width, expected.height);
-      results.push({
-        orientation,
-        expectedSize: [Math.round(expected.width * scale), Math.round(expected.height * scale)],
-        actualSize: [actual.width, actual.height],
-        expectedColors: pixels(expected),
-        actualColors: pixels(actual),
-      });
+      for (const maxEdge of [640, 1280] as const) {
+        const blob = await encodeThumbnail(source, 'image/jpeg', maxEdge);
+        const actual = await createImageBitmap(blob);
+        const scale = maxEdge / Math.max(expected.width, expected.height);
+        results.push({
+          orientation,
+          maxEdge,
+          expectedSize: [Math.round(expected.width * scale), Math.round(expected.height * scale)],
+          actualSize: [actual.width, actual.height],
+          expectedColors: pixels(expected),
+          actualColors: pixels(actual),
+        });
+        actual.close();
+      }
       expected.close();
-      actual.close();
     }
     return results;
   });
@@ -1270,16 +1319,35 @@ test('reuses reduced thumbnails, keeps full viewer resolution and refreshes repl
   });
   await page.locator('#reload-btn').click();
   const thumbnail = page.locator('#item-list img[alt="large.jpg"]');
-  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
-  await expect(thumbnail).toHaveJSProperty('naturalHeight', 640);
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 640);
+  await expect(thumbnail).toHaveJSProperty('naturalHeight', 320);
   const reads = () => page.evaluate(() => window.__largeReads);
   expect(await reads()).toBe(1);
   await page.locator('#toggle-sort-btn').click();
-  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 640);
   expect(await reads()).toBe(1);
   await page.locator('#size-select').selectOption('5');
   await expect(page.locator('#item-list')).toHaveClass(/original-aspect/);
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
   await expect(thumbnail).toHaveJSProperty('naturalHeight', 640);
+  expect(await reads()).toBe(1);
+  await page.locator('#size-select').selectOption('1');
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 640);
+  expect(await reads()).toBe(1);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: 1250,
+    height: 720,
+    deviceScaleFactor: 4,
+    mobile: false,
+  });
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
+  expect(await reads()).toBe(1);
+  await cdp.send('Emulation.clearDeviceMetricsOverride');
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 640);
+  await cdp.detach();
+  await page.locator('#size-select').selectOption('5');
+  await expect(thumbnail).toHaveJSProperty('naturalWidth', 1280);
   await thumbnail.click();
   await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 3000);
   await expect(page.locator('#right-page')).toHaveJSProperty('naturalHeight', 1500);

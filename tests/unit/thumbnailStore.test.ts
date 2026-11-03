@@ -32,6 +32,29 @@ afterEach(async () => {
 });
 
 describe('persistent desktop thumbnails', () => {
+  it('rejects invalid sizes at the main-process storage boundary', async () => {
+    const cache = store();
+    for (const size of [0, 641, Infinity, '640', null, {}]) {
+      await expect(cache.read(source, size)).rejects.toThrow('不正なサムネイルサイズ');
+      await expect(cache.write(source, 'version', bytes, size)).rejects.toThrow(
+        '不正なサムネイルサイズ',
+      );
+    }
+  });
+
+  it('isolates disk versions by size and rejects a version from another size', async () => {
+    const cache = store();
+    const small = await cache.read(source, 640);
+    const large = await cache.read(source);
+    expect(small.version).not.toBe(large.version);
+    expect(await cache.write(source, small.version, bytes, 1280)).toBe(false);
+    expect(await cache.write(source, small.version, bytes, 640)).toBe(true);
+    expect((await cache.read(source, 1280)).bytes).toBeNull();
+    expect(Array.from(requireValue((await store().read(source, 640)).bytes))).toEqual([1, 2, 3]);
+    expect(await cache.write(source, large.version, new Uint8Array([4]), 1280)).toBe(true);
+    expect(Array.from(requireValue((await store().read(source, 1280)).bytes))).toEqual([4]);
+  });
+
   it('reports existing disk data and releases it when disabled at runtime', async () => {
     const cache = store();
     const { version } = await cache.read(source);

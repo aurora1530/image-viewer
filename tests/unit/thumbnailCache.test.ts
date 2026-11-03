@@ -52,6 +52,95 @@ afterEach(() => {
 });
 
 describe('thumbnail generation and reuse', () => {
+  it('keeps visible generation available while prefetched originals are still being read', async () => {
+    const cache = createThumbnailCache({ concurrency: 4 });
+    const releases: (() => void)[] = [];
+    const prefetch = Array.from({ length: 4 }, (_, index) => {
+      const file = root.file(`reserved-prefetch-${index}.jpg`);
+      vi.spyOn(file, 'getFile').mockImplementationOnce(
+        () =>
+          new Promise((resolve) => releases.push(() => resolve(new File(['image'], file.name)))),
+      );
+      return cache.get(file.asHandle(), undefined, () => 100, 640);
+    });
+    await vi.waitFor(() => expect(releases).toHaveLength(3));
+    expect((await cache.get(root.file('reserved-visible.jpg').asHandle()))?.objectUrl).toBe(true);
+    expect(releases).toHaveLength(3);
+    cache.clear();
+    releases.forEach((release) => release());
+    await Promise.all(prefetch);
+  });
+
+  it('releases a generation slot when an abandoned original read has not finished', async () => {
+    const cache = createThumbnailCache({ concurrency: 1 });
+    const slow = root.file('abandoned.jpg');
+    let finish: ((file: File) => void) | undefined;
+    vi.spyOn(slow, 'getFile').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const first = cache.get(slow.asHandle(), undefined, undefined, 640, controller.signal);
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    const second = cache.get(root.file('next-visible.jpg').asHandle(), undefined, undefined, 640);
+    controller.abort();
+    expect(await first).toBeNull();
+    expect((await second)?.objectUrl).toBe(true);
+    expect(decode).toHaveBeenCalledOnce();
+    requireValue(finish)(new File(['unused'], 'abandoned.jpg'));
+    await Promise.resolve();
+    expect(cache.stats().generated).toBe(1);
+  });
+
+  it('keeps a shared thumbnail request alive after one card is removed', async () => {
+    const cache = createThumbnailCache();
+    const file = root.file('two-consumers.jpg');
+    const handle = file.asHandle();
+    let finish: ((file: File) => void) | undefined;
+    const read = vi.spyOn(file, 'getFile').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const removed = cache.get(handle, undefined, undefined, 640, controller.signal);
+    const retained = cache.get(handle, undefined, undefined, 640);
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    controller.abort();
+    expect(await removed).toBeNull();
+    requireValue(finish)(new File(['shared'], 'two-consumers.jpg'));
+    expect((await retained)?.objectUrl).toBe(true);
+    expect(read).toHaveBeenCalledOnce();
+    expect(cache.stats().generated).toBe(1);
+  });
+
+  it('keeps sizes separate, shares originals and invalidates every size', async () => {
+    const file = root.file('two-sizes.jpg');
+    const handle = file.asHandle();
+    const read = vi.spyOn(file, 'getFile');
+    const cache = createThumbnailCache();
+    await cache.get(handle, undefined, undefined, 640);
+    await cache.get(handle, undefined, undefined, 1280);
+    await cache.get(handle, undefined, undefined, 640);
+    expect(dimensions).toEqual([
+      [640, 320],
+      [1280, 640],
+    ]);
+    expect(read).toHaveBeenCalledOnce();
+    cache.invalidate(handle);
+    await cache.get(handle, undefined, undefined, 1280);
+    await cache.get(handle, undefined, undefined, 640);
+    expect(dimensions).toEqual([
+      [640, 320],
+      [1280, 640],
+      [1280, 640],
+      [640, 320],
+    ]);
+  });
+
   it('resizes proportionally and reuses the compressed blob across displays', async () => {
     const file = root.file('large.jpg');
     const read = vi.spyOn(file, 'getFile');
@@ -244,7 +333,12 @@ describe('thumbnail generation and reuse', () => {
     await cache.get(file);
     expect(draw).toHaveBeenCalledOnce();
     await vi.waitFor(() =>
-      expect(writeThumbnail).toHaveBeenCalledWith(file.nativePath, 'v1', expect.any(Uint8Array)),
+      expect(writeThumbnail).toHaveBeenCalledWith(
+        file.nativePath,
+        'v1',
+        expect.any(Uint8Array),
+        1280,
+      ),
     );
   });
 
@@ -330,7 +424,12 @@ describe('thumbnail generation and reuse', () => {
       name: 'opaque.png',
       getFile: async () => png(2),
     });
-    expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/jpeg');
+    expect(worker).toHaveBeenLastCalledWith(
+      expect.any(Blob),
+      expect.any(Object),
+      'image/jpeg',
+      1280,
+    );
     await createThumbnailCache().get({
       kind: 'file',
       createWritable: async () => {
@@ -339,6 +438,11 @@ describe('thumbnail generation and reuse', () => {
       name: 'alpha.png',
       getFile: async () => png(6),
     });
-    expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/webp');
+    expect(worker).toHaveBeenLastCalledWith(
+      expect.any(Blob),
+      expect.any(Object),
+      'image/webp',
+      1280,
+    );
   });
 });

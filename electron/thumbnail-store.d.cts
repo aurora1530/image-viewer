@@ -7,8 +7,8 @@ declare const api: {
   }): {
     configure(value: number): Promise<void>;
     stats(): Promise<{ bytes: number }>;
-    read(file: string): Promise<{ version: string; bytes: Uint8Array | null }>;
-    write(file: string, version: string, bytes: Uint8Array): Promise<boolean>;
+    read(file: string, maxEdge?: unknown): Promise<{ version: string; bytes: Uint8Array | null }>;
+    write(file: string, version: string, bytes: Uint8Array, maxEdge?: unknown): Promise<boolean>;
   };
 };
 export = api;

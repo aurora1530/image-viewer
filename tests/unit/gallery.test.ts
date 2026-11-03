@@ -1,7 +1,7 @@
 import { requireValue } from '../../src/shared/validation';
 import { createElement, StrictMode } from 'react';
 import { flushSync } from 'react-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Gallery } from '../../src/features/gallery/Gallery';
 import { createAppStore, initialAppState } from '../../src/app/store';
 import type { GalleryEntry } from '../../src/app/store';
@@ -37,6 +37,7 @@ const entry = (handle = first, parentPath = ''): GalleryEntry => ({
   parentPath,
   item: { type: 'image', handle, name: handle.name, nameLower: handle.name.toLowerCase() },
 });
+afterEach(() => vi.unstubAllGlobals());
 beforeEach(() => {
   appStore = createAppStore();
   application = createApplication(appStore);
@@ -50,6 +51,59 @@ beforeEach(() => {
 });
 
 describe('React gallery', () => {
+  it('does not redisplay a revoked URL after rapidly returning to the same size', async () => {
+    let width = 200;
+    let measure: (() => void) | undefined;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      () => new DOMRect(0, 0, width, 100),
+    );
+    vi.stubGlobal('devicePixelRatio', 1);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private callback: ResizeObserverCallback) {}
+        observe(target: Element) {
+          if (target.classList.contains('item-card')) measure = () => this.callback([], this);
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    vi.mocked(thumbnailCache.get).mockResolvedValueOnce({ url: 'blob:old-small', objectUrl: true });
+    let completeLarge: ((source: { url: string; objectUrl: boolean }) => void) | undefined;
+    let completeSmall: ((source: { url: string; objectUrl: boolean }) => void) | undefined;
+    vi.mocked(thumbnailCache.get).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeLarge = resolve;
+        }),
+    );
+    vi.mocked(thumbnailCache.get).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeSmall = resolve;
+        }),
+    );
+    appStore.setState({ entries: [entry()] });
+    render(createElement(Gallery));
+    flushSync(() => requireValue(measure)());
+    await vi.waitFor(() =>
+      expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:old-small'),
+    );
+    width = 700;
+    flushSync(() => requireValue(measure)());
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:old-small');
+    width = 200;
+    flushSync(() => requireValue(measure)());
+    expect(document.querySelector('img')).toBeNull();
+    requireValue(completeLarge)({ url: 'blob:late-large', objectUrl: true });
+    requireValue(completeSmall)({ url: 'blob:new-small', objectUrl: true });
+    await vi.waitFor(() =>
+      expect(document.querySelector('img')?.getAttribute('src')).toBe('blob:new-small'),
+    );
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:late-large');
+  });
+
   it('lets the directory card own and release the selected file thumbnail URL', async () => {
     const folder = new MemoryDirectory('album');
     folder.file('__0.png');

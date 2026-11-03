@@ -14,21 +14,28 @@ function createThumbnailStore({
   let pruning = null;
   let pruneRequested = false;
 
-  async function describe(filePath) {
+  async function describe(filePath, maxEdge = 1280) {
+    if (maxEdge !== 640 && maxEdge !== 1280) throw new Error('不正なサムネイルサイズです。');
     const resolved = requireAllowed(filePath);
     const stat = await fs.stat(resolved);
     if (!stat.isFile()) throw new Error('画像ファイルではありません。');
     const identity = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
     const version = createHash('sha256')
       .update(
-        JSON.stringify(['thumbnail-v1-1280-webp', identity, stat.size, stat.mtimeMs, stat.ctimeMs]),
+        JSON.stringify([
+          `thumbnail-v1-${maxEdge}-webp`,
+          identity,
+          stat.size,
+          stat.mtimeMs,
+          stat.ctimeMs,
+        ]),
       )
       .digest('hex');
     return { version, file: path.join(cacheDirectory(), `${version}.webp`) };
   }
 
-  async function read(filePath) {
-    const { version, file } = await describe(filePath);
+  async function read(filePath, maxEdge = 1280) {
+    const { version, file } = await describe(filePath, maxEdge);
     try {
       const bytes = await fs.readFile(file);
       // Track recent use without writing timestamps on every disk cache hit.
@@ -99,8 +106,8 @@ function createThumbnailStore({
     return pruning;
   }
 
-  async function write(filePath, version, bytes) {
-    const current = await describe(filePath);
+  async function write(filePath, version, bytes, maxEdge = 1280) {
+    const current = await describe(filePath, maxEdge);
     if (current.version !== version) return false;
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > 8 * 1024 * 1024)
       throw new Error('不正なサムネイルです。');
@@ -110,7 +117,7 @@ function createThumbnailStore({
     try {
       await fs.writeFile(temporary, bytes);
       // 生成中に元画像が変更された場合は次の生成に任せる。
-      if ((await describe(filePath)).version !== version) return false;
+      if ((await describe(filePath, maxEdge)).version !== version) return false;
       await fs.rename(temporary, current.file);
       cachedFiles.set(current.file, { size: bytes.byteLength, time: Date.now() });
     } finally {
