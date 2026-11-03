@@ -430,6 +430,23 @@ body.mono-body {
 .gallery-slot > .item-card {
   height: 100%;
 }
+.masonry-canvas {
+  position: relative;
+  overflow-anchor: none;
+}
+#item-list.dense-gallery {
+  gap: 0;
+}
+#item-list.dense-gallery .item-card {
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  transform: none;
+}
+#item-list.dense-gallery .thumbnail-container {
+  border: 0;
+  border-radius: 0;
+}
 #item-list[data-virtual].original-aspect .media-card:not([data-thumb-ready]) .thumbnail-container {
   aspect-ratio: var(--thumbnail-aspect, 4 / 3);
 }

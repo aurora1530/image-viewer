@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { createVirtualGallery } from './virtualGallery';
+import { createMasonryGallery } from './masonryGallery';
 import { aspectRatios } from './mediaMetrics';
 
 // Adapter around the measured layout engine. Only handle/order changes rebuild
@@ -11,10 +12,11 @@ export function useVirtualGallery(
   container: RefObject<HTMLDivElement | null>,
   items: EntryHandle[],
   keys: string[],
+  dense = false,
 ) {
   const virtual = useRef<ReturnType<typeof createVirtualGallery> | null>(null);
   const [slots, setSlots] = useState<Array<{ index: number; host: HTMLElement }>>([]);
-  const isVirtual = items.length > 200;
+  const isVirtual = dense || items.length > 200;
   useLayoutEffect(() => {
     if (!isVirtual) return;
     let active = true;
@@ -31,7 +33,8 @@ export function useVirtualGallery(
     // The layout engine owns only empty slots. React owns all card contents.
     const element = container.current;
     if (!element) return;
-    const engine = createVirtualGallery(
+    const createEngine = dense ? createMasonryGallery : createVirtualGallery;
+    const engine = createEngine(
       element,
       items.length,
       (index, row) => {
@@ -50,8 +53,9 @@ export function useVirtualGallery(
         const original =
           element.classList.contains('original-aspect') && handle.kind !== 'directory';
         return (
-          Math.max(1, width - 2) / (original ? aspectRatios.get(handle) || 4 / 3 : 4 / 3) +
-          2 +
+          Math.max(1, width - (dense ? 0 : 2)) /
+            (original ? aspectRatios.get(handle) || 4 / 3 : 4 / 3) +
+          (dense ? 0 : 2) +
           (handle.kind === 'directory' ? 52 : 0)
         );
       },
@@ -64,7 +68,7 @@ export function useVirtualGallery(
       engine.dispose();
       virtual.current = null;
     };
-  }, [items, keys, isVirtual, container]);
+  }, [items, keys, isVirtual, container, dense]);
 
   return { virtual, slots, isVirtual };
 }

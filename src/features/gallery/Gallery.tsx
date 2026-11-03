@@ -11,12 +11,13 @@ import { createGalleryLayoutSelector } from './galleryLayout';
 export function Gallery({ ref }: { ref?: Ref<GalleryNavigation> }) {
   const entries = useAppState((state) => state.entries);
   const sizeIndex = useAppState((state) => state.thumbnailSizeIndex);
+  const dense = useAppState((state) => state.denseGallery) && sizeOptions[sizeIndex].originalAspect;
   const home = useAppState((state) => state.screen === 'home');
   const size = sizeOptions[sizeIndex];
   const container = useRef<HTMLDivElement>(null);
   const selectLayout = useMemo(() => createGalleryLayoutSelector(), []);
   const { items, keys } = useAppState(selectLayout);
-  const { virtual, slots, isVirtual } = useVirtualGallery(container, items, keys);
+  const { virtual, slots, isVirtual } = useVirtualGallery(container, items, keys, dense);
 
   useImperativeHandle(
     ref,
@@ -46,7 +47,7 @@ export function Gallery({ ref }: { ref?: Ref<GalleryNavigation> }) {
     <div
       id="item-list"
       ref={container}
-      className={`grid contact-sheet${size.originalAspect ? ' original-aspect' : ''}${home ? ' hidden' : ''}`}
+      className={`grid contact-sheet${size.originalAspect ? ' original-aspect' : ''}${dense ? ' dense-gallery' : ''}${home ? ' hidden' : ''}`}
       style={style}
     >
       {isVirtual

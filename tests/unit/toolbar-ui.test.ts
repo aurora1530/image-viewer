@@ -35,6 +35,23 @@ const select = (id: string) => {
 };
 
 describe('React display preferences', () => {
+  it('toggles dense layout only for original aspect sizes and remembers the preference', () => {
+    render(createElement(App));
+    expect(document.getElementById('dense-gallery-btn')).toBeNull();
+    flushSync(() => actions.setThumbnailSize(3));
+    flushSync(() => button('dense-gallery-btn').click());
+    expect(element('dense-gallery-btn').getAttribute('aria-pressed')).toBe('true');
+    expect(element('item-list').classList.contains('dense-gallery')).toBe(true);
+    expect(localStorage.getItem('denseGallery')).toBe('1');
+    flushSync(() => actions.setThumbnailSize(1));
+    expect(document.getElementById('dense-gallery-btn')).toBeNull();
+    expect(element('item-list').classList.contains('dense-gallery')).toBe(false);
+    flushSync(() => actions.setThumbnailSize(4));
+    expect(element('item-list').classList.contains('dense-gallery')).toBe(true);
+    flushSync(() => button('dense-gallery-btn').click());
+    expect(element('item-list').classList.contains('dense-gallery')).toBe(false);
+  });
+
   it('clamps invalid thumbnail sizes and updates both the control and gallery', () => {
     render(createElement(App));
     flushSync(() => actions.setThumbnailSize(999));

@@ -1,6 +1,7 @@
 export function readPreferences() {
   return {
     thumbnailSizeIndex: Number.parseInt(localStorage.getItem('thumbnailSizeIndex') || '1', 10),
+    denseGallery: localStorage.getItem('denseGallery') === '1',
     isSinglePageView: localStorage.getItem('isSinglePageView') === '1',
     isUiHidden: localStorage.getItem('isUiHidden') === '1',
   };
