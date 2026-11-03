@@ -267,7 +267,9 @@ for (const bundled of [false, true]) {
         .poll(() =>
           page.evaluate(
             async (file) => {
-              const stored = await window.__requireTestValue(window.desktopApi).readThumbnail(file);
+              const stored = await window
+                .__requireTestValue(window.desktopApi)
+                .readThumbnail(file, 640);
               return stored.bytes?.byteLength || 0;
             },
             path.join(images, 'sample.png'),
@@ -395,12 +397,14 @@ for (const bundled of [false, true]) {
       await page.locator('#reload-btn').click();
       await expect(page.locator('#item-list img[alt="large.jpg"]')).toHaveJSProperty(
         'naturalWidth',
-        1280,
+        640,
       );
       await expect
         .poll(() =>
           page.evaluate(async (file) => {
-            const stored = await window.__requireTestValue(window.desktopApi).readThumbnail(file);
+            const stored = await window
+              .__requireTestValue(window.desktopApi)
+              .readThumbnail(file, 640);
             return stored.bytes ? Array.from(stored.bytes.slice(0, 2)) : [];
           }, jpegPath),
         )
@@ -428,7 +432,7 @@ for (const bundled of [false, true]) {
       await page.locator('#recent-roots .library-card').click();
       await expect(page.locator('#item-list img[alt="large.jpg"]')).toHaveJSProperty(
         'naturalWidth',
-        1280,
+        640,
       );
       await expect(page.locator('#item-list img[alt="sample.png"]')).toHaveJSProperty(
         'naturalWidth',

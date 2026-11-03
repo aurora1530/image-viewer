@@ -1,4 +1,7 @@
+import type { ThumbnailSize } from '../shared/thumbnail';
+
 export type ThumbnailRequest = {
+  maxEdge?: ThumbnailSize;
   shouldContinue?: () => boolean;
   getPriority?: () => number;
 };

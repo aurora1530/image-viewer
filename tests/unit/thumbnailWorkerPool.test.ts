@@ -111,12 +111,17 @@ describe('thumbnail worker pool', () => {
     const output = new Blob();
     worker.reply({ blob: output });
     await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledTimes(2));
-    expect(worker.postMessage).toHaveBeenLastCalledWith({ blob: targetBlob, format: 'image/jpeg' });
+    expect(worker.postMessage).toHaveBeenLastCalledWith({
+      blob: targetBlob,
+      format: 'image/jpeg',
+      maxEdge: 1280,
+    });
     worker.reply({ blob: output });
     await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledTimes(3));
     expect(worker.postMessage).toHaveBeenLastCalledWith({
       blob: backgroundBlob,
       format: 'image/webp',
+      maxEdge: 1280,
     });
     worker.reply({ blob: output });
     await Promise.all([first, target, background]);

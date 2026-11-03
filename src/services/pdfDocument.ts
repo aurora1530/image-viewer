@@ -1,5 +1,6 @@
 import type { FileHandle } from '../shared/fileSystem';
 import { originalImageCache } from './originalImageCache';
+import type { ThumbnailSize } from '../shared/thumbnail';
 
 export type PdfDocument = {
   pageCount: number;
@@ -73,10 +74,14 @@ export async function openPdfDocument(
   };
 }
 
-export async function renderPdfThumbnail(handle: FileHandle, shouldContinue: () => boolean) {
+export async function renderPdfThumbnail(
+  handle: FileHandle,
+  shouldContinue: () => boolean,
+  maxEdge: ThumbnailSize = 1280,
+) {
   const document = await openPdfDocument(handle, shouldContinue);
   try {
-    return shouldContinue() ? await document.renderPage(1, 1280) : null;
+    return shouldContinue() ? await document.renderPage(1, maxEdge) : null;
   } finally {
     document.destroy();
   }

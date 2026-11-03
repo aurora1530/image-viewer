@@ -12,8 +12,8 @@ import {
 import { createThumbnailQueue } from './thumbnailQueue';
 import type { ThumbnailRequest } from './thumbnailQueue';
 import { getOriginalImageSource, originalImageCache } from './originalImageCache';
-
-const MAX_EDGE = 1280;
+import { thumbnailSizes } from '../shared/thumbnail';
+import type { ThumbnailSize } from '../shared/thumbnail';
 
 type Source = { url: string; objectUrl: boolean };
 type Entry = {
@@ -54,9 +54,13 @@ export async function isAnimatedPng(blob: Blob): Promise<boolean> {
   return (await inspectPng(blob)).animated;
 }
 
-async function generate(handle: FileHandle, request: ThumbnailRequest): Promise<Blob | null> {
+async function generate(
+  handle: FileHandle,
+  request: ThumbnailRequest,
+  maxEdge: ThumbnailSize,
+): Promise<Blob | null> {
   if (/\.pdf$/i.test(handle.name))
-    return renderPdfThumbnail(handle, () => request.shouldContinue?.() !== false);
+    return renderPdfThumbnail(handle, () => request.shouldContinue?.() !== false, maxEdge);
   let source: Source | null = null;
   const image = new Image();
   let canvas: HTMLCanvasElement | null = null;
@@ -67,14 +71,14 @@ async function generate(handle: FileHandle, request: ThumbnailRequest): Promise<
     const png = handle.name.toLowerCase().endsWith('.png') ? await inspectPng(blob) : null;
     if (png?.animated) return null;
     const format = /\.jpe?g$/i.test(handle.name) || png?.opaque ? 'image/jpeg' : 'image/webp';
-    const workerResult = await encodeThumbnailInWorker(blob, request, format);
+    const workerResult = await encodeThumbnailInWorker(blob, request, format, maxEdge);
     if (workerResult) return workerResult;
     if (request.shouldContinue?.() === false) return null;
     source = { url: URL.createObjectURL(blob), objectUrl: true };
     image.decoding = 'async';
     image.src = source.url;
     await image.decode();
-    const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
     canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -103,10 +107,25 @@ async function generate(handle: FileHandle, request: ThumbnailRequest): Promise<
 export function createThumbnailCache({
   concurrency = THUMBNAIL_CONCURRENCY * 2,
 }: { concurrency?: number } = {}) {
-  let entries = new Map<string | FileHandle, Entry>();
+  let entries = new Map<string | symbol, Entry>();
+  const handleKeys = new WeakMap<FileHandle, Map<ThumbnailSize, symbol>>();
+  function keyFor(handle: FileHandle, maxEdge: ThumbnailSize) {
+    if (handle.nativePath) return `${maxEdge}:${handle.nativePath}`;
+    let sizes = handleKeys.get(handle);
+    if (!sizes) {
+      sizes = new Map();
+      handleKeys.set(handle, sizes);
+    }
+    let key = sizes.get(maxEdge);
+    if (!key) {
+      key = Symbol();
+      sizes.set(maxEdge, key);
+    }
+    return key;
+  }
   let retainedBytes = 0;
   let maxBytes = 512 * 1024 * 1024;
-  const skipStored = new Set<string | FileHandle>();
+  const skipStored = new Set<string | symbol>();
   // Disk hits must not wait for unrelated image encoding to finish.
   const reads = createThumbnailQueue(Math.max(4, concurrency));
   const generation = createThumbnailQueue(concurrency);
@@ -130,10 +149,11 @@ export function createThumbnailCache({
     handle: FileHandle,
     shouldContinue: () => boolean = () => true,
     getPriority: () => number = () => 0,
+    maxEdge: ThumbnailSize = 1280,
   ): Promise<Source | null> {
     if (/\.(gif|webp)$/i.test(handle.name))
       return shouldContinue() ? getOriginalImageSource(handle) : null;
-    const key = handle.nativePath || handle;
+    const key = keyFor(handle, maxEdge);
     let entry = entries.get(key);
     if (!entry) {
       const cache = entries;
@@ -160,7 +180,10 @@ export function createThumbnailCache({
         const desktopApi = window.desktopApi;
         if (nativePath && desktopApi) {
           try {
-            stored = await reads.enqueue(() => desktopApi.readThumbnail(nativePath), request);
+            stored = await reads.enqueue(
+              () => desktopApi.readThumbnail(nativePath, maxEdge),
+              request,
+            );
           } catch {
             /* 保存領域が使えない場合も表示する */
           }
@@ -173,7 +196,7 @@ export function createThumbnailCache({
             });
           }
         }
-        const blob = await generation.enqueue(() => generate(handle, request), request);
+        const blob = await generation.enqueue(() => generate(handle, request, maxEdge), request);
         if (blob) {
           counters.generated++;
           if (stored && handle.nativePath && window.desktopApi) {
@@ -182,7 +205,9 @@ export function createThumbnailCache({
             const version = stored.version;
             void blob
               .arrayBuffer()
-              .then((buffer) => api.writeThumbnail(filePath, version, new Uint8Array(buffer)))
+              .then((buffer) =>
+                api.writeThumbnail(filePath, version, new Uint8Array(buffer), maxEdge),
+              )
               .then((saved) => {
                 if (saved && cache === entries) skipStored.delete(key);
               })
@@ -224,12 +249,14 @@ export function createThumbnailCache({
   }
 
   function invalidate(handle: FileHandle) {
-    const key = handle.nativePath || handle;
-    const entry = entries.get(key);
-    if (entry) entry.invalid = true;
-    retainedBytes -= entry?.blob?.size || 0;
-    entries.delete(key);
-    skipStored.add(key);
+    for (const maxEdge of thumbnailSizes) {
+      const key = keyFor(handle, maxEdge);
+      const entry = entries.get(key);
+      if (entry) entry.invalid = true;
+      retainedBytes -= entry?.blob?.size || 0;
+      entries.delete(key);
+      skipStored.add(key);
+    }
     refresh();
   }
 
@@ -252,7 +279,8 @@ export function createThumbnailCache({
       setThumbnailWorkersPaused(value);
     },
     peek(handle: FileHandle): Source | null {
-      const blob = entries.get(handle.nativePath || handle)?.blob;
+      const blob =
+        entries.get(keyFor(handle, 1280))?.blob ?? entries.get(keyFor(handle, 640))?.blob;
       return blob ? { url: URL.createObjectURL(blob), objectUrl: true } : null;
     },
     setMaxBytes(value: number) {

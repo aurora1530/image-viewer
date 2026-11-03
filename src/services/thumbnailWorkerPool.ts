@@ -1,5 +1,6 @@
 import { createThumbnailQueue } from './thumbnailQueue';
 import type { ThumbnailRequest } from './thumbnailQueue';
+import type { ThumbnailSize } from '../shared/thumbnail';
 
 // Bound full-resolution decode memory and read contention during rapid scrolling.
 // More workers increased first-visible latency in the 24 MP cold-thumbnail benchmark.
@@ -35,6 +36,7 @@ export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
     blob: Blob,
     request: ThumbnailRequest = {},
     format = blob.type === 'image/jpeg' ? 'image/jpeg' : 'image/webp',
+    maxEdge: ThumbnailSize = 1280,
   ): Promise<Blob | null> {
     if (failed) return Promise.reject(new Error('サムネイル用Workerが利用できません。'));
     const result = queue.enqueue(
@@ -69,7 +71,7 @@ export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
           }
           slot.job = { resolve, reject, request };
           try {
-            slot.worker.postMessage({ blob, format });
+            slot.worker.postMessage({ blob, format, maxEdge });
           } catch {
             fail();
           }
@@ -122,6 +124,7 @@ export async function encodeThumbnailInWorker(
   blob: Blob,
   request: ThumbnailRequest = {},
   format?: string,
+  maxEdge: ThumbnailSize = 1280,
 ): Promise<Blob | null> {
   if (
     typeof Worker === 'undefined' ||
@@ -134,7 +137,7 @@ export async function encodeThumbnailInWorker(
     pool.setPaused(paused);
   }
   try {
-    return await pool.encode(blob, request, format);
+    return await pool.encode(blob, request, format, maxEdge);
   } catch {
     return null;
   }

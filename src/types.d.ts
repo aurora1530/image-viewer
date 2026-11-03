@@ -9,8 +9,16 @@ interface Window {
     onUpdateState(callback: (state: import('./shared/release').UpdateState) => void): () => void;
     onBeforeClose(callback: () => Promise<boolean>): () => void;
     onNavigate(callback: (direction: 'back' | 'forward') => void): () => void;
-    readThumbnail(path: string): Promise<{ version: string; bytes: Uint8Array | null }>;
-    writeThumbnail(path: string, version: string, bytes: Uint8Array): Promise<boolean>;
+    readThumbnail(
+      path: string,
+      maxEdge?: import('./shared/thumbnail').ThumbnailSize,
+    ): Promise<{ version: string; bytes: Uint8Array | null }>;
+    writeThumbnail(
+      path: string,
+      version: string,
+      bytes: Uint8Array,
+      maxEdge?: import('./shared/thumbnail').ThumbnailSize,
+    ): Promise<boolean>;
     readAppConfig(): Promise<unknown>;
     writeAppConfig(config: import('./shared/appConfig').AppConfig): Promise<void>;
     cacheStats(): Promise<{ bytes: number; path: string; configPath: string }>;

@@ -138,9 +138,11 @@ function registerIpc() {
     path: path.join(app.getPath('userData'), 'thumbnails'),
     configPath: settingsPath(),
   }));
-  ipcMain.handle('desktop:read-thumbnail', (_event, filePath) => thumbnails.read(filePath));
-  ipcMain.handle('desktop:write-thumbnail', (_event, filePath, version, bytes) =>
-    thumbnails.write(filePath, version, bytes),
+  ipcMain.handle('desktop:read-thumbnail', (_event, filePath, maxEdge) =>
+    thumbnails.read(filePath, maxEdge),
+  );
+  ipcMain.handle('desktop:write-thumbnail', (_event, filePath, version, bytes, maxEdge) =>
+    thumbnails.write(filePath, version, bytes, maxEdge),
   );
   ipcMain.handle('desktop:confirm-list-mode', async (event, mode) => {
     if (mode !== 'recursive' && mode !== 'favorites') throw new Error('不正な一覧モードです。');

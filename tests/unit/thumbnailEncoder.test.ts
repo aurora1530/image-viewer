@@ -50,6 +50,12 @@ beforeEach(() => {
 });
 
 describe('thumbnail encoding', () => {
+  it('uses the requested size for reduced JPEG decoding and final encoding', async () => {
+    await encodeThumbnail(new Blob(['original'], { type: 'image/jpeg' }), 'image/jpeg', 640);
+    expect(sizes).toEqual([[640, 427]]);
+    expect(createImageBitmap).not.toHaveBeenCalled();
+  });
+
   it('decodes JPEG at thumbnail scale and releases pixels before compression', async () => {
     encode.mockImplementation(async () => {
       expect(frameClose).toHaveBeenCalledOnce();

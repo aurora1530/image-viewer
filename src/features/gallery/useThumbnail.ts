@@ -1,12 +1,13 @@
 import type { EntryHandle } from '../../shared/fileSystem';
 import { requireValue } from '../../shared/validation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import type { DirectoryCacheItem } from '../../shared/model';
 import { useApplication } from '../../app/ApplicationProvider';
 import type { MediaSource } from '../../app/ports';
 import { aspectRatios } from './mediaMetrics';
 import { observeThumbnail } from './observeThumbnail';
+import { useThumbnailSize } from './useThumbnailSize';
 
 export function useThumbnail(
   item: DirectoryCacheItem,
@@ -14,26 +15,30 @@ export function useThumbnail(
   video: RefObject<HTMLVideoElement | null>,
 ) {
   const { media } = useApplication();
+  const maxEdge = useThumbnailSize(card);
   const [retryState, setRetryState] = useState<{
     handle: EntryHandle;
     attempt: number;
   } | null>(null);
   const attempt = retryState?.handle === item.handle ? retryState.attempt : 0;
+  const request = useMemo(
+    () => ({ handle: item.handle, attempt, maxEdge }),
+    [item.handle, attempt, maxEdge],
+  );
   const [loaded, setLoaded] = useState<{
-    handle: EntryHandle;
-    attempt: number;
+    request: typeof request;
     source: MediaSource | null;
     failed: boolean;
   } | null>(null);
   const [decoded, setDecoded] = useState<MediaSource | null>(null);
-  // A result belongs to one handle and request. A changed handle/retry renders
-  // pending immediately, without an Effect that copies props into local state.
-  const current = loaded?.handle === item.handle && loaded.attempt === attempt ? loaded : null;
+  // Identity prevents reusing a revoked URL after switching away and back to
+  // the same size before the replacement request finishes.
+  const current = loaded?.request === request ? loaded : null;
   const source = current?.source ?? null;
   const ready = !!source && decoded === source;
   const failed = attempt > 2 || !!current?.failed;
   useEffect(() => {
-    if (attempt > 2) return;
+    if (attempt > 2 || maxEdge === null) return;
     let active = true;
     let owned: MediaSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -52,12 +57,13 @@ export function useThumbnail(
         try {
           let result: MediaSource | null;
           if (item.type === 'image' || item.type === 'pdf')
-            result = await media.getThumbnail(item.handle, shouldContinue, getPriority);
+            result = await media.getThumbnail(item.handle, shouldContinue, getPriority, maxEdge);
           else if (item.type === 'video') result = await media.getMediaSource(item.handle);
           else {
             result = await media.getDirectoryPreview(item.handle, {
               shouldContinue,
               getPriority,
+              maxEdge,
             });
           }
           if (!shouldContinue()) {
@@ -66,15 +72,14 @@ export function useThumbnail(
           }
           owned = result;
           setLoaded({
-            handle: item.handle,
-            attempt,
+            request,
             source: result,
             failed: !result,
           });
         } catch (error) {
           if (!active) return;
           console.error(`サムネイル生成失敗: ${item.name}`, error);
-          setLoaded({ handle: item.handle, attempt, source: null, failed: true });
+          setLoaded({ request, source: null, failed: true });
         }
       };
       // Failed decodes get a short delay before the next cache request.
@@ -96,7 +101,7 @@ export function useThumbnail(
       }
       if (owned?.objectUrl) URL.revokeObjectURL(owned.url);
     };
-  }, [item.handle, item.type, item.name, attempt, card, video, media]);
+  }, [item.handle, item.type, item.name, attempt, card, video, media, maxEdge, request]);
 
   function markReady(width: number, height: number) {
     if (height) aspectRatios.set(item.handle, width / height);

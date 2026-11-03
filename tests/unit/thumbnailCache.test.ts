@@ -52,6 +52,30 @@ afterEach(() => {
 });
 
 describe('thumbnail generation and reuse', () => {
+  it('keeps sizes separate, shares originals and invalidates every size', async () => {
+    const file = root.file('two-sizes.jpg');
+    const handle = file.asHandle();
+    const read = vi.spyOn(file, 'getFile');
+    const cache = createThumbnailCache();
+    await cache.get(handle, undefined, undefined, 640);
+    await cache.get(handle, undefined, undefined, 1280);
+    await cache.get(handle, undefined, undefined, 640);
+    expect(dimensions).toEqual([
+      [640, 320],
+      [1280, 640],
+    ]);
+    expect(read).toHaveBeenCalledOnce();
+    cache.invalidate(handle);
+    await cache.get(handle, undefined, undefined, 1280);
+    await cache.get(handle, undefined, undefined, 640);
+    expect(dimensions).toEqual([
+      [640, 320],
+      [1280, 640],
+      [1280, 640],
+      [640, 320],
+    ]);
+  });
+
   it('resizes proportionally and reuses the compressed blob across displays', async () => {
     const file = root.file('large.jpg');
     const read = vi.spyOn(file, 'getFile');
@@ -244,7 +268,12 @@ describe('thumbnail generation and reuse', () => {
     await cache.get(file);
     expect(draw).toHaveBeenCalledOnce();
     await vi.waitFor(() =>
-      expect(writeThumbnail).toHaveBeenCalledWith(file.nativePath, 'v1', expect.any(Uint8Array)),
+      expect(writeThumbnail).toHaveBeenCalledWith(
+        file.nativePath,
+        'v1',
+        expect.any(Uint8Array),
+        1280,
+      ),
     );
   });
 
@@ -330,7 +359,12 @@ describe('thumbnail generation and reuse', () => {
       name: 'opaque.png',
       getFile: async () => png(2),
     });
-    expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/jpeg');
+    expect(worker).toHaveBeenLastCalledWith(
+      expect.any(Blob),
+      expect.any(Object),
+      'image/jpeg',
+      1280,
+    );
     await createThumbnailCache().get({
       kind: 'file',
       createWritable: async () => {
@@ -339,6 +373,11 @@ describe('thumbnail generation and reuse', () => {
       name: 'alpha.png',
       getFile: async () => png(6),
     });
-    expect(worker).toHaveBeenLastCalledWith(expect.any(Blob), expect.any(Object), 'image/webp');
+    expect(worker).toHaveBeenLastCalledWith(
+      expect.any(Blob),
+      expect.any(Object),
+      'image/webp',
+      1280,
+    );
   });
 });
