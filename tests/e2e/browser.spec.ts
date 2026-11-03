@@ -35,8 +35,12 @@ test('scrolling releases thumbnail slots before abandoned browser file reads fin
       (char) => char.charCodeAt(0),
     );
     const releases: (() => void)[] = [];
+    let readsReleased = false;
     window.__abandonedReadCount = 0;
-    window.__releaseAbandonedReads = () => releases.forEach((release) => release());
+    window.__releaseAbandonedReads = () => {
+      readsReleased = true;
+      for (const release of releases.splice(0)) release();
+    };
     for (let i = 0; i < 300; i++) {
       const name = `${String(i).padStart(3, '0')}.png`;
       root.entries.set(name, {
@@ -47,7 +51,7 @@ test('scrolling releases thumbnail slots before abandoned browser file reads fin
         },
         getFile: async () => {
           const file = new File([pixels], name, { type: 'image/png' });
-          if (i >= 100) return file;
+          if (i >= 100 || readsReleased) return file;
           window.__abandonedReadCount++;
           return new Promise<File>((resolve) => releases.push(() => resolve(file)));
         },
@@ -62,9 +66,9 @@ test('scrolling releases thumbnail slots before abandoned browser file reads fin
   // The original getFile promises are still pending when the new viewport loads.
   await page.evaluate(() => window.__releaseAbandonedReads());
   await expect(last).toHaveJSProperty('naturalWidth', 1);
+  // Once released, reads started by the next animation frame must also finish.
+  // A cumulative read count cannot synchronize new requests after scrolling back.
   await page.evaluate(() => window.scrollTo(0, 0));
-  await expect.poll(() => page.evaluate(() => window.__abandonedReadCount)).toBeGreaterThan(1);
-  await page.evaluate(() => window.__releaseAbandonedReads());
   await expect(page.locator('#item-list img[alt="000.png"]')).toHaveJSProperty('naturalWidth', 1);
 });
 

@@ -16,6 +16,7 @@ test('home favorites keep their order and persist handle reordering across resta
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
   env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:5173';
+  env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
   delete env.ELECTRON_RUN_AS_NODE;
   const launch = () =>
     electron.launch({
@@ -37,6 +38,12 @@ test('home favorites keep their order and persist handle reordering across resta
   try {
     app = await launch();
     let page = await app.firstWindow();
+    const windowState = await app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      return { visible: win.isVisible(), focused: win.isFocused() };
+    });
+    expect(windowState.visible).toBe(process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1');
+    if (process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW !== '1') expect(windowState.focused).toBe(false);
     await installBrowserGuards(page);
     await expect(page.locator('#home-view')).toBeVisible();
     await page.evaluate(async (folders) => {
@@ -120,6 +127,7 @@ test('flushes pending config changes before acknowledging a desktop close reques
     for (const [key, value] of Object.entries(process.env))
       if (value !== undefined) env[key] = value;
     env.VITE_DEV_SERVER_URL = 'http://127.0.0.1:5173';
+    env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
     delete env.ELECTRON_RUN_AS_NODE;
     app = await electron.launch({
       executablePath: path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe'),
@@ -233,6 +241,7 @@ for (const bundled of [false, true]) {
       env.VITE_DEV_SERVER_URL = bundled
         ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
         : 'http://127.0.0.1:5173';
+      env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
       delete env.ELECTRON_RUN_AS_NODE;
       app = await electron.launch({
         executablePath: path.join(
@@ -762,6 +771,7 @@ for (const bundled of [false, true]) {
       env.VITE_DEV_SERVER_URL = bundled
         ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
         : 'http://127.0.0.1:5173';
+      env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
       delete env.ELECTRON_RUN_AS_NODE;
       app = await electron.launch({
         executablePath: path.join(
@@ -832,6 +842,7 @@ for (const bundled of [false, true]) {
       env.VITE_DEV_SERVER_URL = bundled
         ? pathToFileURL(path.join(process.cwd(), 'dist', 'index.html')).href
         : 'http://127.0.0.1:5173';
+      env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
       delete env.ELECTRON_RUN_AS_NODE;
       app = await electron.launch({
         executablePath: path.join(

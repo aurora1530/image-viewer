@@ -266,7 +266,9 @@ function registerIpc() {
 }
 
 function createWindow() {
+  const hiddenForTest = process.env.IMAGE_VIEWER_TEST_HIDDEN === '1';
   const win = new BrowserWindow({
+    show: !hiddenForTest,
     width: 1440,
     height: 960,
     minWidth: 900,
@@ -275,6 +277,9 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
+      // Offscreen rendering avoids hidden-window frame throttling during operation tests.
+      backgroundThrottling: !hiddenForTest,
+      offscreen: hiddenForTest,
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
