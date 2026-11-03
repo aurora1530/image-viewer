@@ -26,24 +26,6 @@ export function Home() {
   }
   return (
     <div id="home-view" className={`home-view${home ? '' : ' hidden'}`}>
-      <div className="home-intro">
-        <div>
-          <span className="chip-label">ライブラリ</span>
-          <h2>フォルダーをすぐに開く</h2>
-          <p>
-            最近使ったフォルダーはこの端末に保存されます。よく使う場所は ★ で上部に固定できます。
-          </p>
-        </div>
-        <button
-          id="home-select-dir-btn"
-          className="ui-btn primary"
-          onClick={() => {
-            void actions.selectRootDirectory();
-          }}
-        >
-          新しいフォルダーを開く
-        </button>
-      </div>
       <div
         id="favorite-roots-section"
         className={`library-section${favorites.length ? '' : ' hidden'}`}

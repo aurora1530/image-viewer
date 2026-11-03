@@ -19,7 +19,6 @@ export function App() {
       <div id="main-content" className="frame">
         <header className="app-header">
           <div className="app-brand">
-            <span className="eyebrow">DESKTOP LIBRARY</span>
             <h1>ローカル画像ビューワー</h1>
             <VersionBadge />
             <span
