@@ -10,7 +10,8 @@ import { pathToFileURL } from 'node:url';
 
 test('home favorites keep their order and persist handle reordering across restart', async () => {
   const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-favorite-order-'));
-  const folders = ['first', 'second', 'third'].map((name) => path.join(profile, name));
+  const first = '旅行写真と家族のアルバムをまとめた長い名前のフォルダー_2026';
+  const folders = [first, 'second', 'third'].map((name) => path.join(profile, name));
   for (const folder of folders) await mkdir(folder);
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
@@ -48,18 +49,28 @@ test('home favorites keep their order and persist handle reordering across resta
     }, folders);
     await page.reload();
     const names = () => page.locator('#favorite-roots .library-name');
-    await expect(names()).toHaveText(['first', 'second', 'third']);
-    const favoriteHeight = await page
-      .locator('#favorite-roots .library-card')
-      .first()
-      .evaluate((card) => card.getBoundingClientRect().height);
-    const recentHeight = await page
-      .locator('#recent-roots .library-card')
-      .first()
-      .evaluate((card) => card.getBoundingClientRect().height);
-    expect(favoriteHeight).toBe(recentHeight);
+    await expect(names()).toHaveText([first, 'second', 'third']);
+    await expect(page.getByText('DESKTOP LIBRARY', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.home-intro')).toHaveCount(0);
+    const heading = requireValue(await page.locator('#current-dir-name').boundingBox());
+    const action = requireValue(await page.locator('#home-select-dir-btn').boundingBox());
+    expect(Math.abs(heading.y + heading.height / 2 - action.y - action.height / 2)).toBeLessThan(2);
+    expect(action.x).toBeGreaterThan(heading.x + heading.width);
+    for (const width of [1280, 700, 480]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const section of ['#favorite-roots', '#recent-roots']) {
+        const name = page.locator(`${section} .library-name`).first();
+        expect(await name.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+        expect(await name.evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(page.locator('.library-folder-icon svg')).toHaveCount(6);
     await expect(page.locator('#recent-roots .library-name')).toHaveText([
-      'first',
+      first,
       'third',
       'second',
     ]);
@@ -67,10 +78,10 @@ test('home favorites keep their order and persist handle reordering across resta
       .locator('#favorite-roots .favorite-drag-handle')
       .first()
       .dragTo(page.locator('#favorite-roots .library-card').nth(2));
-    await expect(names()).toHaveText(['second', 'third', 'first']);
+    await expect(names()).toHaveText(['second', 'third', first]);
     await expect(page.locator('#home-view')).toBeVisible();
     await page.locator('#favorite-roots .favorite-drag-handle').last().press('ArrowLeft');
-    await expect(names()).toHaveText(['second', 'first', 'third']);
+    await expect(names()).toHaveText(['second', first, 'third']);
     // Unknown paths must not replace registered favorites through IPC.
     expect(
       await page.evaluate(async () => {
@@ -85,9 +96,9 @@ test('home favorites keep their order and persist handle reordering across resta
     await app.close();
     app = await launch();
     page = await app.firstWindow();
-    await expect(names()).toHaveText(['second', 'first', 'third']);
+    await expect(names()).toHaveText(['second', first, 'third']);
     await expect(page.locator('#recent-roots .library-name')).toHaveText([
-      'first',
+      first,
       'third',
       'second',
     ]);

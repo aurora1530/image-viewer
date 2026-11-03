@@ -120,11 +120,12 @@ body.mono-body {
 }
 .library-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr));
   gap: 10px;
 }
 .library-card {
   display: grid;
+  min-width: 0;
   grid-template-columns: 42px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
@@ -142,6 +143,9 @@ body.mono-body {
 }
 .favorite-root-slot .library-card {
   grid-template-columns: 28px 42px minmax(0, 1fr) auto;
+}
+.favorite-root-slot {
+  min-width: 0;
 }
 
 .favorite-drag-handle {
@@ -188,9 +192,7 @@ body.mono-body {
 }
 .library-name {
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .library-path {
   margin-top: 3px;
