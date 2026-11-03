@@ -39,13 +39,17 @@ npm run release -- minor
 npm run release -- major
 ```
 
-初回の1.0.0だけは `npm run release -- initial`、またはActionsで `initial` を選びます。バージョンを増やすコミットは作成せず、その時点のリモートmainに `v1.0.0` タグを付けます。バージョン付きタグが既に存在する場合や、packageとlockfileが1.0.0で一致しない場合は拒否します。初回公開後は通常の `patch`・`minor`・`major` を使ってください。
+初回の1.0.0だけは `npm run release -- initial`、またはActionsで `initial` を選びます。バージョンを増やすコミットは作成せず、検証・ビルド成功後に実行開始時のmainへ `v1.0.0` タグを付けます。バージョン付きタグが既に存在する場合や、packageとlockfileが1.0.0で一致しない場合は拒否します。初回公開後は通常の `patch`・`minor`・`major` を使ってください。
 
-このコマンドはローカルの変更を送信せず、リモートmainをリリースします。必要な変更は先にPRをマージしてください。`package.json`とlockfileのバージョン更新コミット・`vX.Y.Z`タグを作成し、そのコミットを固定して検証します。`prepare` ジョブだけは専用GitHub Appのトークンでmainとタグを直接pushし、PR必須・check必須のrulesetをbypassします。以降の検証・公開・配信は通常の `GITHUB_TOKEN` を使用します。追加のPATや有料の署名サービスは使用しません。
+このコマンドはローカルの変更を送信せず、実行開始時のmainをリリース候補にします。必要な変更は先にPRをマージしてください。`prepare` は `package.json` とlockfileを更新するコミットとタグをローカルにだけ作成し、Git bundleをActionsの成果物として保存します。検証と全OSのビルドは、そのbundle内の同一コミットを使用します。この段階ではmain・リモートタグ・GitHub Releaseを変更しません。
+
+全ビルド成功後、`publish` が専用GitHub Appのトークンでmainとタグをatomic pushし、PR必須・check必須のrulesetをbypassします。実行開始後にmainが進んでいた場合はpushせず失敗させます。Release公開・Pages配信は通常の `GITHUB_TOKEN` を使用します。追加のPATや有料の署名サービスは使用しません。
 
 Windowsの検証後、Windows x64のNSISインストーラー・Portable版と、macOS arm64/x64それぞれのDMG・ZIPを生成します。全ビルドが成功してからGitHub Releaseを公開し、同じコミットから生成・検証済みのWeb成果物をPagesへ配信します。Releaseのファイル名にはバージョンを含め、Windowsの更新用 `latest.yml` と `.blockmap` も添付します。
 
-失敗した場合は新規実行ではなく、その実行の `Re-run all jobs` を使うと同じタグ・バージョンで再試行できます。実行IDをタグに記録しているため、mainが進んでいても同じソースを利用します。公開済みReleaseのファイルは再アップロードせず、新しい正式版がある場合は古い版の再公開・Web配信を拒否します。Release公開とPages配信は別処理なので、Pagesだけ失敗した場合も再実行してください。
+検証・ビルドの失敗では、リモートのコミットとタグは残りません。公開・Pages配信の失敗やキャンセルでは、`rollback` がその実行のReleaseを削除し、mainとタグをatomicに元へ戻します。GitHub Appのruleset bypassには、この失敗時のmain巻き戻しとタグ削除も許可する必要があります。mainに別のコミットが追加されていた場合は、その変更を保護するため自動巻き戻しを拒否します。権限不足やGitHub障害などで `rollback` 自体が失敗した場合も含め、ジョブログを確認して手動復旧してください。Pagesがすでに配信済みの場合、その配信内容は自動では巻き戻しません。
+
+再試行は、その実行の `Re-run all jobs` を使用します。実行開始時のコミットと日時から同じ候補を再作成するため、同じタグ・バージョン・ソースで再試行できます。ただしmainが進んでいた場合は、新規実行で最新のmainを検証してください。公開済みReleaseのファイルは再アップロードせず、新しい正式版がある場合は古い版の再公開・Web配信を拒否します。
 
 GitHub PagesのSourceは `GitHub Actions` に設定してください。デスクトップの自動更新はpublicリポジトリのGitHub Releasesを参照します。アプリにGitHubトークンは同梱しません。標準のGitHub-hosted runnersを使い、privateリポジトリではActionsの無料枠・利用上限を確認してください。
 
@@ -94,7 +98,7 @@ npx playwright install chromium
 
 ```powershell
 npm test                 # 単体・統合テスト
-npm run test:release      # バージョン更新・タグ再利用のローカルGitテスト
+npm run test:release      # 候補の分離・公開・失敗時の巻き戻しのローカルGitテスト
 npm run test:desktop-build # 出力先の分離・Windowsでのファイルロック回帰テスト
 npm run test:typecheck   # テストコードの型チェック
 npm run test:e2e         # Chromiumでの操作テスト
