@@ -91,7 +91,20 @@ export function Home() {
         </div>
       </div>
       <div id="empty-library" className={`empty-library${library.length ? ' hidden' : ''}`}>
-        <div className="empty-icon">▧</div>
+        <div className="empty-icon" aria-hidden="true">
+          <svg
+            width="28"
+            height="28"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.3a1.5 1.5 0 0 1 1.14.52l1.22 1.43a1.5 1.5 0 0 0 1.14.52H19.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5v-12Z" />
+          </svg>
+        </div>
         <h3>まだフォルダーがありません</h3>
         <p>画像を保存しているフォルダーを選ぶと、次回からここから開けます。</p>
       </div>
