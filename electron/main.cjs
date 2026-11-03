@@ -133,6 +133,26 @@ function registerIpc() {
     await saveJson(settingsPath(), clean);
     await thumbnails.configure(clean.thumbnailDiskMiB * 1024 * 1024);
   });
+  ipcMain.handle('desktop:clear-persistent-cache', () => thumbnails.clear());
+  ipcMain.handle('desktop:confirm-removal', async (event, kind, name) => {
+    if ((kind !== 'favorite' && kind !== 'history') || typeof name !== 'string')
+      throw new Error('不正な削除確認です。');
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    if (!parent || parent.isDestroyed()) return false;
+    const result = await dialog.showMessageBox(parent, {
+      type: 'question',
+      title: kind === 'favorite' ? 'お気に入りの解除' : '履歴の削除',
+      message:
+        kind === 'favorite'
+          ? `「${name}」をお気に入りから外しますか？`
+          : `「${name}」を履歴から削除しますか？`,
+      buttons: [kind === 'favorite' ? '外す' : '削除', 'キャンセル'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    return result.response === 0;
+  });
   ipcMain.handle('desktop:cache-stats', async () => ({
     ...(await thumbnails.stats()),
     path: path.join(app.getPath('userData'), 'thumbnails'),

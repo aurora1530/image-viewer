@@ -19,6 +19,8 @@ function createDesktopApi(
     onUpdateState: () => () => undefined,
     readAppConfig: async () => ({}),
     writeAppConfig: async () => {},
+    clearPersistentCache: async () => {},
+    confirmRemoval: async () => true,
     cacheStats: async () => ({ bytes: 0, path: '', configPath: '' }),
     onBeforeClose: () => () => undefined,
     onNavigate: () => () => undefined,

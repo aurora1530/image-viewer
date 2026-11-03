@@ -34,6 +34,7 @@ import {
 } from '../platform/nativeFs';
 import { createViewer } from './createViewer';
 import { createReleaseClient } from '../platform/releases';
+import { confirmRemoval } from '../platform/removalConfirmation';
 import { confirmListMode } from '../platform/listModeConfirmation';
 
 export function createApplication(store: AppStore = createAppStore(readPreferences())) {
@@ -336,10 +337,12 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       }
     },
     async toggleLibraryFavorite(item: DesktopLibraryItem) {
+      if (item.favorite && !(await confirmRemoval('favorite', item.name))) return;
       await requireValue(window.desktopApi).toggleFavoriteRoot(item.path);
       await showHome();
     },
     async removeLibrary(item: DesktopLibraryItem) {
+      if (!(await confirmRemoval('history', item.name))) return;
       await requireValue(window.desktopApi).removeRecent(item.path);
       await showHome();
     },
@@ -384,6 +387,10 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       const root = getRootDirHandle();
       const directory = get().directories.at(-1);
       const mode = get().listMode;
+      if (kind === 'favorite' && entry.item.isFavorite) {
+        if (!(await confirmRemoval('favorite', entry.item.name))) return;
+        if (root !== getRootDirHandle() || token !== directoryViews.generation) return;
+      }
       let next: boolean;
       try {
         next = await (kind === 'favorite' ? toggleFavoriteEntry : toggleHiddenEntry)(
