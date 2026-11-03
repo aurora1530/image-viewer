@@ -38,3 +38,20 @@ prefix_rule(
     pattern = ["git", ["status", "diff", "log"]],
     decision = "allow",
 )
+
+# Git branch creation
+prefix_rule(
+    pattern = ["git", "switch", "-c"],
+    decision = "allow",
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", "-b"],
+    decision = "allow",
+)
+
+# Git staging and commit
+prefix_rule(
+    pattern = ["git", ["add", "commit"]],
+    decision = "allow",
+)
