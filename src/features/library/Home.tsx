@@ -1,10 +1,29 @@
+import { useState } from 'react';
 import { useAppActions, useAppState } from '../../app/ApplicationProvider';
 import { LibraryCard } from './LibraryCard';
 export function Home() {
   const actions = useAppActions();
   const home = useAppState((state) => state.screen === 'home');
   const library = useAppState((state) => state.library);
-  const favorites = library.filter((item) => item.favorite);
+  const [draggedPath, setDraggedPath] = useState<string | null>(null);
+  const [dropPath, setDropPath] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const favorites = library
+    .filter((item) => item.favorite)
+    .sort((a, b) => (a.favoriteOrder ?? Infinity) - (b.favoriteOrder ?? Infinity));
+  async function move(source: string, target: string) {
+    if (saving || source === target) return;
+    setSaving(true);
+    try {
+      await actions.moveLibraryFavorite(source, target);
+    } finally {
+      setSaving(false);
+    }
+  }
+  function endDrag() {
+    setDraggedPath(null);
+    setDropPath(null);
+  }
   return (
     <div id="home-view" className={`home-view${home ? '' : ' hidden'}`}>
       <div className="home-intro">
@@ -34,8 +53,44 @@ export function Home() {
           <span id="favorite-roots-count">{favorites.length}</span>
         </div>
         <div id="favorite-roots" className="library-grid">
-          {favorites.map((item) => (
-            <LibraryCard key={item.path} item={item} />
+          {favorites.map((item, index) => (
+            <div
+              key={item.path}
+              className={`favorite-root-slot${dropPath === item.path ? ' is-drop-target' : ''}${draggedPath === item.path ? ' is-dragging' : ''}`}
+              onDragOver={(event) => {
+                if (!draggedPath || saving) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setDropPath(item.path);
+              }}
+              onDragLeave={(event) => {
+                if (
+                  !event.currentTarget.contains(
+                    event.relatedTarget instanceof Node ? event.relatedTarget : null,
+                  )
+                )
+                  setDropPath(null);
+              }}
+              onDrop={(event) => {
+                if (!draggedPath || saving) return;
+                event.preventDefault();
+                void move(draggedPath, item.path);
+                endDrag();
+              }}
+            >
+              <LibraryCard
+                item={item}
+                reorder={{
+                  disabled: saving || favorites.length < 2,
+                  onDragStart: () => setDraggedPath(item.path),
+                  onDragEnd: endDrag,
+                  onMove: (direction) => {
+                    const target = favorites[index + direction];
+                    if (target) void move(item.path, target.path);
+                  },
+                }}
+              />
+            </div>
           ))}
         </div>
       </div>
