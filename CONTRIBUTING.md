@@ -1,157 +1,93 @@
 # 開発ガイド
 
-開発環境の準備、ビルド、整形・検証の手順をまとめます。機能と使い方は [README.md](README.md)、設計と依存関係は [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
+## 開発・ビルド
 
-## 開発環境
-
-Node.js 24 と npm を使用します。CI のコード品質チェックも Windows・Node.js 24 で実行しています。
+Node.js 24とnpmを使用します。`npm ci`で依存関係とHuskyのGitフックを導入します。
 
 ```powershell
 npm ci
-npm run desktop:dev     # デスクトップ版を開発起動
-npm run dev             # Web版を開発起動
-```
-
-`npm ci` の `prepare` スクリプトで Husky の Git フックを有効にします。既に依存関係をインストール済みの場合も、フック導入後に一度 `npm ci` を実行してください。
-
-## ビルド
-
-```powershell
+npm run desktop:dev     # Electron版を起動
+npm run dev             # Web版を起動
 npm run build           # Web版をdist/へ出力
 npm run preview         # ビルド済みWeb版を確認
-npm run desktop:pack    # Windowsの展開版を生成
-npm run desktop:build   # Windowsのインストーラーとポータブル版を生成
+npm run desktop:pack    # Windows x64の展開版
+npm run desktop:build   # Windows x64のインストーラー・Portable版
+npm run desktop:smoke   # 最新の完成済みビルドを確認
 ```
 
-デスクトップ版の生成物は、ビルドごとに新しい `release/builds/<日時と識別子>/` に出力されます。Windows x64を対象とし、その中に展開版の `win-unpacked/` と、バージョンを含まない `image-viewer-windows-x64-setup.exe`・`image-viewer-windows-x64-portable.exe` を生成します。完了時に出力先と実行ファイルのパスを表示します。`npm run desktop:smoke` は最新の完成済みビルドを自動で選びます。
+デスクトップの出力先は毎回新しい`release/builds/<日時と識別子>/`です。過去の生成物は上書き・自動削除しません。正式リリースの`--release`では配布ファイルを`release/`直下にもコピーします。
 
-パッケージ化は毎回新しい一時フォルダーで行い、生成物も新しい保存先へコピーします。過去の展開版・インストーラーは削除・上書きしないため、VS Codeや前回のアプリが `app.asar` を開いていてもビルドできます。以前の `release/win-unpacked/` や `release/` 直下のインストーラーは更新しません。過去の生成物は自動削除しないため、不要になったビルドのフォルダーは後で削除してください。バージョン更新やGitHubへのアップロードは行いません。
+アイコンの変更は[生成手順](design/app-icon/README.md)を参照してください。通常のビルドにPythonは不要です。
 
-正式リリース用の `--release` では、CIのアップロードに必要な配布ファイルを従来どおり `release/` 直下にもコピーします。これは新規チェックアウトで動くReleaseワークフロー向けの動作です。
-
-## アイコン
-
-Web・Windows・macOS のアイコンは共通の元画像から生成します。元画像・生成手順・出力先は
-[アイコンのガイド](design/app-icon/README.md) を参照してください。生成済みファイルを管理しているため、通常の開発・ビルドで Python は不要です。
-
-## リリース
-
-GitHub Actions の `Release` をmainで手動実行し、`patch`（修正）・`minor`（互換性のある機能追加）・`major`（互換性を壊す変更）を選びます。GitHub CLIをインストールして `gh auth login` 済みなら、ローカルから同じ処理を開始できます。
+## 整形・検証
 
 ```powershell
-npm run release -- patch
-npm run release -- minor
-npm run release -- major
+npm run format           # Prettierで整形
+npm run format:check     # 整形差分を検査
+npm run lint             # ESLint（警告も失敗）
+npm run lint:fix         # ESLintの自動修正
+npm run check            # 整形・lint・型検査・ビルド・単体/配布関連テスト
+npm run check:staged     # ステージ済みファイルの整形・lint
 ```
 
-初回の1.0.0だけは `npm run release -- initial`、またはActionsで `initial` を選びます。バージョンを増やすコミットは作成せず、検証・ビルド成功後に実行開始時のmainへ `v1.0.0` タグを付けます。バージョン付きタグが既に存在する場合や、packageとlockfileが1.0.0で一致しない場合は拒否します。初回公開後は通常の `patch`・`minor`・`major` を使ってください。
+整形規則はPrettier、改行はLFです。コミット時はHuskyから`check:staged`を実行し、整形結果を含めます。失敗時はコミットを中止します。未ステージ変更は一時退避・復元し、全件検証はCIの`check`で行います。
 
-このコマンドはローカルの変更を送信せず、実行開始時のmainをリリース候補にします。必要な変更は先にPRをマージしてください。`prepare` は `package.json` とlockfileを更新するコミットとタグをローカルにだけ作成し、Git bundleをActionsの成果物として保存します。検証と全OSのビルドは、そのbundle内の同一コミットを使用します。この段階ではmain・リモートタグ・GitHub Releaseを変更しません。
+型安全性の規則は[AGENTS.md](AGENTS.md)に従います。`test:type-policy`は`check`にも含まれます。依存型の宣言衝突を避けるため`skipLibCheck`を使用しています。
 
-全ビルド成功後、`publish` が専用GitHub Appのトークンでmainとタグをatomic pushし、PR必須・check必須のrulesetをbypassします。実行開始後にmainが進んでいた場合はpushせず失敗させます。Release公開・Pages配信は通常の `GITHUB_TOKEN` を使用します。追加のPATや有料の署名サービスは使用しません。
+### テスト
 
-Windowsの検証後、Windows x64のNSISインストーラー・Portable版と、macOS arm64/x64それぞれのDMG・ZIPを生成します。全ビルドが成功してからGitHub Releaseを公開し、同じコミットから生成・検証済みのWeb成果物をPagesへ配信します。Releaseのファイル名にはバージョンを含め、Windowsの更新用 `latest.yml` と `.blockmap` も添付します。
-
-検証・ビルドの失敗では、リモートのコミットとタグは残りません。公開・Pages配信の失敗やキャンセルでは、`rollback` がその実行のReleaseを削除し、mainとタグをatomicに元へ戻します。GitHub Appのruleset bypassには、この失敗時のmain巻き戻しとタグ削除も許可する必要があります。mainに別のコミットが追加されていた場合は、その変更を保護するため自動巻き戻しを拒否します。権限不足やGitHub障害などで `rollback` 自体が失敗した場合も含め、ジョブログを確認して手動復旧してください。Pagesがすでに配信済みの場合、その配信内容は自動では巻き戻しません。
-
-再試行は、その実行の `Re-run all jobs` を使用します。実行開始時のコミットと日時から同じ候補を再作成するため、同じタグ・バージョン・ソースで再試行できます。ただしmainが進んでいた場合は、新規実行で最新のmainを検証してください。公開済みReleaseのファイルは再アップロードせず、新しい正式版がある場合は古い版の再公開・Web配信を拒否します。
-
-GitHub PagesのSourceは `GitHub Actions` に設定してください。デスクトップの自動更新はpublicリポジトリのGitHub Releasesを参照します。アプリにGitHubトークンは同梱しません。標準のGitHub-hosted runnersを使い、privateリポジトリではActionsの無料枠・利用上限を確認してください。
-
-Windowsは未署名のためSmartScreenの警告が出る場合があります。macOSは無料のad-hoc署名でビルドし、公証・自動更新は行いません。OSのセキュリティ設定によって初回起動時の許可操作が必要です。証明書の購入やApple Developer Programへの登録は不要です。
-
-### アプリ側のバージョン表示と更新
-
-ヘッダーのバージョンをクリックすると、その版のGitHub Releaseを開きます。設定の「バージョンと更新」から、最新リリースのダウンロードと更新状態を確認できます。
-
-Web版は起動時・10分ごとに配信バージョンを確認し、新版があるとヘッダーに「更新あり（設定）」を表示します。設定の「再読み込みして更新」で切り替えます。
-
-Windowsのインストール版は起動時・4時間ごと・設定の「更新を確認」でGitHub Releasesの新版を確認します。バックグラウンドでダウンロード後、「再起動して更新」で設定の保存を完了してから更新します。保存に失敗した場合は更新せず、アプリを開いたままにします。ネットワークに接続できなくても通常の閲覧は続けられます。
-
-Windows Portable版・展開版・開発起動、およびmacOS版は手動更新です。最新リリースからダウンロードして置き換えます。
-
-## 整形と静的解析
+操作テストの初回実行前に`npx playwright install chromium`を実行してください。
 
 ```powershell
-npm run format          # Prettierで整形
-npm run format:check    # 整形差分の検査
-npm run lint            # ESLint。警告も失敗として扱う
-npm run lint:fix        # ESLintの自動修正
-npm run check           # 整形・lint・型チェック・ビルド・単体テスト
-npm run check:staged    # コミット対象の自動整形とlint
+npm test                  # 単体・統合
+npm run test:release      # リリース候補・公開・巻き戻し
+npm run test:desktop-build # 出力先の分離・ファイルロック
+npm run test:type-policy  # 型安全性ルール
+npm run test:typecheck    # テストコードの型検査
+npm run test:e2e          # Chromiumの操作テスト
+npm run test:desktop      # Electronの操作テスト（先にnpm run build）
+npm run test:coverage     # 単体・統合のカバレッジ
 ```
 
-Prettier はスペース2文字、JavaScript のシングルクォート、セミコロンあり、折り返し幅100文字、LF改行に統一します。生成物と `package-lock.json` は整形対象から除外します。
-
-`.gitattributes` でテキストファイルのチェックアウト時の改行を LF に固定しています。Windows の `core.autocrlf=true` 環境でも、CI とローカルで同じ改行を使います。`.editorconfig` は編集時、Prettier は整形時の LF を指定します。
-
-`git commit` 時は Husky の `pre-commit` フックから lint-staged を実行します。ステージ済みの JavaScript・TypeScript を Prettier で自動整形し、ESLint で検証します。JSON・CSS・HTML・Markdown・YAML などは整形だけを行います。成功すると整形結果もコミットに含まれ、失敗するとコミットを中止します。`.codex/rules/default.rules` など対象外のファイルや、削除だけのコミットでは整形・lint を実行しません。型チェック・ビルド・テストを含む全件チェックはコミット時には実行せず、CI の `npm run check` で行います。
-
-チェック中は未ステージの変更と未追跡ファイルを一時退避し、終了後に復元します。一部の行だけをステージしたファイルも、コミット対象の内容で整形・検証します。チェック失敗時は整形前の状態へ戻します。フックを無効にした場合や実行環境の違いによる失敗も検出できるよう、CI のチェックは継続します。
-
-ESLint は flat config と `typescript-eslint` の型情報を使う推奨ルール、React Hooks の推奨ルールを利用します。ブラウザー・Electron/Node.js・テストの実行環境を分け、TypeScript の解析範囲は `tsconfig.eslint.json` で指定しています。Hooks のルールは例外なしで適用し、テストでは非同期 API のモックと spy の検証に合わせて一部のルールを調整しています。CI でも `npm run check` を実行します。
-
-main以外のブランチへのpush・プルリクエストでは `check.yml` の検証だけを実行します。PRの必須チェックで検証するため、マージ後のmainへのpushでは `check.yml` を実行しません。手動実行とリリース時の検証は引き続き利用できます。GitHub Pagesへの配信は `release.yml` から `deploy.yml` を呼び出したときだけ行い、mainへのpushではWeb版は更新しません。
-
-## テスト
-
-ブラウザーテストの初回実行前に、Chromium をインストールします。
-
-```powershell
-npx playwright install chromium
-```
-
-```powershell
-npm test                 # 単体・統合テスト
-npm run test:release      # 候補の分離・公開・失敗時の巻き戻しのローカルGitテスト
-npm run test:desktop-build # 出力先の分離・Windowsでのファイルロック回帰テスト
-npm run test:typecheck   # テストコードの型チェック
-npm run test:e2e         # Chromiumでの操作テスト
-npm run test:desktop     # Electronでの操作テスト
-npm run test:coverage    # 単体・統合テストのカバレッジ
-```
-
-操作テストは Vite を自動で起動し、テスト用ファイルを使います。Electron の操作テストは開発版と `dist/` のビルド済み画面を確認するため、先に `npm run build` を実行してください。カバレッジ表示には Chromium・Electron の操作テストは含まれません。
-
-通常の `test:e2e` はヘッドレス、`test:desktop` と `desktop:smoke` はウインドウ非表示で実行し、作業中の画面のフォーカスを奪わないようにします。Electron の非表示実行では、オフスクリーン描画を使い、描画やタイマーのバックグラウンド抑制をテスト用に無効化します。操作テストのスクリーンショットとトレースによる失敗時の診断は引き続き利用できます。
-
-画面を表示して調査する場合は、Chromium では `npm run test:e2e -- --headed`、Electron では次のように実行してください。Electron の非表示テストではOS上のウインドウ切り替えやフォーカスの検証はできないため、その確認にも表示モードを使います。
+操作テストはViteを自動起動します。通常は画面を表示しません。表示して調査する場合はChromiumで`--headed`を指定し、Electronでは次を使います（`desktop:smoke`も同様）。OSのフォーカス確認には表示モードが必要です。
 
 ```powershell
 $env:IMAGE_VIEWER_TEST_SHOW_WINDOW = '1'
 try { npm run test:desktop } finally { Remove-Item Env:IMAGE_VIEWER_TEST_SHOW_WINDOW }
 ```
 
-`desktop:smoke` も同じ環境変数で表示モードに切り替えられます。非表示化に対応した生成物を確認するには、変更後に `npm run desktop:pack` でビルドし直してください。
+同じ作業ディレクトリでは`check` → `test:e2e` → `test:desktop`の順に実行し、並行実行しないでください。成果物・開発サーバー・`test-results/`が競合します。
 
-同じ作業ディレクトリでは `npm run check`、`npm run test:e2e`、`npm run test:desktop` を順番に実行してください。操作テスト同士は `test-results/` と開発サーバーを共有するため、別プロセスで同時に起動すると診断ファイルの競合やサーバー停止の影響を受けます。`npm run check` 内のビルド・配布関連テストも、Viteの監視対象にある成果物を変更するため、操作テストと並行実行しないでください。
+失敗時は再実行前に診断を保存し、初回の失敗と再実行の結果を分けて報告してください。部分的な再実行の成功を全件成功とは扱いません。CIの操作テストは1回再試行し、Releaseの診断アーティファクトは7日間保存します。ローカルでは自動再試行しません。
 
-失敗後に再実行する場合は、必要な診断を先に保存し、失敗内容と再実行の結果を区別して報告してください。一部のテストだけを再実行して成功した場合は、全件を一度で通過したとは扱いません。
+### 変更時の確認
 
-単体・統合テストは Vitest の `pool: 'vmThreads'` を使用します。ファイルごとに独立した VM コンテキストと `window` を保ちながら、jsdom 環境の作成コストを抑えます。
+- 実装変更: `npm run check`。画面操作への影響があれば`test:e2e`、デスクトップ固有なら`test:desktop`も実行。
+- 文書のみ: `npm run format:check`とリンク先・記載コマンドの確認。
+- 文書更新先: 機能・使い方は[README](README.md)、責務・依存方向は[ARCHITECTURE](ARCHITECTURE.md)、開発手順はこの文書。
 
-CIの操作テストは失敗時にブラウザーのワーカーを作り直して1回だけ再試行します。再試行でも失敗した場合はリリースを停止します。失敗した試行のトレース・スクリーンショットは `test-results/` に保存し、Releaseワークフローの `verify-browser-diagnostics-<実行回数>`・`verify-desktop-diagnostics-<実行回数>` アーティファクトから7日間取得できます。次のテスト実行が結果を上書きする前に、各プロジェクトの診断を個別に保存します。ローカルでは自動再試行しません。
+## リリース
 
-Provider の状態分離・起動終了の再実行・古いサムネイル結果の破棄は単体テスト、実際のスクロール・ナビゲーション・設定保存は操作テストで確認します。
+必要な変更をmainへマージし、GitHub Actionsの`Release`をmainで手動実行します。GitHub CLIで認証済みなら次でも開始できます。ローカルの変更は送信されません。
 
-## 変更時の確認
+```powershell
+npm run release -- patch  # 修正
+npm run release -- minor  # 互換性のある機能追加
+npm run release -- major  # 互換性を壊す変更
+```
 
-- 実装を変更したら `npm run check` を実行します。画面操作・スクロール・ナビゲーションなどに影響する変更はブラウザーの操作テスト、デスクトップ固有の変更は Electron の操作テストも実行します。
-- ドキュメントのみの変更では `npm run format:check` と、リンク先・記載コマンドの確認を行います。
-- 機能・使い方の変更は README、責務・依存関係の変更は ARCHITECTURE、開発手順の変更はこの文書へ反映します。
+`initial`は未公開の1.0.0専用です（既存のバージョンタグがなく、packageとlockfileが1.0.0で一致する場合のみ）。
 
-## 型チェックを回避しない
+1. 実行開始時のmainからバージョン更新コミット・タグをローカルに作り、Git bundleで同一候補を検証・ビルドする。
+2. 全ビルド成功後、mainとタグをatomic pushする。mainが進んでいれば失敗する。
+3. Windows x64（NSIS・Portable）とmacOS arm64/x64（DMG・ZIP）をReleaseへ公開し、検証済みWeb成果物をPagesへ配信する。Windowsの更新メタデータも添付する。
 
-TypeScriptの型アサーション、明示的な `any`、非null・確定代入アサーション、`@ts-ignore`・`@ts-expect-error`・`@ts-nocheck` はESLintで禁止しています。
-既存の型情報付きルールにより、JSONや未型付けAPIから流入する `any` の代入・呼び出し・返却も拒否します。
-型注釈、`satisfies`、実行時の検証と分岐を使い、データに実態と異なる型を付けないでください。
-`as const` は値のリテラル型を保持する指定であり、型チェックを回避しないため許可します。
-例外は代替実装が著しく複雑になる場合だけ、該当行に理由を付けて必要なルールのみ無効化します。
-現在の例外は、jsdomに描画実装がないCanvasのテスト用コンテキストと、不正なIPC入力を意図的に送る負のテストです。
-後者はpreloadの公開APIを通した拒否動作を検証するため、通常の呼び出しで許可する型へ不正値を局所的に変換します。
+### 設定・失敗時の対応
 
-`npm run test:type-policy` は、禁止例をESLintに渡して拒否されることを検証します。
-`npm run check` に含まれるため、CIでも実行されます。
-依存ライブラリの宣言検査を省く既存の `skipLibCheck` は維持しています。
-Electronと `@types/node` に `Process.noDeprecation` の宣言衝突があるためです。
-アプリ本体・テストの型チェックと、新規のElectronモジュール宣言へのESLintは実行します。
+- 公開・巻き戻し用のGitHub Appにmain更新・タグ操作のruleset bypassを許可する。Release公開・Pages配信は`GITHUB_TOKEN`を使用。
+- PagesのSourceは`GitHub Actions`に設定する。通常のmainへのpushでは配信しない。品質CIはmain以外へのpush・PR・手動実行で動く。
+- 検証・ビルド失敗ではリモートを変更しない。公開・配信の失敗やキャンセルではRelease・タグを削除し、後続コミットがなければmainを戻す。
+- 自動復旧失敗時はジョブログを確認して手動復旧する。配信済みPagesは自動では戻らない。
+- 再試行は`Re-run all jobs`で同一候補を使う。mainが進んだ場合は新規実行する。公開済みファイルは再アップロードせず、新版公開後の旧版の再公開・配信は拒否する。
+
+Windowsは未署名、macOSはad-hoc署名で公証なしのため、初回起動時にOSの許可操作が必要な場合があります。更新方法は[README](README.md#更新)を参照してください。
