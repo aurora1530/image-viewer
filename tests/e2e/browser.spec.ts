@@ -1753,12 +1753,15 @@ for (const count of [18, 300]) {
   test(`dense gallery fills mixed aspect columns and switches back (${count} images)`, async ({
     page,
   }, testInfo) => {
+    // 画像の準備と複数サイズでの操作・撮影を含むため、通常の操作テストより余裕を持たせる。
+    test.setTimeout(60_000);
     await page.setViewportSize({ width: 1100, height: 800 });
     await page.evaluate(async (count) => {
       const root = window.__imageViewerTestRoot;
       root.entries.clear();
-      for (let i = 0; i < count; i++) {
-        const name = `${String(i).padStart(3, '0')}-長い画像ファイル名.png`;
+      // 配置に必要な3種類だけを生成し、各ファイルに再利用する。
+      const blobs: Blob[] = [];
+      for (let i = 0; i < 3; i++) {
         const canvas = document.createElement('canvas');
         canvas.width = 200;
         canvas.height = i % 3 === 0 ? 600 : i % 3 === 1 ? 100 : 200;
@@ -1771,6 +1774,11 @@ for (const count of [18, 300]) {
         const blob = await new Promise<Blob>((resolve) =>
           canvas.toBlob((value) => resolve(window.__requireTestValue(value))),
         );
+        blobs.push(blob);
+      }
+      for (let i = 0; i < count; i++) {
+        const name = `${String(i).padStart(3, '0')}-長い画像ファイル名.png`;
+        const blob = window.__requireTestValue(blobs[i % blobs.length]);
         root.entries.set(name, {
           kind: 'file',
           name,
