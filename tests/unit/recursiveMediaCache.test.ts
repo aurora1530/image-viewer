@@ -1,6 +1,6 @@
 import { requireValue } from '../../src/shared/validation';
 import { describe, expect, it, vi } from 'vitest';
-import { createRecursiveImageCache } from '../../src/services/recursiveImageCache';
+import { createRecursiveMediaCache } from '../../src/services/recursiveMediaCache';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
 describe('recursive image cache', () => {
@@ -12,7 +12,7 @@ describe('recursive image cache', () => {
     child.file('nested.gif');
     const readRoot = vi.spyOn(root, 'values');
     const readChild = vi.spyOn(child, 'values');
-    const cache = createRecursiveImageCache();
+    const cache = createRecursiveMediaCache();
     const first = await cache.get(root.asHandle());
     first.reverse();
     first[0].isFavorite = true;
@@ -32,7 +32,7 @@ describe('recursive image cache', () => {
     const other = new MemoryDirectory('other');
     other.file('one.png');
     const readRoot = vi.spyOn(root, 'values');
-    const cache = createRecursiveImageCache();
+    const cache = createRecursiveMediaCache();
     expect(await cache.get(root.asHandle())).toEqual([]);
     expect(await cache.get(root.asHandle())).toEqual([]);
     expect(readRoot).toHaveBeenCalledOnce();
@@ -45,7 +45,7 @@ describe('recursive image cache', () => {
     root.file('old.png');
     const child = root.directory('child');
     child.file('one.png');
-    const cache = createRecursiveImageCache();
+    const cache = createRecursiveMediaCache();
     await cache.get(root.asHandle());
     await cache.get(child.asHandle(), 'child');
     root.entries.delete('old.png');
@@ -67,7 +67,7 @@ describe('recursive image cache', () => {
     root.file('cover.png');
     const child = root.directory('child');
     child.file('nested.png');
-    const cache = createRecursiveImageCache();
+    const cache = createRecursiveMediaCache();
     let active = true;
     await cache.get(root.asHandle(), '', {
       shouldContinue: () => active,
@@ -90,7 +90,7 @@ describe('recursive image cache', () => {
       throw new Error('unreadable');
     });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const cache = createRecursiveImageCache();
+    const cache = createRecursiveMediaCache();
     expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual(['cover.png']);
     expect((await cache.get(root.asHandle())).map((item) => item.path)).toEqual([
       'cover.png',
@@ -111,7 +111,7 @@ describe('recursive image cache', () => {
       yield* originalValues();
       await paused;
     });
-    const cache = createRecursiveImageCache();
+    const cache = createRecursiveMediaCache();
     const pending = cache.get(root.asHandle());
     await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
     cache.clear();

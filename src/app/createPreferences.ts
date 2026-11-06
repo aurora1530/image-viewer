@@ -74,7 +74,12 @@ export function createPreferences(deps: PreferenceDependencies) {
         scheduleSaveCurrentDirectoryConfig();
       },
       setFilter(value: string) {
-        set({ filterType: isFilterType(value) ? value : 'all' });
+        set({
+          filterType:
+            isFilterType(value) && !(get().listMode === 'recursive' && value === 'directory')
+              ? value
+              : 'all',
+        });
         scheduleSaveCurrentDirectoryConfig();
         scheduleProcessForCurrentDir(0);
       },

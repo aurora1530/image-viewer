@@ -32,6 +32,47 @@ function harness(root: MemoryDirectory) {
 }
 
 describe('gallery data and state coordination', () => {
+  it('collects all supported media recursively and refilters without rescanning', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('cover.PNG');
+    root.file('clip.MP4');
+    const child = root.directory('child');
+    child.file('animation.GIF');
+    child.file('book.PDF');
+    child.file('notes.txt');
+    const read = vi.spyOn(child, 'values');
+    const { views } = harness(root);
+    appStore.setState({ listMode: 'recursive' });
+    await views.render(root.asHandle());
+    expect(
+      appStore.getState().entries.map(({ item, parentPath }) => [item.type, parentPath]),
+    ).toEqual([
+      ['image', 'child'],
+      ['pdf', 'child'],
+      ['video', ''],
+      ['image', ''],
+    ]);
+    expect(appStore.getState().displayImages.map((file) => file.name)).toEqual([
+      'animation.GIF',
+      'cover.PNG',
+    ]);
+    for (const filterType of ['image', 'gif', 'video', 'pdf'] as const) {
+      appStore.setState({ filterType });
+      await views.render(root.asHandle(), { useConfig: false });
+      expect(appStore.getState().entries.map(({ item }) => item.name)).toEqual(
+        filterType === 'image'
+          ? ['animation.GIF', 'cover.PNG']
+          : filterType === 'gif'
+            ? ['animation.GIF']
+            : filterType === 'video'
+              ? ['clip.MP4']
+              : ['book.PDF'],
+      );
+    }
+    expect(appStore.getState().displayImages).toEqual([]);
+    expect(read).toHaveBeenCalledOnce();
+  });
+
   it.each(['directory', 'recursive', 'favorites'] as const)(
     'refilters %s entries without reacquiring, resorting or publishing an empty list',
     async (listMode) => {

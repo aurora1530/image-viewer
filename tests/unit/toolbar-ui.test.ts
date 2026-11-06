@@ -35,6 +35,21 @@ const select = (id: string) => {
 };
 
 describe('React display preferences', () => {
+  it('disables only the directory type in the recursive media list', () => {
+    render(createElement(App));
+    flushSync(() => appStore.setState({ listMode: 'recursive' }));
+    expect(
+      Array.from(select('filter-select').options)
+        .filter((option) => option.disabled)
+        .map((option) => option.value),
+    ).toEqual(['directory']);
+    expect(element('recursive-btn').textContent).toBe('全メディア一覧');
+    flushSync(() => appStore.setState({ listMode: 'directory' }));
+    expect(Array.from(select('filter-select').options).some((option) => option.disabled)).toBe(
+      false,
+    );
+  });
+
   it('toggles dense layout only for original aspect sizes and remembers the preference', () => {
     render(createElement(App));
     expect(document.getElementById('dense-gallery-btn')).toBeNull();

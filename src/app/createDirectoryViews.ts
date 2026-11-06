@@ -1,10 +1,9 @@
 import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import type { AppStore } from './store';
 import type { AppState, GalleryEntry, ListMode } from './store';
-import { CONFIG } from '../shared/model';
 import type { DirectoryCacheItem, SortOrder } from '../shared/model';
 import { ensureDirectoryCache } from '../services/directoryCache';
-import { createRecursiveImageCache } from '../services/recursiveImageCache';
+import { createRecursiveMediaCache } from '../services/recursiveMediaCache';
 import { getMediaSource } from '../platform/nativeFs';
 import {
   collectFavoriteFilesFromConfig,
@@ -16,7 +15,7 @@ import {
   readRootConfig,
 } from '../services/storage';
 import type { ConfigNode } from '../services/storage';
-import { compareNumericText, isImageFileName } from '../shared/utils';
+import { compareNumericText, getMediaType } from '../shared/utils';
 
 export function selectGalleryEntries(
   entries: GalleryEntry[],
@@ -62,7 +61,7 @@ type PreparedView = {
 
 // One pipeline applies search, filtering and ordering to all three data sources.
 export function createDirectoryViews(deps: ViewDependencies) {
-  const scans = createRecursiveImageCache();
+  const scans = createRecursiveMediaCache();
   let generation = 0;
   let prepared: PreparedView | null = null;
   const get = deps.store.getState;
@@ -115,11 +114,9 @@ export function createDirectoryViews(deps: ViewDependencies) {
       return { ...value, item: { ...value.item, displayIndex } };
     });
     const empty =
-      source.mode === 'recursive'
-        ? '表示できる画像がありません。'
-        : source.mode === 'favorites'
-          ? 'お気に入りに登録された表示可能なファイルがありません。'
-          : '表示できるアイテムがありません。';
+      source.mode === 'favorites'
+        ? 'お気に入りに登録された表示可能なファイルがありません。'
+        : '表示できるアイテムがありません。';
     set({
       entries,
       displayImages,
@@ -214,7 +211,7 @@ export function createDirectoryViews(deps: ViewDependencies) {
             nodes.set(image.parentPath, annotate);
           }
           const item = annotate({
-            type: 'image',
+            type: image.type,
             handle: image.handle,
             name: image.name,
             nameLower: image.name.toLowerCase(),
@@ -228,13 +225,7 @@ export function createDirectoryViews(deps: ViewDependencies) {
         if (!current()) return;
         entries = files.flatMap((file) => {
           const nameLower = file.name.toLowerCase();
-          const type = isImageFileName(file.name, CONFIG.IMAGE_EXTENSIONS)
-            ? 'image'
-            : CONFIG.VIDEO_EXTENSIONS.some((extension) => nameLower.endsWith(extension))
-              ? 'video'
-              : nameLower.endsWith('.pdf')
-                ? 'pdf'
-                : null;
+          const type = getMediaType(file.name);
           return type
             ? [
                 entry(

@@ -276,7 +276,11 @@ export function createApplication(store: AppStore = createAppStore(readPreferenc
       // A pending confirmation must not replace a newer navigation or view.
       if (token !== directoryViews.generation || current !== get().directories.at(-1)) return;
     }
-    set({ listMode: next });
+    set({
+      listMode: next,
+      filterType:
+        next === 'recursive' && get().filterType === 'directory' ? 'all' : get().filterType,
+    });
     await renderActiveDirectoryView(current);
     if (next === 'directory') await scrollToVisitedChild(current);
   }

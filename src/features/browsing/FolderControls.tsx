@@ -107,7 +107,7 @@ export function FolderControls() {
                 void actions.changeListMode('recursive');
               }}
             >
-              全画像一覧
+              全メディア一覧
             </button>
             <button
               id="favorite-list-btn"

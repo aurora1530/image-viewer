@@ -15,6 +15,20 @@ function PreferenceControl() {
 }
 
 describe('application composition and lifecycle', () => {
+  it('clears the directory filter when entering the recursive media list', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('clip.mp4');
+    const application = createApplication(
+      createAppStore({ directories: [root.asHandle()], filterType: 'directory' }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await application.actions.changeListMode('recursive');
+    expect(application.store.getState().filterType).toBe('all');
+    expect(application.store.getState().entries.map(({ item }) => item.name)).toEqual(['clip.mp4']);
+    application.actions.setFilter('directory');
+    expect(application.store.getState().filterType).toBe('all');
+  });
+
   it('ignores a confirmation accepted after a newer view has started', async () => {
     const root = new MemoryDirectory('root');
     const application = createApplication(createAppStore({ directories: [root.asHandle()] }));

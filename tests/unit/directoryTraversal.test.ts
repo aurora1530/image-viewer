@@ -1,12 +1,32 @@
 import { requireValue } from '../../src/shared/validation';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  collectImagesRecursively,
+  collectMediaRecursively,
   getImageFilesFromDirectory,
 } from '../../src/services/directoryTraversal';
 import { MemoryDirectory } from '../helpers/memoryFs';
 
 describe('image traversal', () => {
+  it('collects nested media but previews only images, ignoring unsupported files', async () => {
+    const root = new MemoryDirectory('root');
+    root.file('1.MP4');
+    root.file('2.PDF');
+    root.file('notes.txt');
+    const child = root.directory('child');
+    child.file('3.GIF');
+    const preview = vi.fn();
+    const result = await collectMediaRecursively(root.asHandle(), [], '', () => true, preview);
+    expect(result.map((item) => [item.type, item.path])).toEqual([
+      ['video', '1.MP4'],
+      ['pdf', '2.PDF'],
+      ['image', 'child/3.GIF'],
+    ]);
+    expect(preview).toHaveBeenCalledOnce();
+    expect(preview).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'image', path: 'child/3.GIF' }),
+    ]);
+  });
+
   it('ignores non-images and uses numeric filename order in both directions', async () => {
     const root = new MemoryDirectory('root');
     for (const name of ['10.PNG', '2.jpg', 'video.mp4', '1.gif', 'notes.txt']) root.file(name);
@@ -29,13 +49,13 @@ describe('image traversal', () => {
     deeper.file('1.heic');
     const rootRead = vi.spyOn(root, 'values');
     const childRead = vi.spyOn(chapter, 'values');
-    const result = await collectImagesRecursively(root.asHandle());
+    const result = await collectMediaRecursively(root.asHandle());
     expect(rootRead).toHaveBeenCalledOnce();
     expect(childRead).toHaveBeenCalledOnce();
-    expect(result.map((item) => [item.path, item.parentPath, item.imageIndex])).toEqual([
-      ['cover.png', '', 0],
-      ['chapter/2.webp', 'chapter', 0],
-      ['chapter/deeper/1.heic', 'chapter/deeper', 0],
+    expect(result.map((item) => [item.path, item.parentPath, item.type])).toEqual([
+      ['cover.png', '', 'image'],
+      ['chapter/2.webp', 'chapter', 'image'],
+      ['chapter/deeper/1.heic', 'chapter/deeper', 'image'],
     ]);
     expect(result[1].parentHandle).toBe(chapter.asHandle());
   });
@@ -45,7 +65,7 @@ describe('image traversal', () => {
     root.file('cover.png');
     root.directory('child').file('nested.png');
     let checks = 0;
-    const items = await collectImagesRecursively(root.asHandle(), [], '', () => ++checks < 3);
+    const items = await collectMediaRecursively(root.asHandle(), [], '', () => ++checks < 3);
     expect(items).toEqual([]);
   });
 
@@ -65,7 +85,7 @@ describe('image traversal', () => {
       yield* slowValues();
     });
     const fastRead = vi.spyOn(fast, 'values');
-    const result = collectImagesRecursively(root.asHandle());
+    const result = collectMediaRecursively(root.asHandle());
     await vi.waitFor(() => expect(fastRead).toHaveBeenCalledOnce());
     requireValue(releaseSlow)();
     expect((await result).map((item) => item.path)).toEqual(['slow/one.png', 'fast/two.png']);
@@ -86,7 +106,7 @@ describe('image traversal', () => {
       yield* childValues();
     });
     const firstImages = vi.fn();
-    const result = collectImagesRecursively(root.asHandle(), [], '', () => true, firstImages);
+    const result = collectMediaRecursively(root.asHandle(), [], '', () => true, firstImages);
     await vi.waitFor(() =>
       expect(firstImages).toHaveBeenCalledWith([expect.objectContaining({ path: 'cover.png' })]),
     );
@@ -102,7 +122,7 @@ describe('image traversal', () => {
       throw new Error('unreadable');
     });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect((await collectImagesRecursively(root.asHandle())).map((item) => item.path)).toEqual([
+    expect((await collectMediaRecursively(root.asHandle())).map((item) => item.path)).toEqual([
       'cover.png',
     ]);
   });
