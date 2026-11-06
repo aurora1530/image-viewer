@@ -1,8 +1,7 @@
 import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
-import { CONFIG } from '../shared/model';
 import { state } from './directoryResources';
 import type { DirectoryCacheEntry, DirectoryCacheItem } from '../shared/model';
-import { isImageFileName } from '../shared/utils';
+import { getMediaType } from '../shared/utils';
 import { listDirectoryEntries } from '../platform/nativeFs';
 type CacheEntry = DirectoryCacheEntry;
 type CacheItem = DirectoryCacheItem;
@@ -27,13 +26,10 @@ export async function buildDirectoryCache(dirHandle: DirectoryHandle): Promise<C
         });
       } else if (isFileHandle(entry)) {
         const lowerName = entry.name.toLowerCase();
-        if (isImageFileName(lowerName, CONFIG.IMAGE_EXTENSIONS)) {
-          items.push({ type: 'image', handle: entry, name: entry.name, nameLower: lowerName });
-          imageCount++;
-        } else if (lowerName.endsWith('.pdf')) {
-          items.push({ type: 'pdf', handle: entry, name: entry.name, nameLower: lowerName });
-        } else if (CONFIG.VIDEO_EXTENSIONS.some((ext) => lowerName.endsWith(ext))) {
-          items.push({ type: 'video', handle: entry, name: entry.name, nameLower: lowerName });
+        const type = getMediaType(lowerName);
+        if (type) {
+          items.push({ type, handle: entry, name: entry.name, nameLower: lowerName });
+          if (type === 'image') imageCount++;
         }
       }
     }

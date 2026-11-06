@@ -84,7 +84,9 @@ export function ListToolbar() {
             onChange={(event) => actions.setFilter(event.target.value)}
           >
             <option value="all">種別: すべて</option>
-            <option value="directory">種別: ディレクトリ</option>
+            <option value="directory" disabled={s.mode === 'recursive'}>
+              種別: ディレクトリ
+            </option>
             <option value="image">種別: 画像</option>
             <option value="gif">種別: GIF</option>
             <option value="video">種別: 動画</option>

@@ -4,16 +4,17 @@ import {
   compareBaseNumericText,
   compareNumericText,
   isImageFileName,
+  getMediaType,
   joinRelativePath,
 } from '../shared/utils';
 import type { SortOrder } from '../shared/model';
 import { listDirectoryEntries } from '../platform/nativeFs';
 
-export type RecursiveImageItem = {
+export type RecursiveMediaItem = {
+  type: 'image' | 'video' | 'pdf';
   handle: FileHandle;
   name: string;
   parentHandle: DirectoryHandle;
-  imageIndex: number;
   parentPath: string;
   path: string;
   isFavorite?: boolean;
@@ -48,18 +49,18 @@ export async function getImageFilesFromDirectory(
   return imageFiles;
 }
 
-export async function collectImagesRecursively(
+export async function collectMediaRecursively(
   dirHandle: DirectoryHandle,
-  list: RecursiveImageItem[] = [],
+  list: RecursiveMediaItem[] = [],
   basePath = '',
   shouldContinue: () => boolean = () => true,
-  onFirstImages?: (images: RecursiveImageItem[]) => void,
+  onFirstImages?: (images: RecursiveMediaItem[]) => void,
   onReadError?: () => void,
-): Promise<RecursiveImageItem[]> {
+): Promise<RecursiveMediaItem[]> {
   const maxConcurrentReads = 6;
   let activeReads = 0;
   const waiting: Array<() => void> = [];
-  async function visit(directory: DirectoryHandle, path: string): Promise<RecursiveImageItem[]> {
+  async function visit(directory: DirectoryHandle, path: string): Promise<RecursiveMediaItem[]> {
     if (!shouldContinue()) return [];
     if (activeReads >= maxConcurrentReads)
       await new Promise<void>((resolve) => waiting.push(resolve));
@@ -68,32 +69,40 @@ export async function collectImagesRecursively(
       return [];
     }
     activeReads++;
-    const images: FileHandle[] = [];
+    const files: FileHandle[] = [];
     const directories: DirectoryHandle[] = [];
     try {
       for (const entry of await listDirectoryEntries(directory)) {
         if (!shouldContinue()) return [];
         if (entry.kind === 'directory') directories.push(entry);
-        else if (isImageFileName(entry.name, CONFIG.IMAGE_EXTENSIONS)) images.push(entry);
+        else if (getMediaType(entry.name)) files.push(entry);
       }
     } catch (e) {
       onReadError?.();
-      console.error('再帰的な画像取得に失敗', e);
+      console.error('再帰的なメディア取得に失敗', e);
       return [];
     } finally {
       activeReads--;
       waiting.shift()?.();
     }
-    images.sort((a, b) => compareBaseNumericText(a.name, b.name));
-    const found = images.map((img, idx) => ({
-      handle: img,
-      name: img.name,
-      parentHandle: directory,
-      imageIndex: idx,
-      parentPath: path,
-      path: joinRelativePath(path, img.name),
-    }));
-    if (found.length && shouldContinue()) onFirstImages?.(found);
+    files.sort((a, b) => compareBaseNumericText(a.name, b.name));
+    const found = files.flatMap((img): RecursiveMediaItem[] => {
+      const type = getMediaType(img.name);
+      return type
+        ? [
+            {
+              type,
+              handle: img,
+              name: img.name,
+              parentHandle: directory,
+              parentPath: path,
+              path: joinRelativePath(path, img.name),
+            },
+          ]
+        : [];
+    });
+    const firstImages = found.filter((item) => item.type === 'image');
+    if (firstImages.length && shouldContinue()) onFirstImages?.(firstImages);
     const children = await Promise.all(
       directories.map((entry) => visit(entry, joinRelativePath(path, entry.name))),
     );

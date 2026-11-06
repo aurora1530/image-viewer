@@ -1,19 +1,19 @@
 import type { DirectoryHandle } from '../shared/fileSystem';
-import { collectImagesRecursively } from './directoryTraversal';
-import type { RecursiveImageItem } from './directoryTraversal';
+import { collectMediaRecursively } from './directoryTraversal';
+import type { RecursiveMediaItem } from './directoryTraversal';
 
 type CollectionOptions = {
   shouldContinue?: () => boolean;
-  onFirstImages?: (images: RecursiveImageItem[]) => void;
+  onFirstImages?: (images: RecursiveMediaItem[]) => void;
   onReadError?: () => void;
 };
 
-export function createRecursiveImageCache() {
+export function createRecursiveMediaCache() {
   let entries = new WeakMap<
     DirectoryHandle,
     {
       basePath: string;
-      items: RecursiveImageItem[];
+      items: RecursiveMediaItem[];
     }
   >();
 
@@ -21,7 +21,7 @@ export function createRecursiveImageCache() {
     directory: DirectoryHandle,
     basePath = '',
     { shouldContinue = () => true, onFirstImages, onReadError }: CollectionOptions = {},
-  ): Promise<RecursiveImageItem[]> {
+  ): Promise<RecursiveMediaItem[]> {
     if (!shouldContinue()) return [];
     const cache = entries;
     const cached = cache.get(directory);
@@ -30,7 +30,7 @@ export function createRecursiveImageCache() {
     }
 
     let readFailed = false;
-    const items = await collectImagesRecursively(
+    const items = await collectMediaRecursively(
       directory,
       [],
       basePath,

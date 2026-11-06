@@ -679,6 +679,7 @@ for (const bundled of [false, true]) {
       await writeFile(path.join(images, 'seek.webm'), Buffer.from(videoBytes));
       await page.locator('#reload-btn').click();
       await page.locator('#filter-select').selectOption('video');
+      await expect(page.locator('#item-list .media-card')).toHaveCount(1);
       await page.locator('#item-list .media-card').click();
       const video = page.locator('#viewer-video');
       await expect(video).toBeVisible();

@@ -171,10 +171,10 @@ function registerIpc() {
     if (!parent || parent.isDestroyed()) return false;
     const result = await dialog.showMessageBox(parent, {
       type: 'question',
-      title: mode === 'recursive' ? '全画像一覧' : 'お気に入り一覧',
+      title: mode === 'recursive' ? '全メディア一覧' : 'お気に入り一覧',
       message:
         mode === 'recursive'
-          ? 'このフォルダ配下のすべての画像を読み込みます。続行しますか？'
+          ? 'このフォルダ配下の画像・動画・PDFをすべて読み込みます。続行しますか？'
           : 'ルート設定の .image-viewer.json からお気に入りファイルをすべて読み込みます。続行しますか？',
       buttons: ['続行', 'キャンセル'],
       defaultId: 0,

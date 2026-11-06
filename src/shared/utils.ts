@@ -1,3 +1,12 @@
+import { CONFIG } from './model';
+
+export function getMediaType(name: string): 'image' | 'video' | 'pdf' | null {
+  const lower = name.toLowerCase();
+  if (isImageFileName(lower, CONFIG.IMAGE_EXTENSIONS)) return 'image';
+  if (CONFIG.VIDEO_EXTENSIONS.some((extension) => lower.endsWith(extension))) return 'video';
+  return lower.endsWith('.pdf') ? 'pdf' : null;
+}
+
 // 比較ごとに照合器を生成せず、同じロケール・オプションの比較関数を再利用する。
 export const compareNumericText = new Intl.Collator(undefined, { numeric: true }).compare;
 export const compareBaseNumericText = new Intl.Collator(undefined, {

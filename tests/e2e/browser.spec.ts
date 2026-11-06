@@ -804,7 +804,7 @@ test('shows an image while the recursive list is still scanning', async ({ page 
   await expect(page.locator('.scan-preview')).toBeVisible();
   await page.locator('.scan-preview').click();
   await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
-  await expect(page.locator('#item-list .media-card')).toHaveCount(4);
+  await expect(page.locator('#item-list .media-card')).toHaveCount(5);
   await expect(page.locator('.scan-preview')).toHaveCount(0);
 });
 
@@ -873,16 +873,58 @@ test('filters, searches and opens the displayed image', async ({ page }) => {
 
 test('opens child images in recursive mode and returns to the normal list', async ({ page }) => {
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: '全画像一覧' }).click();
-  await expect(page.locator('#item-list .media-card')).toHaveCount(4);
+  await page.getByRole('button', { name: '全メディア一覧' }).click();
+  await expect(page.locator('#item-list .media-card')).toHaveCount(5);
   await expect(page.locator('#item-list img[alt="nested.png"]')).toHaveCount(1);
   await page.getByRole('button', { name: '通常', exact: true }).click();
   await expect(page.locator('#item-list .item-card')).toHaveCount(5);
 });
 
+test('recursive media list filters nested videos and PDFs and excludes directory selection', async ({
+  page,
+}) => {
+  await page.evaluate(async (content) => {
+    const child = await window.__imageViewerTestRoot.getDirectoryHandle('chapter');
+    child.file('nested-video.MP4');
+    child.entries.set('長いファイル名のドキュメント-book.PDF', {
+      kind: 'file',
+      name: '長いファイル名のドキュメント-book.PDF',
+      createWritable: async () => {
+        throw new Error('Read-only fixture');
+      },
+      getFile: async () =>
+        new File([content], '長いファイル名のドキュメント-book.PDF', { type: 'application/pdf' }),
+    });
+  }, samplePdf());
+  await page.locator('#filter-select').selectOption('directory');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '全メディア一覧' }).click();
+  await expect(page.locator('#filter-select')).toHaveValue('all');
+  await expect(page.locator('#filter-select option[value="directory"]')).toBeDisabled();
+  await expect(page.locator('#item-list .media-card')).toHaveCount(7);
+  await expect(page.locator('#item-list .directory-card')).toHaveCount(0);
+  await page.locator('#filter-select').selectOption('video');
+  await expect(page.locator('#item-list .media-card')).toHaveCount(2);
+  await page.locator('.media-card[title="nested-video.MP4"]').click();
+  await expect(page.locator('#viewer')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('#filter-select').selectOption('pdf');
+  const pdf = page.locator('.media-card[title="長いファイル名のドキュメント-book.PDF"]');
+  await expect(pdf).toBeVisible();
+  await pdf.click();
+  await expect(page.locator('#page-counter')).toContainText('/ 3');
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({ width: 480, height: 900 });
+  await expect(page.getByRole('button', { name: '全メディア一覧' })).toBeVisible();
+  await expect(pdf).toBeVisible();
+  await page.screenshot({ path: 'test-results/recursive-media-narrow.png', fullPage: true });
+  await page.locator('#directory-mode-btn').click();
+  await expect(page.locator('#filter-select option[value="directory"]')).toBeEnabled();
+});
+
 test('navigates across the favorite boundary in the all-images list', async ({ page }) => {
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: '全画像一覧' }).click();
+  await page.getByRole('button', { name: '全メディア一覧' }).click();
   const nested = page.locator('#item-list .media-card', {
     has: page.locator('img[alt="nested.png"]'),
   });
