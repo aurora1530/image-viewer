@@ -4,9 +4,14 @@ import { parseConfig, parseRecord } from '../helpers/json';
 import { samplePdf } from '../helpers/pdf';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+// Resolve through Electron so missing binaries are downloaded before launching.
+const electronExecutable: unknown = createRequire(import.meta.url)('electron');
+if (typeof electronExecutable !== 'string') throw new Error('Electron executable path is missing');
 
 test('home favorites keep their order and persist handle reordering across restart', async () => {
   const profile = await mkdtemp(path.join(tmpdir(), 'image-viewer-favorite-order-'));
@@ -20,17 +25,7 @@ test('home favorites keep their order and persist handle reordering across resta
   delete env.ELECTRON_RUN_AS_NODE;
   const launch = () =>
     electron.launch({
-      executablePath: path.join(
-        process.cwd(),
-        'node_modules',
-        'electron',
-        'dist',
-        process.platform === 'win32'
-          ? 'electron.exe'
-          : process.platform === 'darwin'
-            ? 'Electron.app/Contents/MacOS/Electron'
-            : 'electron',
-      ),
+      executablePath: electronExecutable,
       args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
       env,
     });
@@ -130,7 +125,7 @@ test('flushes pending config changes before acknowledging a desktop close reques
     env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
     delete env.ELECTRON_RUN_AS_NODE;
     app = await electron.launch({
-      executablePath: path.join(process.cwd(), 'node_modules', 'electron', 'dist', 'electron.exe'),
+      executablePath: electronExecutable,
       args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
       env,
     });
@@ -244,13 +239,7 @@ for (const bundled of [false, true]) {
       env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
       delete env.ELECTRON_RUN_AS_NODE;
       app = await electron.launch({
-        executablePath: path.join(
-          process.cwd(),
-          'node_modules',
-          'electron',
-          'dist',
-          'electron.exe',
-        ),
+        executablePath: electronExecutable,
         args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
         env,
       });
@@ -775,13 +764,7 @@ for (const bundled of [false, true]) {
       env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
       delete env.ELECTRON_RUN_AS_NODE;
       app = await electron.launch({
-        executablePath: path.join(
-          process.cwd(),
-          'node_modules',
-          'electron',
-          'dist',
-          'electron.exe',
-        ),
+        executablePath: electronExecutable,
         args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
         env,
       });
@@ -846,13 +829,7 @@ for (const bundled of [false, true]) {
       env.IMAGE_VIEWER_TEST_HIDDEN = process.env.IMAGE_VIEWER_TEST_SHOW_WINDOW === '1' ? '0' : '1';
       delete env.ELECTRON_RUN_AS_NODE;
       app = await electron.launch({
-        executablePath: path.join(
-          process.cwd(),
-          'node_modules',
-          'electron',
-          'dist',
-          'electron.exe',
-        ),
+        executablePath: electronExecutable,
         args: [path.join(process.cwd(), 'electron', 'main.cjs'), `--user-data-dir=${profile}`],
         env,
       });

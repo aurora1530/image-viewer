@@ -12,7 +12,14 @@ const { findFirstFile } = require('./file-probes.cjs');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'local-media',
-    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+    // The app fetches media from file:// or the development server's origin.
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+    },
   },
 ]);
 
