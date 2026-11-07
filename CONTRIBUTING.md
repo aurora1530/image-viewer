@@ -85,7 +85,7 @@ npm run release -- major  # 互換性を壊す変更
 ### 設定・失敗時の対応
 
 - 公開・巻き戻し用のGitHub Appにmain更新・タグ操作のruleset bypassを許可する。Release公開・Pages配信は`GITHUB_TOKEN`を使用。
-- PagesのSourceは`GitHub Actions`に設定する。通常のmainへのpushでは配信しない。品質CIはmain以外へのpush・PR・手動実行で動く。
+- PagesのSourceは`GitHub Actions`に設定する。通常のmainへのpushでは配信しない。品質CIはPRの作成・追加コミットのpush・再オープン、および手動実行で動く。PR作成前のpushでは動かない。
 - 検証・ビルド失敗ではリモートを変更しない。公開・配信の失敗やキャンセルではRelease・タグを削除し、後続コミットがなければmainを戻す。
 - 自動復旧失敗時はジョブログを確認して手動復旧する。配信済みPagesは自動では戻らない。
 - 再試行は`Re-run all jobs`で同一候補を使う。mainが進んだ場合は新規実行する。公開済みファイルは再アップロードせず、新版公開後の旧版の再公開・配信は拒否する。
