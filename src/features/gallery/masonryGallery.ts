@@ -48,10 +48,10 @@ export function createMasonryGallery(
         parseFloat(style.paddingRight || '0'),
     );
     origin = canvas.getBoundingClientRect().top + window.scrollY;
-    const columns = Math.max(
-      1,
-      Math.floor(width / (parseFloat(style.getPropertyValue('--thumbnail-min-width')) || 170)),
-    );
+    // Keep the regular layout's column count so removing gaps cannot shrink cards.
+    const gap = parseFloat(style.columnGap) || 0;
+    const minimum = parseFloat(style.getPropertyValue('--thumbnail-min-width')) || 170;
+    const columns = Math.max(1, Math.floor((width + gap) / (minimum + gap)));
     const key = `${width}:${columns}`;
     if (key !== layoutKey) {
       measured.clear();

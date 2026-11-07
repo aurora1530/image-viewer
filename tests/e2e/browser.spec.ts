@@ -1790,13 +1790,32 @@ for (const count of [18, 300]) {
       }
     }, count);
     await page.locator('#reload-btn').click();
+    const list = page.locator('#item-list');
+    const image = (index: number) =>
+      list.locator(`img[alt="${String(index).padStart(3, '0')}-長い画像ファイル名.png"]`);
+    // Gap removal must not add a column at the size boundary, for CSS and virtual grids.
+    for (const [size, minimum] of [
+      ['3', 280],
+      ['4', 390],
+      ['5', 520],
+    ] as const) {
+      await page.setViewportSize({ width: minimum * 3 + 132, height: 800 });
+      await page.locator('#size-select').selectOption(size);
+      await expect(image(0)).toHaveJSProperty('naturalWidth', 200);
+      const regular = requireValue(await image(0).boundingBox());
+      expect(regular.width).toBeGreaterThan(minimum * 1.4);
+      await page.locator('#dense-gallery-btn').click();
+      await expect
+        .poll(async () => requireValue(await image(0).boundingBox()).width)
+        .toBeGreaterThanOrEqual(regular.width);
+      await page.locator('#dense-gallery-btn').click();
+      await expect(list).not.toHaveClass(/dense-gallery/);
+    }
+    await page.setViewportSize({ width: 1100, height: 800 });
     await page.locator('#size-select').selectOption('3');
     await page.locator('#dense-gallery-btn').click();
     await expect(page.locator('#dense-gallery-btn')).toHaveAttribute('aria-pressed', 'true');
-    const list = page.locator('#item-list');
     await expect(list).toHaveClass(/dense-gallery/);
-    const image = (index: number) =>
-      list.locator(`img[alt="${String(index).padStart(3, '0')}-長い画像ファイル名.png"]`);
     for (const i of [0, 1, 2, 3]) await expect(image(i)).toHaveJSProperty('naturalWidth', 200);
     await expect
       .poll(async () => {
