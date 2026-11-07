@@ -1,7 +1,7 @@
 {
   "name": "image-viewer",
   "private": true,
-  "version": "1.14.1",
+  "version": "1.15.0",
   "description": "ローカルの画像・動画フォルダーを高速に閲覧するデスクトップアプリ",
   "author": "image-viewer contributors",
   "type": "module",
@@ -52,7 +52,7 @@
     "prettier": "^3.9.10",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.71.2",
-    "vite": "^7.2.4",
+    "vite": "^7.3.7",
     "vitest": "^5.0.1",
     "wait-on": "^8.0.4"
   },

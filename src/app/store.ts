@@ -26,9 +26,9 @@ export const sizeOptions = [
   { name: '小', minWidth: 120, gap: 8, originalAspect: false },
   { name: '中', minWidth: 170, gap: 10, originalAspect: false },
   { name: '大', minWidth: 230, gap: 14, originalAspect: false },
-  { name: '元サイズ 小', minWidth: 280, gap: 14, originalAspect: true },
-  { name: '元サイズ 中', minWidth: 390, gap: 16, originalAspect: true },
-  { name: '元サイズ 大', minWidth: 520, gap: 16, originalAspect: true },
+  { name: '縦横比維持 小', minWidth: 280, gap: 14, originalAspect: true },
+  { name: '縦横比維持 中', minWidth: 390, gap: 16, originalAspect: true },
+  { name: '縦横比維持 大', minWidth: 520, gap: 16, originalAspect: true },
 ];
 export function normalizeThumbnailSize(value: number) {
   return Number.isInteger(value) ? Math.min(Math.max(value, 0), sizeOptions.length - 1) : 1;
