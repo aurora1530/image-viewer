@@ -414,9 +414,6 @@ body.mono-body {
   position: relative;
   overflow-anchor: none;
 }
-#item-list.dense-gallery {
-  gap: 0;
-}
 #item-list.dense-gallery .item-card {
   height: auto;
   border: 0;
