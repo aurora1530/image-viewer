@@ -1872,6 +1872,9 @@ test('switches and restores light and dark themes across settings, gallery and v
   );
   await page.locator('#item-list img[alt="10.png"]').click();
   await expect(page.locator('#viewer')).toHaveCSS('background-color', 'rgba(244, 245, 247, 0.98)');
+  expect(await page.locator('#page-counter').evaluate((node) => node.clientHeight)).toBeLessThan(
+    30,
+  );
   await page.screenshot({ path: testInfo.outputPath('light-viewer-narrow.png') });
   await page.keyboard.press('Escape');
   await page.reload();

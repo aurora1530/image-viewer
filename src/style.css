@@ -957,6 +957,7 @@ html:fullscreen #viewer-pages {
 }
 
 #viewer-toolbar {
+  box-sizing: border-box;
   position: absolute;
   bottom: 0;
   left: 0;
@@ -964,7 +965,8 @@ html:fullscreen #viewer-pages {
   height: 88px;
   background: linear-gradient(180deg, var(--viewer-gradient), var(--viewer));
   display: flex;
-  justify-content: center;
+  justify-content: safe center;
+  overflow-x: auto;
   align-items: center;
   gap: 12px;
   padding: 18px 16px;
@@ -982,6 +984,7 @@ html:fullscreen #viewer-toolbar.hidden {
 }
 .page-counter {
   width: 90px;
+  flex-shrink: 0;
   text-align: center;
   font-family: var(--mono);
   font-size: 13px;
