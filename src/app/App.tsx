@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Settings } from '../features/settings/Settings';
 import { VersionBadge } from '../features/settings/ReleaseInfo';
 import { useApplication, useAppActions, useAppState } from './ApplicationProvider';
@@ -11,6 +12,13 @@ import { useLayoutClasses } from './useLayoutClasses';
 export function App() {
   const { capabilities, setGalleryNavigation } = useApplication();
   const actions = useAppActions();
+  const theme = useAppState((state) => state.theme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    return () => {
+      delete document.documentElement.dataset.theme;
+    };
+  }, [theme]);
   const hidden = useAppState((state) => state.isUiHidden);
   const revealed = useAppState((state) => state.isUiDockRevealed);
   useLayoutClasses(hidden, revealed);

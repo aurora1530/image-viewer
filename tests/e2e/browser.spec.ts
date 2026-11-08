@@ -1853,3 +1853,40 @@ for (const count of [18, 300]) {
     await page.screenshot({ path: testInfo.outputPath('thumbnail-narrow.png') });
   });
 }
+
+test('switches and restores light and dark themes across settings, gallery and viewer', async ({
+  page,
+}, testInfo) => {
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  const theme = page.getByRole('combobox', { name: 'テーマ', exact: true });
+  await theme.selectOption('light');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 245, 247)');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await theme.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('light-settings-narrow.png') });
+  await page.keyboard.press('Escape');
+  await page.screenshot({ path: testInfo.outputPath('light-gallery-narrow.png') });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.locator('#item-list img[alt="10.png"]').click();
+  await expect(page.locator('#viewer')).toHaveCSS('background-color', 'rgba(244, 245, 247, 0.98)');
+  expect(await page.locator('#page-counter').evaluate((node) => node.clientHeight)).toBeLessThan(
+    30,
+  );
+  await page.screenshot({ path: testInfo.outputPath('light-viewer-narrow.png') });
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.getByRole('button', { name: '設定', exact: true }).click();
+  await expect(theme).toHaveValue('light');
+  await theme.selectOption('dark');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(22, 22, 24)');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await theme.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('dark-settings.png') });
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});

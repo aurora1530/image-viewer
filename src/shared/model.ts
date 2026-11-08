@@ -1,4 +1,9 @@
 import type { DirectoryHandle, FileHandle } from './fileSystem';
+export type Theme = 'dark' | 'light';
+export function normalizeTheme(value: unknown): Theme {
+  return value === 'light' ? 'light' : 'dark';
+}
+
 export type SortOrder = 'asc' | 'desc';
 export type FilterType = 'all' | 'directory' | 'image' | 'gif' | 'video' | 'pdf';
 

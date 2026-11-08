@@ -1,6 +1,6 @@
 import type { AppStore } from './store';
 import { normalizeThumbnailSize } from './store';
-import type { FilterType } from '../shared/model';
+import { normalizeTheme, type FilterType } from '../shared/model';
 import type { ConfigNode } from '../services/storage';
 
 type PreferenceDependencies = {
@@ -61,6 +61,11 @@ export function createPreferences(deps: PreferenceDependencies) {
     getSettingsSnapshot: getCurrentSettingsSnapshot,
     applySettings: applySettingsFromConfig,
     actions: {
+      setTheme(value: string) {
+        const theme = normalizeTheme(value);
+        deps.persist('theme', theme);
+        set({ theme });
+      },
       setThumbnailSize(value: number) {
         const thumbnailSizeIndex = normalizeThumbnailSize(value);
         set({ thumbnailSizeIndex });

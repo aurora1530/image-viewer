@@ -1,4 +1,25 @@
 :root {
+  color-scheme: dark;
+  --scrollbar: #3a3a40;
+  --scrollbar-hover: #4e4e56;
+  --link: #6b9fd4;
+  --subtle: rgba(255, 255, 255, 0.03);
+  --hover: rgba(255, 255, 255, 0.08);
+  --input: #17171a;
+  --selected: #2f2f35;
+  --info-ink: #b8d4f2;
+  --error-ink: #f2b8bc;
+  --active-ink: #d6e7f8;
+  --success-ink: #52b778;
+  --favorite-ink: #d99b26;
+  --thumbnail: #141416;
+  --overlay: rgba(22, 22, 25, 0.9);
+  --dock: rgba(29, 29, 33, 0.94);
+  --shadow: rgba(0, 0, 0, 0.5);
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --viewer: rgba(12, 12, 14, 0.97);
+  --viewer-gradient: rgba(12, 12, 14, 0);
+  --fullscreen: #000;
   --bg: #161618;
   --panel: #1d1d20;
   --panel-elevated: #252529;
@@ -13,6 +34,40 @@
   --sans:
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Hiragino Sans',
     'Hiragino Kaku Gothic ProN', 'Segoe UI Variable', 'Yu Gothic UI', system-ui, sans-serif;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --panel-elevated: #f0f1f4;
+  --panel-hover: #e4e7ed;
+  --ink: #20232b;
+  --muted: #5e6470;
+  --line: rgba(20, 30, 50, 0.12);
+  --line-strong: rgba(20, 30, 50, 0.25);
+  --accent: #356799;
+  --accent-hover: #285681;
+  --scrollbar: #b7bec9;
+  --scrollbar-hover: #929cab;
+  --link: #285f98;
+  --subtle: rgba(20, 30, 50, 0.03);
+  --hover: rgba(20, 30, 50, 0.08);
+  --input: #ffffff;
+  --selected: #dce3ee;
+  --info-ink: #244f7b;
+  --error-ink: #a32936;
+  --active-ink: #244f7b;
+  --success-ink: #247343;
+  --favorite-ink: #8c5c00;
+  --thumbnail: #e8eaef;
+  --overlay: rgba(255, 255, 255, 0.94);
+  --dock: rgba(255, 255, 255, 0.96);
+  --shadow: rgba(20, 30, 50, 0.16);
+  --backdrop: rgba(20, 30, 50, 0.3);
+  --viewer: rgba(244, 245, 247, 0.98);
+  --viewer-gradient: rgba(244, 245, 247, 0);
+  --fullscreen: #f4f5f7;
 }
 
 body.mono-body {
@@ -34,11 +89,11 @@ body.mono-body {
   background: var(--bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #3a3a40;
+  background: var(--scrollbar);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #4e4e56;
+  background: var(--scrollbar-hover);
 }
 
 .frame {
@@ -90,7 +145,7 @@ body.mono-body {
 }
 .version-badge a,
 .settings-section a {
-  color: #6b9fd4;
+  color: var(--link);
   text-underline-offset: 3px;
 }
 
@@ -180,8 +235,8 @@ body.mono-body {
   place-items: center;
   border-radius: 6px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.03);
-  color: #a0a0ab;
+  background: var(--subtle);
+  color: var(--muted);
 }
 .library-copy {
   min-width: 0;
@@ -221,11 +276,11 @@ body.mono-body {
     border-color 0.12s ease;
 }
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
   color: var(--ink);
 }
 .icon-btn.active {
-  color: #d99b26;
+  color: var(--favorite-ink);
 }
 .empty-library {
   padding: 56px 20px 48px;
@@ -267,7 +322,7 @@ body.mono-body {
   justify-content: space-between;
   padding: 12px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--subtle);
   flex-wrap: wrap;
 }
 .folder-nav {
@@ -318,7 +373,7 @@ body.mono-body {
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #17171a;
+  background: var(--input);
   flex-wrap: nowrap;
 }
 .seg-btn {
@@ -345,12 +400,12 @@ body.mono-body {
 }
 .seg-btn:hover {
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--subtle);
 }
 .seg-btn.is-active {
   color: var(--ink);
   font-weight: 600;
-  background: #2f2f35;
+  background: var(--selected);
   border-color: var(--line-strong);
 }
 .actions {
@@ -372,12 +427,12 @@ body.mono-body {
 .status-info {
   background: rgba(59, 110, 165, 0.14);
   border: 1px solid rgba(59, 110, 165, 0.3);
-  color: #b8d4f2;
+  color: var(--info-ink);
 }
 .status-error {
   background: rgba(180, 52, 62, 0.16);
   border: 1px solid rgba(180, 52, 62, 0.35);
-  color: #f2b8bc;
+  color: var(--error-ink);
 }
 .status-message {
   margin: 8px 0 0;
@@ -449,7 +504,7 @@ body.mono-body {
     background-color 0.12s ease;
 }
 .item-card:hover {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--line-strong);
 }
 
 .thumbnail-container {
@@ -458,7 +513,7 @@ body.mono-body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #141416;
+  background: var(--thumbnail);
   flex-grow: 1;
   contain: content;
   aspect-ratio: 4 / 3;
@@ -498,7 +553,7 @@ body.mono-body {
   border: 1px solid var(--line);
   border-radius: 3px;
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--subtle);
 }
 
 #item-list.original-aspect .media-card .thumbnail-container {
@@ -513,7 +568,7 @@ body.mono-body {
 }
 
 .media-card {
-  background: #141416;
+  background: var(--thumbnail);
   border-radius: 6px;
 }
 
@@ -548,7 +603,7 @@ body.ui-hidden-mode .hidden-toggle-btn {
   bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(22, 22, 25, 0.88);
+  background: var(--overlay);
   color: var(--ink);
   padding: 5px 12px;
   border-radius: 4px;
@@ -572,8 +627,8 @@ body.ui-hidden-mode .hidden-toggle-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(20, 20, 23, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--overlay);
+  border: 1px solid var(--line-strong);
   color: var(--ink);
 }
 .video-play-badge svg {
@@ -591,9 +646,9 @@ body.ui-hidden-mode .hidden-toggle-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(20, 20, 23, 0.72);
-  color: #e4e4e8;
+  border: 1px solid var(--line-strong);
+  background: var(--overlay);
+  color: var(--ink);
   z-index: 15;
   cursor: pointer;
   padding: 0;
@@ -633,8 +688,8 @@ body.ui-hidden-mode .hidden-toggle-btn {
 }
 .hidden-toggle-btn:hover,
 .favorite-btn:hover {
-  background: rgba(34, 34, 39, 0.92);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: var(--panel-hover);
+  border-color: var(--line-strong);
 }
 .hidden-toggle-btn.restore:hover {
   background: rgba(44, 126, 78, 0.95);
@@ -662,11 +717,11 @@ body.ui-hidden-mode .hidden-toggle-btn {
   gap: 10px;
   flex-wrap: nowrap;
   overflow-x: auto;
-  background: rgba(29, 29, 33, 0.94);
+  background: var(--dock);
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   padding: 8px 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 24px var(--shadow);
   backdrop-filter: blur(12px);
 }
 .toolbar-group {
@@ -712,7 +767,7 @@ body.ui-hidden-mode .hidden-toggle-btn {
   height: 20px;
   border: 0;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hover);
   color: var(--muted);
   cursor: pointer;
   display: grid;
@@ -720,7 +775,7 @@ body.ui-hidden-mode .hidden-toggle-btn {
   padding: 0;
 }
 .search-clear-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--line-strong);
   color: var(--ink);
 }
 body.ui-hidden-mode .dock:not(.hidden) {
@@ -800,7 +855,7 @@ body.ui-hidden-mode .dock:not(.hidden):focus-within {
 
 .ui-btn.is-active {
   border-color: rgba(91, 146, 204, 0.55);
-  color: #d6e7f8;
+  color: var(--active-ink);
   background-color: rgba(59, 110, 165, 0.24);
 }
 .ui-btn.is-active:hover:not(:disabled) {
@@ -817,7 +872,7 @@ body.ui-hidden-mode .dock:not(.hidden):focus-within {
   color: var(--ink);
 }
 .ui-input {
-  background: #17171a;
+  background: var(--input);
 }
 .ui-input:focus,
 .ui-select:focus {
@@ -841,7 +896,7 @@ html {
   left: 50%;
   transform: translateX(-50%);
   color: var(--ink);
-  background: rgba(22, 22, 25, 0.9);
+  background: var(--overlay);
   border: 1px solid var(--line-strong);
   padding: 6px 14px;
   border-radius: 5px;
@@ -852,7 +907,7 @@ html {
 #viewer {
   position: fixed;
   inset: 0;
-  background: rgba(12, 12, 14, 0.97);
+  background: var(--viewer);
   display: none;
   flex-direction: column;
   align-items: center;
@@ -895,21 +950,23 @@ html {
 }
 
 html:fullscreen #viewer {
-  background-color: #000;
+  background-color: var(--fullscreen);
 }
 html:fullscreen #viewer-pages {
   height: 100%;
 }
 
 #viewer-toolbar {
+  box-sizing: border-box;
   position: absolute;
   bottom: 0;
   left: 0;
   width: 100%;
   height: 88px;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.82));
+  background: linear-gradient(180deg, var(--viewer-gradient), var(--viewer));
   display: flex;
-  justify-content: center;
+  justify-content: safe center;
+  overflow-x: auto;
   align-items: center;
   gap: 12px;
   padding: 18px 16px;
@@ -927,6 +984,7 @@ html:fullscreen #viewer-toolbar.hidden {
 }
 .page-counter {
   width: 90px;
+  flex-shrink: 0;
   text-align: center;
   font-family: var(--mono);
   font-size: 13px;
@@ -1005,7 +1063,7 @@ html:fullscreen #viewer-toolbar.hidden {
   width: 8rem;
 }
 .text-gray-500 {
-  color: #5c5c66;
+  color: var(--muted);
 }
 
 @media (max-width: 700px) {
@@ -1022,7 +1080,7 @@ html:fullscreen #viewer-toolbar.hidden {
 
 /* Loader */
 .loader {
-  border: 3px solid rgba(255, 255, 255, 0.1);
+  border: 3px solid var(--hover);
   border-top: 3px solid var(--accent);
   border-radius: 50%;
   width: 32px;
@@ -1045,10 +1103,10 @@ html:fullscreen #viewer-toolbar.hidden {
   padding: 22px 24px;
   background: var(--panel);
   color: var(--ink);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 16px 40px var(--backdrop);
 }
 .settings-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--backdrop);
 }
 .settings-header {
   display: flex;
@@ -1132,7 +1190,7 @@ html:fullscreen #viewer-toolbar.hidden {
 .settings-status {
   margin: 0;
   font-size: 13px;
-  color: #52b778;
+  color: var(--success-ink);
 }
 
 .pdf-badge {
@@ -1141,8 +1199,8 @@ html:fullscreen #viewer-toolbar.hidden {
   left: 6px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(20, 20, 23, 0.84);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: var(--overlay);
+  border: 1px solid var(--line-strong);
   color: var(--ink);
   font-family: var(--mono);
   font-size: 11px;

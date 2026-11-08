@@ -35,6 +35,17 @@ const select = (id: string) => {
 };
 
 describe('React display preferences', () => {
+  it('applies and persists the theme globally and normalizes unsupported values', () => {
+    render(createElement(App));
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    flushSync(() => actions.setTheme('light'));
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(createApplication().store.getState().theme).toBe('light');
+    flushSync(() => actions.setTheme('unsupported'));
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(localStorage.getItem('theme')).toBe('dark');
+  });
+
   it('disables only the directory type in the recursive media list', () => {
     render(createElement(App));
     flushSync(() => appStore.setState({ listMode: 'recursive' }));
