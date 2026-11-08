@@ -1,7 +1,7 @@
 import type { DirectoryHandle, FileHandle } from '../shared/fileSystem';
 import { defaultAppConfig, type AppConfig } from '../shared/appConfig';
 import { createStore } from 'zustand/vanilla';
-import type { DirectoryCacheItem, FilterType, SortOrder } from '../shared/model';
+import type { DirectoryCacheItem, FilterType, SortOrder, Theme } from '../shared/model';
 import type { ViewerPresentation } from './viewerModel';
 
 export type ListMode = 'directory' | 'recursive' | 'favorites' | 'hidden';
@@ -36,6 +36,7 @@ export function normalizeThumbnailSize(value: number) {
 
 export function initialAppState(): AppState {
   return {
+    theme: 'dark',
     config: { ...defaultAppConfig },
     configReady: false,
     configError: '',
@@ -75,6 +76,7 @@ export const createAppStore = (initial: Partial<AppState> = {}) =>
   }));
 export type AppStore = ReturnType<typeof createAppStore>;
 export type AppState = {
+  theme: Theme;
   config: AppConfig;
   configReady: boolean;
   configError: string;

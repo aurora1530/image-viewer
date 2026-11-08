@@ -58,6 +58,10 @@ test('home favorites keep their order and persist handle reordering across resta
     const action = requireValue(await page.locator('#home-select-dir-btn').boundingBox());
     expect(Math.abs(heading.y + heading.height / 2 - action.y - action.height / 2)).toBeLessThan(2);
     expect(action.x).toBeGreaterThan(heading.x + heading.width);
+    await page.getByRole('button', { name: '設定', exact: true }).click();
+    await page.getByRole('combobox', { name: 'テーマ', exact: true }).selectOption('light');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     for (const width of [1280, 700, 480]) {
       await page.setViewportSize({ width, height: 900 });
       for (const section of ['#favorite-roots', '#recent-roots']) {
@@ -69,6 +73,7 @@ test('home favorites keep their order and persist handle reordering across resta
         true,
       );
     }
+    await page.screenshot({ path: test.info().outputPath('light-home-long-names.png') });
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(page.locator('.library-folder-icon svg')).toHaveCount(6);
     await expect(page.locator('#recent-roots .library-name')).toHaveText([
@@ -98,6 +103,7 @@ test('home favorites keep their order and persist handle reordering across resta
     await app.close();
     app = await launch();
     page = await app.firstWindow();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect(names()).toHaveText(['second', first, 'third']);
     await expect(page.locator('#recent-roots .library-name')).toHaveText([
       first,

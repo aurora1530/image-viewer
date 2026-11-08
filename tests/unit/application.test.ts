@@ -143,11 +143,14 @@ describe('application composition and lifecycle', () => {
   });
 
   it('loads persisted display preferences at composition while stores have pure defaults', () => {
+    localStorage.setItem('theme', 'light');
     localStorage.setItem('thumbnailSizeIndex', '999');
     localStorage.setItem('isSinglePageView', '1');
     localStorage.setItem('isUiHidden', '1');
+    expect(createAppStore().getState().theme).toBe('dark');
     expect(createAppStore().getState().thumbnailSizeIndex).toBe(1);
     expect(createApplication().store.getState()).toMatchObject({
+      theme: 'light',
       thumbnailSizeIndex: 5,
       isSinglePageView: true,
       isUiHidden: true,

@@ -15,6 +15,7 @@ export function Settings() {
   const ready = useAppState((s) => s.configReady);
   const error = useAppState((s) => s.configError);
   const usage = useAppState((s) => s.cacheUsage);
+  const theme = useAppState((s) => s.theme);
   const size = useAppState((s) => s.thumbnailSizeIndex);
   const single = useAppState((s) => s.isSinglePageView);
   const { capabilities } = useApplication();
@@ -250,6 +251,17 @@ export function Settings() {
         <div className="settings-section">
           <h3>表示</h3>
           <label className="settings-field">
+            <span>テーマ</span>
+            <select
+              className="ui-select"
+              value={theme}
+              onChange={(event) => actions.setTheme(event.currentTarget.value)}
+            >
+              <option value="dark">ダーク</option>
+              <option value="light">ライト</option>
+            </select>
+          </label>
+          <label className="settings-field">
             <span>サムネイルサイズ</span>
             <select
               className="ui-select"
@@ -273,7 +285,7 @@ export function Settings() {
             />
           </label>
           <p className="settings-note">
-            表示設定は変更時に保存します。フォルダーを開くと、そのフォルダーのサムネイル設定が優先されます。
+            表示設定は変更時に保存します。テーマはアプリ全体に適用します。フォルダーを開くと、そのフォルダーのサムネイル設定が優先されます。
           </p>
         </div>
         <ReleaseInfo />
