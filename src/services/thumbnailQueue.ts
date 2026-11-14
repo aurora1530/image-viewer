@@ -28,14 +28,25 @@ export function createThumbnailQueue(concurrency: number, reserveForVisible = fa
     for (let i = waiting.length - 1; i >= 0; i--) {
       if (waiting[i].request.shouldContinue?.() === false) waiting.splice(i, 1)[0].cancel();
     }
+    if (paused || active.size >= concurrency || !waiting.length) return;
+    // Priority callbacks measure card geometry. Reuse each measurement only
+    // within this synchronous dispatch; the next pump must see scroll changes.
+    const priorities = new Map<Job, number>();
+    function priorityOf(job: Job) {
+      const cached = priorities.get(job);
+      if (cached !== undefined) return cached;
+      const priority = job.request.getPriority?.() ?? 0;
+      priorities.set(job, priority);
+      return priority;
+    }
     let prefetchActive = reserveForVisible
-      ? [...active].filter((job) => (job.request.getPriority?.() ?? 0) > 0).length
+      ? [...active].filter((job) => priorityOf(job) > 0).length
       : 0;
     while (!paused && active.size < concurrency && waiting.length) {
       let best = 0;
-      let priority = waiting[0].request.getPriority?.() ?? 0;
+      let priority = priorityOf(waiting[0]);
       for (let i = 1; i < waiting.length; i++) {
-        const candidate = waiting[i].request.getPriority?.() ?? 0;
+        const candidate = priorityOf(waiting[i]);
         if (candidate < priority) {
           best = i;
           priority = candidate;

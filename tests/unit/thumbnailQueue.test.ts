@@ -41,6 +41,58 @@ describe('thumbnail queue visible capacity', () => {
     return { run, release: () => releases.splice(0).forEach((resolve) => resolve()) };
   }
 
+  it('measures each waiting card once while filling slots and preserves priority and FIFO ties', async () => {
+    const queue = createThumbnailQueue(4);
+    const work = blockedWork();
+    const started: number[] = [];
+    const priorities = [100, 0, 10, 0, 200, 20].map((value) => vi.fn(() => value));
+    const pending = priorities.map((getPriority, index) =>
+      queue.enqueue(
+        () => {
+          started.push(index);
+          return work.run();
+        },
+        { getPriority },
+      ),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(started).toEqual([1, 3, 2, 5]);
+    for (const getPriority of priorities) expect(getPriority).toHaveBeenCalledTimes(1);
+    queue.clear();
+    work.release();
+    await Promise.all(pending);
+  });
+
+  it('skips geometry measurements when paused or full and remeasures after resuming', async () => {
+    const queue = createThumbnailQueue(1, true);
+    const work = blockedWork();
+    let priority = 100;
+    const getPriority = vi.fn(() => priority);
+    queue.setPaused(true);
+    const first = queue.enqueue(work.run, { getPriority });
+    await Promise.resolve();
+    expect(getPriority).not.toHaveBeenCalled();
+    queue.setPaused(false);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(work.run).toHaveBeenCalledTimes(1);
+    expect(getPriority).toHaveBeenCalledTimes(1);
+    const nextPriority = vi.fn(() => 0);
+    const next = queue.enqueue(work.run, { getPriority: nextPriority });
+    queue.refresh();
+    await Promise.resolve();
+    expect(getPriority).toHaveBeenCalledTimes(1);
+    expect(nextPriority).not.toHaveBeenCalled();
+    priority = 0;
+    work.release();
+    await first;
+    await vi.waitFor(() => expect(work.run).toHaveBeenCalledTimes(2));
+    expect(nextPriority).toHaveBeenCalledTimes(1);
+    work.release();
+    await next;
+  });
+
   it('leaves capacity for newly visible work while prefetch is still running', async () => {
     const queue = createThumbnailQueue(4, true);
     const work = blockedWork();
