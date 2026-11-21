@@ -13,6 +13,7 @@ export const GalleryCard = memo(function GalleryCard({ entry }: { entry: Gallery
   const { source, ready, failed, attempt, markReady, retry } = useThumbnail(item, card, video);
   const [pending, setPending] = useState(false);
   const hiddenMode = useAppState((state) => state.listMode === 'hidden');
+  const viewerOpen = useAppState((state) => state.viewer.mode !== 'closed');
   const directory = item.type === 'directory';
 
   async function toggle(kind: 'favorite' | 'hidden') {
@@ -55,7 +56,8 @@ export const GalleryCard = memo(function GalleryCard({ entry }: { entry: Gallery
         {source && item.type !== 'video' && (
           <img
             key={`${source.url}:${attempt}`}
-            src={source.url}
+            src={viewerOpen ? undefined : source.url}
+            style={viewerOpen ? { visibility: 'hidden' } : undefined}
             alt={directory ? `Thumbnail for ${item.name}` : item.name}
             loading="eager"
             decoding="async"

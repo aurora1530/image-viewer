@@ -1,5 +1,6 @@
 import { installBrowserGuards } from '../helpers/browserGuards';
 import { requireValue } from '../../src/shared/validation';
+import { animatedGifFixture } from '../helpers/gif';
 import { parseConfig, parseRecord } from '../helpers/json';
 import { samplePdf } from '../helpers/pdf';
 import { _electron as electron, expect, test } from '@playwright/test';
@@ -543,6 +544,38 @@ for (const bundled of [false, true]) {
         1,
       );
       expect(await page.evaluate(() => window.__thumbnailWorkerReplies)).toBe(0);
+
+      const gifFolder = path.join(images, 'gif-album');
+      await mkdir(gifFolder);
+      const gifPaths = [path.join(images, 'animation.gif'), path.join(gifFolder, 'cover.gif')];
+      await Promise.all(
+        gifPaths.map((file) => writeFile(file, Buffer.from(animatedGifFixture, 'base64'))),
+      );
+      await page.locator('#reload-btn').click();
+      const gif = page.locator('#item-list img[alt="animation.gif"]');
+      const gifCover = page.locator('#item-list img[alt="Thumbnail for gif-album"]');
+      await expect(gif).toHaveJSProperty('naturalWidth', 640);
+      await expect(gifCover).toHaveJSProperty('naturalWidth', 640);
+      await expect
+        .poll(() =>
+          page.evaluate(async (paths) => {
+            const api = window.__requireTestValue(window.desktopApi);
+            return Promise.all(
+              paths.map(async (file) => {
+                const { bytes } = await api.readThumbnail(file, 640);
+                if (!bytes) return 0;
+                const decoder = new ImageDecoder({ data: bytes, type: 'image/webp' });
+                try {
+                  await decoder.tracks.ready;
+                  return decoder.tracks.selectedTrack?.frameCount ?? 0;
+                } finally {
+                  decoder.close();
+                }
+              }),
+            );
+          }, gifPaths),
+        )
+        .toEqual([2, 2]);
 
       if (!bundled) {
         const probePath = path.join(images, 'cancel-probe.jpg');
