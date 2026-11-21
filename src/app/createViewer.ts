@@ -19,6 +19,8 @@ type Source = { url: string; objectUrl: boolean };
 type CacheItem = DirectoryCacheItem;
 type CacheEntry = DirectoryCacheEntry;
 
+const isGif = (handle: FileHandle) => /\.gif$/i.test(handle.name);
+
 type ViewerDeps = {
   openPdfDocument?: typeof openPdfDocument;
   getImageSource?: (handle: FileHandle) => Promise<Source>;
@@ -134,7 +136,7 @@ export function createViewer(deps: ViewerDeps) {
       counter: '',
       playback: null,
     });
-    imageCache.discardPending();
+    imageCache.retainReady((file) => !isGif(file));
     setCurrentImageFiles([]);
 
     if (videoSource?.objectUrl) URL.revokeObjectURL(videoSource.url);
@@ -295,6 +297,8 @@ export function createViewer(deps: ViewerDeps) {
       const last = Math.max(...visible);
       for (const i of [last + 1, last + 2, first - 1, first - 2]) {
         const neighbor = (i + total) % total;
+        // Only decode full-size GIFs when a viewer page needs them.
+        if (!pdf && isGif(files[neighbor])) continue;
         if (!visible.includes(neighbor) && !neighbors.includes(neighbor)) neighbors.push(neighbor);
       }
     }

@@ -8,6 +8,9 @@ export const THUMBNAIL_CONCURRENCY = Math.min(
   8,
   Math.max(1, (navigator.hardwareConcurrency || 4) - 2),
 );
+// WebP encoding dominates GIF generation. In the 12-GIF benchmark, six workers
+// cleared the queue almost as fast as eight and finished the first GIF sooner.
+export const ANIMATED_GIF_CONCURRENCY = Math.min(6, THUMBNAIL_CONCURRENCY);
 
 type Job = {
   resolve: (blob: Blob | null) => void;
@@ -16,10 +19,11 @@ type Job = {
 };
 type Slot = { worker: Worker; job: Job | null };
 
-export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
+export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY, pauseRunning = false) {
   const slots: Slot[] = [];
   const queue = createThumbnailQueue(size, true);
   let failed = false;
+  let paused = false;
 
   function fail() {
     failed = true;
@@ -54,11 +58,11 @@ export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
               });
               slot = { worker, job: null };
               const current = slot;
-              worker.onmessage = (event: MessageEvent<{ blob?: Blob; error?: string }>) => {
+              worker.onmessage = (event: MessageEvent<{ blob?: Blob | null; error?: string }>) => {
                 const job = current.job;
                 current.job = null;
-                if (event.data.blob) job?.resolve(event.data.blob);
-                else job?.reject(new Error(event.data.error || 'サムネイルの生成に失敗しました。'));
+                if (event.data.error) job?.reject(new Error(event.data.error));
+                else job?.resolve(event.data.blob ?? null);
               };
               worker.onerror = fail;
               worker.onmessageerror = fail;
@@ -100,15 +104,26 @@ export function createThumbnailWorkerPool(size = THUMBNAIL_CONCURRENCY) {
     queue.refresh();
   }
 
-  return { encode, refresh, setPaused: (value: boolean) => queue.setPaused(value) };
+  function setPaused(value: boolean) {
+    if (paused === value) return;
+    paused = value;
+    queue.setPaused(value);
+    if (pauseRunning) {
+      for (const slot of slots) slot.worker.postMessage({ paused: value });
+    }
+  }
+
+  return { encode, refresh, setPaused };
 }
 
 let pool: ReturnType<typeof createThumbnailWorkerPool> | null = null;
+let animationPool: ReturnType<typeof createThumbnailWorkerPool> | null = null;
 let paused = false;
 const resumeWaiters = new Set<() => void>();
 export function setThumbnailWorkersPaused(value: boolean) {
   paused = value;
   pool?.setPaused(value);
+  animationPool?.setPaused(value);
   if (!value) {
     for (const resume of resumeWaiters) resume();
     resumeWaiters.clear();
@@ -119,6 +134,7 @@ export async function waitForThumbnailResume() {
 }
 export function refreshThumbnailWorkers() {
   pool?.refresh();
+  animationPool?.refresh();
 }
 export async function encodeThumbnailInWorker(
   blob: Blob,
@@ -126,18 +142,19 @@ export async function encodeThumbnailInWorker(
   format?: string,
   maxEdge: ThumbnailSize = 1280,
 ): Promise<Blob | null> {
+  const animated = format === 'gif-animation';
   if (
     typeof Worker === 'undefined' ||
     typeof OffscreenCanvas === 'undefined' ||
-    typeof createImageBitmap === 'undefined'
+    (animated ? typeof ImageDecoder === 'undefined' : typeof createImageBitmap === 'undefined')
   )
     return null;
-  if (!pool) {
-    pool = createThumbnailWorkerPool();
-    pool.setPaused(paused);
-  }
+  const workers = animated
+    ? (animationPool ??= createThumbnailWorkerPool(ANIMATED_GIF_CONCURRENCY, true))
+    : (pool ??= createThumbnailWorkerPool());
+  workers.setPaused(paused);
   try {
-    return await pool.encode(blob, request, format, maxEdge);
+    return await workers.encode(blob, request, format, maxEdge);
   } catch {
     return null;
   }

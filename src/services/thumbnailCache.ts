@@ -2,6 +2,7 @@ import { requireValue } from '../shared/validation';
 import type { FileHandle } from '../shared/fileSystem';
 import { renderPdfThumbnail } from './pdfDocument';
 import {
+  ANIMATED_GIF_CONCURRENCY,
   encodeThumbnailInWorker,
   refreshThumbnailWorkers,
   setThumbnailWorkersPaused,
@@ -68,13 +69,16 @@ async function generate(
       maxEdge,
       request.signal,
     );
+  const blob = await originalImageCache.get(handle, request.signal);
+  await waitForThumbnailResume();
+  if (request.shouldContinue?.() === false) return null;
+  if (/\.gif$/i.test(handle.name))
+    return encodeThumbnailInWorker(blob, request, 'gif-animation', maxEdge);
+
   let source: Source | null = null;
   const image = new Image();
   let canvas: HTMLCanvasElement | null = null;
   try {
-    const blob = await originalImageCache.get(handle, request.signal);
-    await waitForThumbnailResume();
-    if (request.shouldContinue?.() === false) return null;
     const png = handle.name.toLowerCase().endsWith('.png') ? await inspectPng(blob) : null;
     if (png?.animated) return null;
     const format = /\.jpe?g$/i.test(handle.name) || png?.opaque ? 'image/jpeg' : 'image/webp';
@@ -139,6 +143,7 @@ export function createThumbnailCache({
   // Disk hits must not wait for unrelated image encoding to finish.
   const reads = createThumbnailQueue(Math.max(4, concurrency));
   const generation = createThumbnailQueue(concurrency, true);
+  const animations = createThumbnailQueue(ANIMATED_GIF_CONCURRENCY + 1, true);
   const counters = { memoryHits: 0, diskHits: 0, generated: 0, sharedRequests: 0 };
 
   function trim() {
@@ -158,6 +163,7 @@ export function createThumbnailCache({
     }
     reads.refresh();
     generation.refresh();
+    animations.refresh();
     refreshThumbnailWorkers();
   }
 
@@ -169,7 +175,8 @@ export function createThumbnailCache({
     signal?: AbortSignal,
   ): Promise<Source | null> {
     if (signal?.aborted || !shouldContinue()) return null;
-    if (/\.(gif|webp)$/i.test(handle.name))
+    const animatedGif = /\.gif$/i.test(handle.name);
+    if (/\.webp$/i.test(handle.name) || (animatedGif && typeof ImageDecoder === 'undefined'))
       return getOriginalImageSource(handle, signal).catch((error: unknown) => {
         if (signal?.aborted) return null;
         throw error;
@@ -219,7 +226,8 @@ export function createThumbnailCache({
             });
           }
         }
-        const blob = await generation.enqueue(() => generate(handle, request, maxEdge), request);
+        const queue = animatedGif ? animations : generation;
+        const blob = await queue.enqueue(() => generate(handle, request, maxEdge), request);
         if (blob) {
           counters.generated++;
           if (stored && handle.nativePath && window.desktopApi) {
@@ -304,6 +312,7 @@ export function createThumbnailCache({
     skipStored.clear();
     reads.clear();
     generation.clear();
+    animations.clear();
     refresh();
   }
   return {
@@ -314,6 +323,7 @@ export function createThumbnailCache({
     setPaused(value: boolean) {
       reads.setPaused(value);
       generation.setPaused(value);
+      animations.setPaused(value);
       setThumbnailWorkersPaused(value);
     },
     peek(handle: FileHandle): Source | null {

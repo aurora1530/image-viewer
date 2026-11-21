@@ -1,5 +1,6 @@
 import { installBrowserGuards } from '../helpers/browserGuards';
 import { requireValue } from '../../src/shared/validation';
+import { animatedGifFixture } from '../helpers/gif';
 import { samplePdf } from '../helpers/pdf';
 import { expect, test } from '@playwright/test';
 
@@ -413,14 +414,14 @@ test('back and forward restore folders and viewer pages and discard a branched h
   await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
   await page.locator('#toggle-view-btn').click();
   await page.keyboard.press('ArrowLeft');
-  const counter = await page.locator('#page-counter').textContent();
+  await expect(page.locator('#page-counter')).toHaveText('3 / 3');
   await page.keyboard.press('Alt+ArrowRight');
-  await expect(page.locator('#page-counter')).toHaveText(requireValue(counter));
+  await expect(page.locator('#page-counter')).toHaveText('3 / 3');
   await page.keyboard.press('Alt+ArrowLeft');
   await expect(page.locator('#viewer')).toHaveCSS('display', 'none');
   await page.keyboard.press('Alt+ArrowRight');
   await expect(page.locator('#viewer')).toHaveCSS('display', 'flex');
-  await expect(page.locator('#page-counter')).toHaveText(requireValue(counter));
+  await expect(page.locator('#page-counter')).toHaveText('3 / 3');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Alt+ArrowRight');
   await expect(page.locator('#current-dir-name')).toHaveText('books');
@@ -598,11 +599,105 @@ test('shows a cached thumbnail during full-image decoding and reuses the decoded
   await page.evaluate(() => window.__releaseDecode());
   await expect(page.locator('#viewer .viewer-loading')).toBeHidden();
   const originalUrl = await page.locator('#right-page').getAttribute('src');
-  await expect.poll(() => page.evaluate(() => window.__viewerDecodes)).toBe(3);
+  await expect.poll(() => page.evaluate(() => window.__viewerDecodes)).toBe(2);
   await page.keyboard.press('Escape');
   await thumbnail.click();
   await expect(page.locator('#right-page')).toHaveAttribute('src', requireValue(originalUrl));
-  expect(await page.evaluate(() => window.__viewerDecodes)).toBe(3);
+  expect(await page.evaluate(() => window.__viewerDecodes)).toBe(2);
+});
+
+test('resizes several GIF previews while preserving their frames, timing and loop count', async ({
+  page,
+}) => {
+  await page.evaluate((fixture) => {
+    const root = window.__imageViewerTestRoot;
+    root.entries.clear();
+    const finite = Uint8Array.from(atob(fixture), (char) => char.charCodeAt(0));
+    const infinite = finite.slice();
+    // The NETSCAPE loop extension stores 0 for infinite repetition.
+    infinite[41] = 0;
+    for (const name of ['first.gif', 'second.GIF']) {
+      root.entries.set(name, {
+        kind: 'file',
+        name,
+        createWritable: async () => {
+          throw new Error('Read-only fixture');
+        },
+        getFile: async () =>
+          new File([name === 'first.gif' ? finite : infinite], name, { type: 'image/gif' }),
+      });
+    }
+  }, animatedGifFixture);
+  await page.locator('#reload-btn').click();
+  const thumbnails = page.locator('#item-list img');
+  await expect(thumbnails).toHaveCount(2);
+  for (const thumbnail of await thumbnails.all())
+    await expect(thumbnail).toHaveJSProperty('naturalWidth', 640);
+  const decoded = await thumbnails.evaluateAll(async (images) =>
+    Promise.all(
+      images.map(async (element) => {
+        if (!(element instanceof HTMLImageElement)) throw new Error('Expected an image');
+        const blob = await fetch(element.src).then((response) => response.blob());
+        const decoder = new ImageDecoder({ data: blob.stream(), type: blob.type });
+        try {
+          await decoder.completed;
+          const track = window.__requireTestValue(decoder.tracks.selectedTrack);
+          const durations: (number | null)[] = [];
+          const canvas = new OffscreenCanvas(1, 1);
+          const context = window.__requireTestValue(canvas.getContext('2d'));
+          const alpha: number[] = [];
+          for (let index = 0; index < track.frameCount; index++) {
+            const { image } = await decoder.decode({ frameIndex: index });
+            durations.push(image.duration);
+            context.drawImage(image, image.displayWidth - 1, 0, 1, 1, 0, 0, 1, 1);
+            alpha.push(context.getImageData(0, 0, 1, 1).data[3]);
+            image.close();
+          }
+          return { type: blob.type, loops: track.repetitionCount, durations, alpha };
+        } finally {
+          decoder.close();
+        }
+      }),
+    ),
+  );
+  expect(decoded).toEqual(
+    [2, Infinity].map((loops) => ({
+      type: 'image/webp',
+      loops,
+      durations: [40000, 130000],
+      alpha: [0, 0],
+    })),
+  );
+  const thumbnailUrls = () =>
+    thumbnails.evaluateAll((images) => images.map((image) => image.getAttribute('src')));
+  const cachedUrls = await thumbnailUrls();
+  await page.locator('#toggle-view-btn').dispatchEvent('click');
+  await page.evaluate(() => {
+    window.__pageDecodes = 0;
+    const decode = HTMLImageElement.prototype.decode;
+    HTMLImageElement.prototype.decode = function () {
+      window.__pageDecodes++;
+      return decode.call(this);
+    };
+  });
+  await page.locator('#item-list img[alt="first.gif"]').click();
+  await expect.poll(thumbnailUrls).toEqual([null, null]);
+  await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1600);
+  await expect(page.locator('#page-counter')).toHaveText('1 / 2');
+  expect(await page.evaluate(() => window.__pageDecodes)).toBe(1);
+  const original = requireValue(await page.locator('#right-page').getAttribute('src'));
+  await page.keyboard.press('Escape');
+  await expect.poll(thumbnailUrls).toEqual(cachedUrls);
+  expect(
+    await page.evaluate(
+      (url) =>
+        fetch(url).then(
+          () => true,
+          () => false,
+        ),
+      original,
+    ),
+  ).toBe(false);
 });
 
 test('virtual rows preserve original aspect ratios across resizing and returning to a distant folder', async ({
@@ -1280,7 +1375,7 @@ test('preloads decoded neighboring pages and reuses their sources when navigatin
   await expect(page.locator('#right-page')).toHaveJSProperty('naturalWidth', 1);
   const firstUrl = await page.locator('#right-page').getAttribute('src');
   const reads = () => page.evaluate(() => window.__pageReads);
-  await expect.poll(() => page.evaluate(() => window.__pageDecodes)).toBe(3);
+  await expect.poll(() => page.evaluate(() => window.__pageDecodes)).toBe(2);
   expect(await reads()).toEqual({});
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('#page-counter')).toHaveText('2 / 3');

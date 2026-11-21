@@ -79,9 +79,9 @@ export function createPageCache<Key>(
     retain([]);
   }
 
-  function discardPending() {
+  function retainReady(shouldKeep: (handle: Key) => boolean) {
     for (const [handle, entry] of entries) {
-      if (entry.ready) continue;
+      if (entry.ready && shouldKeep(handle)) continue;
       entries.delete(handle);
       dispose(entry);
     }
@@ -91,7 +91,7 @@ export function createPageCache<Key>(
     get,
     retain,
     clear,
-    discardPending,
+    retainReady,
     peek: (handle: Key) => {
       const entry = entries.get(handle);
       return entry?.ready ? entry.page : null;

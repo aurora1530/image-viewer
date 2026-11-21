@@ -58,6 +58,20 @@ describe('thumbnail worker pool', () => {
     TestWorker.instances[0].reply({ blob: output });
     expect(await second).toBe(output);
   });
+
+  it('signals running GIF workers to pause until the viewer closes', async () => {
+    const pool = createThumbnailWorkerPool(1, true);
+    const conversion = pool.encode(new Blob(), undefined, 'gif-animation');
+    await vi.waitFor(() => expect(TestWorker.instances).toHaveLength(1));
+    const [worker] = TestWorker.instances;
+    pool.setPaused(true);
+    expect(worker.postMessage).toHaveBeenLastCalledWith({ paused: true });
+    pool.setPaused(false);
+    expect(worker.postMessage).toHaveBeenLastCalledWith({ paused: false });
+    const output = new Blob();
+    worker.reply({ blob: output });
+    expect(await conversion).toBe(output);
+  });
   it('runs jobs on separate workers up to the limit and reuses idle workers', async () => {
     const pool = createThumbnailWorkerPool(2);
     const input = new Blob(['original']);
